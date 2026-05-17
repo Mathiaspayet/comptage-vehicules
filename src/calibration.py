@@ -31,7 +31,7 @@ def create_calibration_blueprint(config: Config) -> Blueprint:
         frame_path = request.args.get("video")
 
         if frame_path:
-            video_file = video_folder / frame_path
+            video_file = _find_video_by_name(video_folder, frame_path)
         else:
             video_file = _find_latest_video(video_folder)
 
@@ -119,6 +119,21 @@ def create_calibration_blueprint(config: Config) -> Blueprint:
 # ------------------------------------------------------------------ #
 # Helpers                                                              #
 # ------------------------------------------------------------------ #
+
+def _find_video_by_name(folder: Path, name: str):
+    """Search for a video file by name in folder and immediate subfolders."""
+    if not folder.exists():
+        return None
+    exts = {".mp4", ".avi", ".mkv", ".mov"}
+    for entry in folder.iterdir():
+        if entry.is_file() and entry.name == name and entry.suffix.lower() in exts:
+            return entry
+        elif entry.is_dir():
+            for sub in entry.iterdir():
+                if sub.is_file() and sub.name == name:
+                    return sub
+    return None
+
 
 def _find_latest_video(folder: Path):
     exts = {".mp4", ".avi", ".mkv", ".mov"}
