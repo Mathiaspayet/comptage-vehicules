@@ -1,0 +1,104 @@
+# ============================================================
+# Fichier de configuration — Comptage de véhicules
+# ============================================================
+# Copiez ce fichier en "config.yaml" et remplissez les valeurs
+# marquées [À COMPLÉTER]. Ne commitez JAMAIS config.yaml sur GitHub.
+# ============================================================
+
+# --- Dossier des vidéos ---
+# Chemin vers le dossier racine de la sonnette sur le NAS.
+# L'application scanne aussi les sous-dossiers (ex: 20260427PM, 20260428AM…)
+# créés automatiquement par la sonnette Interphone/Reolink.
+video_folder: "/volume1/surveillance/Interphone"
+
+# --- Format du nom de fichier ---
+# Sert à extraire la date/heure de début depuis le nom du fichier.
+# Codes strptime : %Y=année, %m=mois, %d=jour, %H=heure, %M=minute, %S=seconde
+#
+# Vos fichiers sont nommés :
+#   Interphone-20260427-140210-1777291330846-1.mp4
+# → le format ci-dessous extrait "Interphone-20260427-140210" (le reste est ignoré)
+filename_datetime_format: "Interphone-%Y%m%d-%H%M%S"
+
+# --- Fuseau horaire ---
+# Doit correspondre au fuseau configuré sur votre NAS Synology.
+timezone: "Europe/Paris"  # [À COMPLÉTER si différent]
+
+# --- Paramètres du guetteur (module Ingestion) ---
+ingestion:
+  # Intervalle entre deux scans du dossier vidéo (en secondes)
+  scan_interval_seconds: 60
+  # Délai d'inactivité avant de considérer un fichier comme "terminé" (en secondes)
+  # Mettre au moins la durée d'un segment vidéo + marge de sécurité
+  file_stable_delay_seconds: 120
+
+# --- Paramètres du filtre de mouvement ---
+motion_filter:
+  # Nombre d'images analysées par seconde de vidéo (2–4 recommandé)
+  sample_fps: 2
+  # Seuil de détection de mouvement (0–255). Plus élevé = moins sensible.
+  # Augmenter si des faux positifs apparaissent (feuilles, pluie).
+  motion_threshold: 25
+  # Surface minimale de mouvement pour déclencher un segment actif (en pixels²)
+  min_motion_area: 500
+  # Marge ajoutée avant/après chaque segment actif détecté (en secondes)
+  segment_padding_seconds: 1.0
+
+# --- Paramètres de la détection IA ---
+detector:
+  # Nombre d'images analysées par seconde pour la détection IA (1–2 recommandé)
+  sample_fps: 2
+  # Seuil de confiance du modèle (0.0–1.0). Augmenter pour moins de faux positifs.
+  confidence_threshold: 0.35
+  # Types de véhicules à compter (classes COCO)
+  # Valeurs possibles : car, motorcycle, bus, truck
+  vehicle_classes:
+    - car
+    - motorcycle
+    - bus
+    - truck
+  # Compter le sens de circulation (true/false)
+  count_direction: false
+  # Dossier où stocker le modèle IA (dans le volume persistant)
+  model_dir: "/app/data/models"
+
+# --- Zone d'intérêt et ligne de comptage ---
+# Ces coordonnées sont définies avec l'outil de calibration (voir README).
+# ROI : polygone délimitant la zone à surveiller (la rue).
+# Chaque point est [x, y] en pixels depuis le coin haut-gauche de l'image.
+counting:
+  # Ligne de comptage : deux points [x, y]
+  line_p1: [0, 300]    # [À COMPLÉTER avec l'outil de calibration]
+  line_p2: [1280, 300] # [À COMPLÉTER avec l'outil de calibration]
+  # Zone d'intérêt (ROI) : liste de points formant un polygone
+  roi_polygon:          # [À COMPLÉTER avec l'outil de calibration]
+    - [0, 200]
+    - [1280, 200]
+    - [1280, 500]
+    - [0, 500]
+
+# --- Base de données ---
+database:
+  # Chemin du fichier SQLite (dans le volume persistant)
+  path: "/app/data/vehicles.db"
+
+# --- Tableau de bord web ---
+dashboard:
+  # Port sur lequel le tableau de bord est accessible (ex: http://[IP-NAS]:8080)
+  port: 8080
+  # Nombre de jours affichés par défaut dans la vue quotidienne
+  default_days: 30
+
+# --- Outil de calibration ---
+calibration:
+  # Port sur lequel l'outil de calibration est accessible (différent du dashboard)
+  port: 8081
+
+# --- Journaux (logs) ---
+logging:
+  # Niveau de log : DEBUG, INFO, WARNING, ERROR
+  level: "INFO"
+  # Taille maximale d'un fichier de log avant rotation (en Mo)
+  max_size_mb: 10
+  # Nombre de fichiers de log à conserver
+  backup_count: 3

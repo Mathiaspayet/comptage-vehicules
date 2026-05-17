@@ -1,0 +1,85 @@
+# ============================================================
+# docker-compose.yml — Comptage de véhicules
+#
+# À déposer sur le NAS (avec config.yaml) et à démarrer
+# via Container Manager ou : docker compose up -d
+#
+# AVANT DE DÉMARRER :
+#   1. Copiez config.example.yaml en config.yaml dans /volume1/docker/comptage/
+#   2. Remplissez config.yaml avec vos valeurs réelles
+#   3. Ajustez VIDEO_PATH ci-dessous avec le chemin de vos vidéos
+# ============================================================
+
+services:
+
+  # --------------------------------------------------------
+  # Application principale
+  # --------------------------------------------------------
+  comptage:
+    image: ghcr.io/mathiaspayet/comptage-vehicules:latest
+
+    container_name: comptage-vehicules
+    restart: always
+
+    ports:
+      - "8080:8080"   # Tableau de bord  → http://[IP-NAS]:8080
+      - "8081:8081"   # Calibration      → http://[IP-NAS]:8081
+
+    volumes:
+      # Vidéos de la sonnette (lecture seule — l'app ne peut pas les modifier)
+      # L'app scanne aussi les sous-dossiers (20260427PM, 20260428AM…)
+      - /volume1/surveillance/Interphone:/video:ro
+
+      # Données persistantes (base de données, config, logs, modèle IA)
+      - /volume1/docker/comptage/data:/app/data
+
+    environment:
+      - CONFIG_PATH=/app/data/config.yaml
+      - TZ=Europe/Paris  # Fuseau horaire du NAS — à ajuster si besoin
+
+    # Limitation des ressources pour ne pas saturer le NAS
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"     # Utilise au plus 1,5 cœur sur 2
+          memory: "1G"    # Limite mémoire à 1 Go
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # --------------------------------------------------------
+  # Watchtower — mise à jour automatique du conteneur
+  # Surveille GHCR et redémarre l'app quand une nouvelle
+  # image est disponible (après chaque git push).
+  # --------------------------------------------------------
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower-comptage
+    restart: always
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+    environment:
+      # Vérifier les mises à jour toutes les 10 minutes
+      - WATCHTOWER_POLL_INTERVAL=600
+      # Ne surveiller QUE le conteneur de l'application (pas les autres)
+      - WATCHTOWER_SCOPE=comptage-vehicules
+      # Supprimer les anciennes images après mise à jour
+      - WATCHTOWER_CLEANUP=true
+      # Notification dans les logs en cas de mise à jour
+      - WATCHTOWER_NOTIFICATIONS=shoutrrr
+      # Image privée : décommentez et remplissez si votre image GHCR est privée
+      # - REPO_USER=VOTRE_COMPTE_GITHUB
+      # - REPO_PASS=ghp_VOTRE_TOKEN_GITHUB
+
+    command: comptage-vehicules
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"

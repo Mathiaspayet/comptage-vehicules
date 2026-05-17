@@ -1,0 +1,6 @@
+ultralytics>=8.2.0
+opencv-python-headless>=4.9.0
+flask>=3.0.0
+pyyaml>=6.0.1
+numpy>=1.26.0
+openvino>=2024.1.0

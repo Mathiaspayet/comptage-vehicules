@@ -1,0 +1,52 @@
+# Configuration réelle (contient des chemins et coordonnées personnels)
+config.yaml
+config.yml
+
+# Base de données
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# Modèles IA téléchargés
+models/
+*.pt
+*_openvino_model/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+venv/
+env/
+.venv/
+
+# Logs
+logs/
+*.log
+
+# Images de calibration temporaires
+calibration_frame.jpg
+calibration_frame.png
+
+# Variables d'environnement
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Docker
+docker-compose.override.yml
