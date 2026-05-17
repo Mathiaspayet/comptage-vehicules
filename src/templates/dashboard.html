@@ -286,7 +286,7 @@ async function loadVersion() {
     const res  = await fetch('/api/version');
     const data = await res.json();
     const el   = document.getElementById('version-info');
-    el.innerHTML = `v ${data.sha}<br>${data.built_at}`;
+    el.textContent = data.built_at || '—';
   } catch (_) {}
 }
 
