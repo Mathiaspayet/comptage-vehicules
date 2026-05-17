@@ -6,8 +6,10 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: system-ui, sans-serif; background: #f4f6f9; color: #222; }
-    header { background: #1a3a5c; color: #fff; padding: 1rem 1.5rem; }
-    header h1 { font-size: 1.2rem; }
+    header { background: #1a3a5c; color: #fff; padding: .75rem 1.5rem; display: flex; align-items: center; gap: 1rem; }
+    header h1 { font-size: 1.1rem; flex: 1; }
+    .btn-back { background: #2e6da4; color: #fff; border: none; border-radius: 4px; padding: .35rem .8rem; font-size: .82rem; cursor: pointer; text-decoration: none; }
+    .btn-back:hover { background: #3a7fc1; }
     main { max-width: 1000px; margin: 1.5rem auto; padding: 0 1rem; }
     section { background: #fff; border-radius: 6px; padding: 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 1rem; }
     h2 { font-size: 1rem; margin-bottom: .75rem; color: #1a3a5c; }
@@ -29,21 +31,22 @@
     #msg.ok  { background: #dcfce7; color: #166534; }
     #msg.err { background: #fee2e2; color: #991b1b; }
     .legend { display: flex; gap: 1rem; font-size: .8rem; margin-bottom: .5rem; }
-    .legend span { display: flex; align-items: center; gap: .3rem; }
     .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
   </style>
 </head>
 <body>
-<header><h1>🎯 Outil de calibration — ligne de comptage</h1></header>
+<header>
+  <h1>🎯 Calibration — ligne de comptage</h1>
+  <a class="btn-back" href="/">← Tableau de bord</a>
+</header>
 <main>
-
   <section>
     <h2>Mode d'emploi</h2>
     <ol class="steps">
       <li>Choisissez un fichier vidéo et extrayez une image de référence.</li>
       <li>En mode <strong>Ligne de comptage</strong> : cliquez deux points pour tracer la ligne (les véhicules sont comptés quand ils la traversent).</li>
-      <li>En mode <strong>Zone d'intérêt (ROI)</strong> : cliquez plusieurs points pour dessiner le polygone de la rue. Double-cliquez pour fermer le polygone.</li>
-      <li>Vérifiez les coordonnées affichées, puis cliquez <strong>Enregistrer</strong>.</li>
+      <li>En mode <strong>Zone d'intérêt (ROI)</strong> : cliquez plusieurs points pour délimiter la rue. Double-cliquez pour fermer le polygone.</li>
+      <li>Vérifiez les coordonnées puis cliquez <strong>Enregistrer</strong>. Redémarrez le conteneur pour appliquer.</li>
     </ol>
   </section>
 
@@ -64,15 +67,13 @@
     <h2>2 · Dessin sur l'image</h2>
     <div class="mode-bar">
       <button id="btn-line" class="active" onclick="setMode('line')">✏️ Ligne de comptage (2 points)</button>
-      <button id="btn-roi"  onclick="setMode('roi')">⬡ Zone d'intérêt / ROI</button>
+      <button id="btn-roi" onclick="setMode('roi')">⬡ Zone d'intérêt / ROI</button>
     </div>
     <div class="legend">
       <span><span class="dot" style="background:#ff0;border:2px solid #000"></span> Ligne de comptage</span>
       <span><span class="dot" style="background:#0f0;border:2px solid #000;border-radius:2px"></span> Zone d'intérêt (ROI)</span>
     </div>
-    <div id="canvas-wrap">
-      <canvas id="canvas" width="640" height="360"></canvas>
-    </div>
+    <div id="canvas-wrap"><canvas id="canvas" width="640" height="360"></canvas></div>
     <div class="controls" style="margin-top:.75rem">
       <button class="danger" onclick="resetCurrent()">Effacer le mode actuel</button>
       <button onclick="resetAll()">Tout effacer</button>
@@ -87,26 +88,21 @@
     </div>
     <div id="msg"></div>
   </section>
-
 </main>
-<script>
-let img = null;
-let imgW = 640, imgH = 360;
-let mode = 'line';  // 'line' or 'roi'
-let linePts = [];   // [{x,y}, {x,y}]
-let roiPts  = [];   // [{x,y}, ...]
-let roiClosed = false;
 
+<script>
+const BASE = '/calibration';
+let img = null, imgW = 640, imgH = 360;
+let mode = 'line', linePts = [], roiPts = [], roiClosed = false;
 const canvas = document.getElementById('canvas');
 const ctx    = canvas.getContext('2d');
 
-// --- Load videos list ---
-fetch('/api/videos').then(r => r.json()).then(data => {
+fetch(`${BASE}/api/videos`).then(r=>r.json()).then(data=>{
   const sel = document.getElementById('video-select');
-  sel.innerHTML = data.videos.map(v => `<option value="${v}">${v}</option>`).join('') || '<option>Aucune vidéo trouvée</option>';
+  sel.innerHTML = data.videos.map(v=>`<option value="${v}">${v}</option>`).join('') || '<option>Aucune vidéo trouvée</option>';
 });
 
-document.getElementById('frame-sec').addEventListener('input', function() {
+document.getElementById('frame-sec').addEventListener('input', function(){
   document.getElementById('frame-sec-val').textContent = this.value;
 });
 
@@ -114,13 +110,11 @@ async function loadFrame() {
   const video = document.getElementById('video-select').value;
   const sec   = document.getElementById('frame-sec').value;
   document.getElementById('load-status').textContent = 'Extraction en cours…';
-  const res = await fetch(`/api/frame?video=${encodeURIComponent(video)}&second=${sec}`);
+  const res  = await fetch(`${BASE}/api/frame?video=${encodeURIComponent(video)}&second=${sec}`);
   const data = await res.json();
   if (data.error) { document.getElementById('load-status').textContent = '❌ ' + data.error; return; }
-
   imgW = data.width; imgH = data.height;
-  canvas.width  = imgW;
-  canvas.height = imgH;
+  canvas.width = imgW; canvas.height = imgH;
   img = new Image();
   img.onload = () => { draw(); loadCurrentConfig(); };
   img.src = data.image;
@@ -128,136 +122,73 @@ async function loadFrame() {
 }
 
 async function loadCurrentConfig() {
-  const res = await fetch('/api/current-config');
+  const res  = await fetch(`${BASE}/api/current-config`);
   const data = await res.json();
-  if (data.line_p1 && data.line_p2) {
-    linePts = [{ x: data.line_p1[0], y: data.line_p1[1] }, { x: data.line_p2[0], y: data.line_p2[1] }];
-  }
-  if (data.roi_polygon && data.roi_polygon.length > 2) {
-    roiPts = data.roi_polygon.map(p => ({ x: p[0], y: p[1] }));
-    roiClosed = true;
-  }
-  draw();
-  updateCoords();
+  if (data.line_p1 && data.line_p2) linePts = [{x:data.line_p1[0],y:data.line_p1[1]},{x:data.line_p2[0],y:data.line_p2[1]}];
+  if (data.roi_polygon && data.roi_polygon.length > 2) { roiPts = data.roi_polygon.map(p=>({x:p[0],y:p[1]})); roiClosed = true; }
+  draw(); updateCoords();
 }
 
 function setMode(m) {
   mode = m;
-  document.getElementById('btn-line').classList.toggle('active', m === 'line');
-  document.getElementById('btn-roi').classList.toggle('active', m === 'roi');
+  document.getElementById('btn-line').classList.toggle('active', m==='line');
+  document.getElementById('btn-roi').classList.toggle('active', m==='roi');
 }
 
 canvas.addEventListener('click', function(e) {
   if (!img) return;
   const rect = canvas.getBoundingClientRect();
-  const scaleX = imgW / rect.width;
-  const scaleY = imgH / rect.height;
-  const x = Math.round((e.clientX - rect.left) * scaleX);
-  const y = Math.round((e.clientY - rect.top)  * scaleY);
-
-  if (mode === 'line') {
-    if (linePts.length < 2) linePts.push({ x, y });
-    else linePts = [{ x, y }];
-  } else {
-    if (!roiClosed) roiPts.push({ x, y });
-  }
-  draw();
-  updateCoords();
+  const x = Math.round((e.clientX - rect.left) * imgW / rect.width);
+  const y = Math.round((e.clientY - rect.top)  * imgH / rect.height);
+  if (mode === 'line') { if (linePts.length < 2) linePts.push({x,y}); else linePts = [{x,y}]; }
+  else if (!roiClosed) roiPts.push({x,y});
+  draw(); updateCoords();
 });
 
-canvas.addEventListener('dblclick', function(e) {
-  if (mode === 'roi' && roiPts.length >= 3) {
-    roiClosed = true;
-    draw();
-    updateCoords();
-  }
+canvas.addEventListener('dblclick', function() {
+  if (mode === 'roi' && roiPts.length >= 3) { roiClosed = true; draw(); updateCoords(); }
 });
 
 function draw() {
   ctx.clearRect(0, 0, imgW, imgH);
   if (img) ctx.drawImage(img, 0, 0, imgW, imgH);
-
-  // Draw ROI
   if (roiPts.length > 0) {
-    ctx.beginPath();
-    ctx.moveTo(roiPts[0].x, roiPts[0].y);
-    roiPts.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
+    ctx.beginPath(); ctx.moveTo(roiPts[0].x, roiPts[0].y);
+    roiPts.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));
     if (roiClosed) ctx.closePath();
-    ctx.strokeStyle = '#00ff00';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.fillStyle = 'rgba(0,255,0,0.12)';
-    if (roiClosed) ctx.fill();
-    roiPts.forEach(p => {
-      ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI*2);
-      ctx.fillStyle = '#00ff00'; ctx.fill();
-    });
+    ctx.strokeStyle='#00ff00'; ctx.lineWidth=2; ctx.stroke();
+    ctx.fillStyle='rgba(0,255,0,0.12)'; if (roiClosed) ctx.fill();
+    roiPts.forEach(p=>{ ctx.beginPath(); ctx.arc(p.x,p.y,5,0,Math.PI*2); ctx.fillStyle='#00ff00'; ctx.fill(); });
   }
-
-  // Draw counting line
-  if (linePts.length === 2) {
-    ctx.beginPath();
-    ctx.moveTo(linePts[0].x, linePts[0].y);
-    ctx.lineTo(linePts[1].x, linePts[1].y);
-    ctx.strokeStyle = '#ffff00';
-    ctx.lineWidth = 3;
-    ctx.setLineDash([8, 4]);
-    ctx.stroke();
-    ctx.setLineDash([]);
+  if (linePts.length===2) {
+    ctx.beginPath(); ctx.moveTo(linePts[0].x,linePts[0].y); ctx.lineTo(linePts[1].x,linePts[1].y);
+    ctx.strokeStyle='#ffff00'; ctx.lineWidth=3; ctx.setLineDash([8,4]); ctx.stroke(); ctx.setLineDash([]);
   }
-  linePts.forEach((p, i) => {
-    ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, Math.PI*2);
-    ctx.fillStyle = '#ffff00'; ctx.fill();
-    ctx.fillStyle = '#000';
-    ctx.font = 'bold 12px sans-serif';
-    ctx.fillText(i === 0 ? 'P1' : 'P2', p.x + 8, p.y - 6);
+  linePts.forEach((p,i)=>{
+    ctx.beginPath(); ctx.arc(p.x,p.y,6,0,Math.PI*2); ctx.fillStyle='#ffff00'; ctx.fill();
+    ctx.fillStyle='#000'; ctx.font='bold 12px sans-serif'; ctx.fillText(i===0?'P1':'P2', p.x+8, p.y-6);
   });
-  if (linePts.length === 1) {
-    ctx.fillStyle = '#fff';
-    ctx.font = '13px sans-serif';
-    ctx.fillText('Cliquez pour placer P2', linePts[0].x + 10, linePts[0].y + 16);
-  }
 }
 
 function updateCoords() {
-  const line = linePts.length === 2
-    ? `line_p1: [${linePts[0].x}, ${linePts[0].y}]\nline_p2: [${linePts[1].x}, ${linePts[1].y}]`
-    : 'line_p1: (non défini)\nline_p2: (non défini)';
-  const roi = roiPts.length > 0
-    ? `roi_polygon:\n${roiPts.map(p => `  - [${p.x}, ${p.y}]`).join('\n')}${roiClosed ? '\n  (polygone fermé ✅)' : '\n  (double-cliquez pour fermer)'}`
-    : 'roi_polygon: (non défini)';
+  const line = linePts.length===2 ? `line_p1: [${linePts[0].x}, ${linePts[0].y}]\nline_p2: [${linePts[1].x}, ${linePts[1].y}]` : 'line_p1: (non défini)\nline_p2: (non défini)';
+  const roi  = roiPts.length>0 ? `roi_polygon:\n${roiPts.map(p=>`  - [${p.x}, ${p.y}]`).join('\n')}${roiClosed?'\n  ✅ polygone fermé':'\n  (double-cliquez pour fermer)'}` : 'roi_polygon: (non défini)';
   document.getElementById('coords').textContent = line + '\n\n' + roi;
 }
 
-function resetCurrent() {
-  if (mode === 'line') linePts = [];
-  else { roiPts = []; roiClosed = false; }
-  draw(); updateCoords();
-}
-function resetAll() { linePts = []; roiPts = []; roiClosed = false; draw(); updateCoords(); }
+function resetCurrent() { if(mode==='line') linePts=[]; else {roiPts=[];roiClosed=false;} draw(); updateCoords(); }
+function resetAll() { linePts=[]; roiPts=[]; roiClosed=false; draw(); updateCoords(); }
 
 async function saveConfig() {
-  if (linePts.length !== 2) { showMsg('Définissez d\'abord les deux points de la ligne de comptage.', 'err'); return; }
-  const payload = {
-    line_p1: [linePts[0].x, linePts[0].y],
-    line_p2: [linePts[1].x, linePts[1].y],
-    roi_polygon: roiClosed ? roiPts.map(p => [p.x, p.y]) : [],
-  };
-  const res = await fetch('/api/save', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  if (linePts.length!==2) { showMsg("Définissez d'abord les deux points de la ligne.", 'err'); return; }
+  const payload = { line_p1:[linePts[0].x,linePts[0].y], line_p2:[linePts[1].x,linePts[1].y], roi_polygon:roiClosed?roiPts.map(p=>[p.x,p.y]):[] };
+  const res  = await fetch(`${BASE}/api/save`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
   const data = await res.json();
-  if (data.ok) showMsg(`✅ Configuration enregistrée dans ${data.saved_to}. Redémarrez l'application pour appliquer.`, 'ok');
-  else showMsg('❌ Erreur : ' + data.error, 'err');
+  if (data.ok) showMsg(`✅ Enregistré dans ${data.saved_to}. Redémarrez le conteneur pour appliquer.`, 'ok');
+  else showMsg('❌ ' + data.error, 'err');
 }
 
-function showMsg(text, type) {
-  const el = document.getElementById('msg');
-  el.textContent = text;
-  el.className = type;
-}
+function showMsg(text, type) { const el=document.getElementById('msg'); el.textContent=text; el.className=type; }
 </script>
 </body>
 </html>

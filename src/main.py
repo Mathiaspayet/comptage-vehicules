@@ -8,7 +8,6 @@ import threading
 import time
 from pathlib import Path
 
-from .calibration import run_calibration
 from .config import load_config
 from .dashboard import run_dashboard
 from .database import Database
@@ -27,10 +26,7 @@ def setup_logging(level: str, log_dir: Path, max_mb: int, backup_count: int):
     )
 
     file_handler = logging.handlers.RotatingFileHandler(
-        log_file,
-        maxBytes=max_mb * 1024 * 1024,
-        backupCount=backup_count,
-        encoding="utf-8",
+        log_file, maxBytes=max_mb * 1024 * 1024, backupCount=backup_count, encoding="utf-8"
     )
     file_handler.setFormatter(formatter)
 
@@ -42,7 +38,6 @@ def setup_logging(level: str, log_dir: Path, max_mb: int, backup_count: int):
     root.addHandler(file_handler)
     root.addHandler(console_handler)
 
-    # Quieten noisy third-party loggers
     logging.getLogger("ultralytics").setLevel(logging.WARNING)
     logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
@@ -58,7 +53,6 @@ def _handle_signal(signum, frame):
 
 
 def processing_loop(watcher: FileWatcher, motion: MotionFilter, detector: VehicleDetector, db: Database):
-    """Main processing loop — runs until _shutdown is set."""
     logger.info("Boucle de traitement démarrée.")
     while not _shutdown.is_set():
         try:
@@ -73,10 +67,7 @@ def processing_loop(watcher: FileWatcher, motion: MotionFilter, detector: Vehicl
                 break
             _process_file(video_path, watcher, motion, detector, db)
 
-        # Wait for next scan cycle
-        scan_interval = watcher.config.scan_interval
-        logger.debug("Prochain scan dans %d secondes.", scan_interval)
-        _shutdown.wait(timeout=scan_interval)
+        _shutdown.wait(timeout=watcher.config.scan_interval)
 
     logger.info("Boucle de traitement terminée.")
 
@@ -84,21 +75,17 @@ def processing_loop(watcher: FileWatcher, motion: MotionFilter, detector: Vehicl
 def _process_file(video_path, watcher, motion, detector, db):
     filename = video_path.name
     logger.info("=== Traitement : %s ===", filename)
-
     video_start_dt = watcher.extract_datetime(filename)
 
     try:
-        # Step 1: motion filter
         segments = motion.analyze_video(video_path)
         if not segments:
-            logger.info("%s — aucun segment actif, aucun véhicule.", filename)
+            logger.info("%s — aucun segment actif.", filename)
             db.mark_file_done(filename, vehicle_count=0)
             return
 
-        # Step 2: AI detection + counting
         events = detector.process_video(video_path, segments, video_start_dt)
 
-        # Step 3: store in database
         if events:
             crossings = [
                 {
@@ -124,7 +111,6 @@ def main():
     config_path = os.environ.get("CONFIG_PATH", "/app/data/config.yaml")
     config = load_config(config_path)
 
-    # Setup logging
     log_dir = Path("/app/data/logs")
     setup_logging(
         config.log_level,
@@ -137,37 +123,22 @@ def main():
     logger.info("Dossier vidéos   : %s", config.video_folder)
     logger.info("Base de données  : %s", config.db_path)
     logger.info("Dashboard        : http://0.0.0.0:%d", config.dashboard_port)
-    logger.info("Calibration      : http://0.0.0.0:%d", config.calibration_port)
+    logger.info("Calibration      : http://0.0.0.0:%d/calibration/", config.dashboard_port)
 
-    # Init components
     db = Database(config.db_path)
     watcher = FileWatcher(config, db)
     motion = MotionFilter(config)
     detector = VehicleDetector(config)
 
-    # Graceful shutdown
     signal.signal(signal.SIGTERM, _handle_signal)
-    signal.signal(signal.SIGINT,  _handle_signal)
+    signal.signal(signal.SIGINT, _handle_signal)
 
-    # Start dashboard in background thread
+    # Un seul serveur web (dashboard + calibration)
     dashboard_thread = threading.Thread(
-        target=run_dashboard,
-        args=(config, db),
-        daemon=True,
-        name="dashboard",
+        target=run_dashboard, args=(config, db), daemon=True, name="dashboard"
     )
     dashboard_thread.start()
 
-    # Start calibration tool in background thread
-    calib_thread = threading.Thread(
-        target=run_calibration,
-        args=(config,),
-        daemon=True,
-        name="calibration",
-    )
-    calib_thread.start()
-
-    # Run main processing loop (blocking)
     try:
         processing_loop(watcher, motion, detector, db)
     except KeyboardInterrupt:
@@ -178,5 +149,4 @@ def main():
 
 
 if __name__ == "__main__":
-    # Allow running as: python -m src.main  OR  python src/main.py
     main()

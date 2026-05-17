@@ -8,42 +8,45 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: system-ui, sans-serif; background: #f4f6f9; color: #222; }
-    header { background: #1a3a5c; color: #fff; padding: 1rem 1.5rem; display: flex; align-items: center; gap: 1rem; }
-    header h1 { font-size: 1.2rem; font-weight: 600; }
-    .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #4caf50; margin-left: auto; }
+    header { background: #1a3a5c; color: #fff; padding: .75rem 1.5rem; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+    header h1 { font-size: 1.1rem; font-weight: 600; }
+    .header-right { margin-left: auto; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+    .version { font-size: .72rem; color: #a0b8d0; line-height: 1.4; text-align: right; }
+    .btn-calib { background: #2e6da4; color: #fff; border: none; border-radius: 4px; padding: .35rem .8rem; font-size: .82rem; cursor: pointer; text-decoration: none; white-space: nowrap; }
+    .btn-calib:hover { background: #3a7fc1; }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #4caf50; flex-shrink: 0; }
     .status-dot.error { background: #f44336; }
     main { max-width: 1100px; margin: 1.5rem auto; padding: 0 1rem; }
-
     .controls { display: flex; flex-wrap: wrap; gap: .75rem; margin-bottom: 1.25rem; align-items: center; }
     .controls label { font-size: .85rem; color: #555; }
     .controls input, .controls select { padding: .4rem .6rem; border: 1px solid #ccc; border-radius: 4px; font-size: .9rem; }
     .tab-bar { display: flex; gap: .5rem; margin-bottom: 1rem; }
     .tab-bar button { padding: .45rem 1rem; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; font-size: .9rem; }
     .tab-bar button.active { background: #1a3a5c; color: #fff; border-color: #1a3a5c; }
-
     .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .75rem; margin-bottom: 1.25rem; }
     .card { background: #fff; border-radius: 6px; padding: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,.08); text-align: center; }
     .card .value { font-size: 1.9rem; font-weight: 700; color: #1a3a5c; }
     .card .label { font-size: .75rem; color: #777; margin-top: .25rem; text-transform: uppercase; letter-spacing: .04em; }
-
     .chart-box { background: #fff; border-radius: 6px; padding: 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 1.25rem; }
     .chart-box h2 { font-size: .95rem; color: #444; margin-bottom: 1rem; }
-
     table { width: 100%; border-collapse: collapse; font-size: .875rem; }
     th { background: #f0f3f7; padding: .5rem .75rem; text-align: left; font-weight: 600; color: #555; }
     td { padding: .45rem .75rem; border-bottom: 1px solid #eee; }
     tr:last-child td { border-bottom: none; }
     tr:hover td { background: #f9fafb; }
-
     .breakdown { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .5rem; }
     .badge { background: #e3eaf3; color: #1a3a5c; border-radius: 12px; padding: .2rem .65rem; font-size: .8rem; font-weight: 600; }
-    #msg { font-size: .85rem; color: #888; padding: .5rem 0; }
+    .btn-refresh { padding:.4rem .8rem;border:1px solid #1a3a5c;border-radius:4px;background:#1a3a5c;color:#fff;cursor:pointer; }
   </style>
 </head>
 <body>
 <header>
   <h1>📹 Comptage de véhicules</h1>
-  <span id="status-dot" class="status-dot" title="Statut du service"></span>
+  <div class="header-right">
+    <span class="version" id="version-info">chargement…</span>
+    <a class="btn-calib" href="/calibration/">🎯 Calibration</a>
+    <span id="status-dot" class="status-dot" title="Statut du service"></span>
+  </div>
 </header>
 <main>
   <div class="tab-bar">
@@ -51,12 +54,10 @@
     <button onclick="showTab('daily', this)">Vue quotidienne</button>
   </div>
 
-  <!-- ===== HOURLY TAB ===== -->
+  <!-- HOURLY -->
   <div id="tab-hourly">
     <div class="controls">
-      <label>Date :
-        <input type="date" id="date-picker" value="{{ today }}">
-      </label>
+      <label>Date : <input type="date" id="date-picker" value="{{ today }}"></label>
       <label>Véhicule :
         <select id="type-picker">
           <option value="all">Tous</option>
@@ -66,25 +67,21 @@
           <option value="motorcycle">Moto</option>
         </select>
       </label>
-      <button onclick="loadHourly()" style="padding:.4rem .8rem;border:1px solid #1a3a5c;border-radius:4px;background:#1a3a5c;color:#fff;cursor:pointer;">Actualiser</button>
+      <button class="btn-refresh" onclick="loadHourly()">Actualiser</button>
     </div>
-
     <div class="cards">
       <div class="card"><div class="value" id="card-total">—</div><div class="label">Total du jour</div></div>
       <div class="card"><div class="value" id="card-peak">—</div><div class="label">Heure de pointe</div></div>
       <div class="card"><div class="value" id="card-avg">—</div><div class="label">Moy. / heure active</div></div>
     </div>
-
     <div class="chart-box">
       <h2>Passages par heure</h2>
       <canvas id="chart-hourly" height="80"></canvas>
     </div>
-
     <div class="chart-box">
       <h2>Répartition par type</h2>
       <div id="breakdown" class="breakdown"></div>
     </div>
-
     <div class="chart-box">
       <h2>Tableau détaillé</h2>
       <table id="table-hourly">
@@ -94,7 +91,7 @@
     </div>
   </div>
 
-  <!-- ===== DAILY TAB ===== -->
+  <!-- DAILY -->
   <div id="tab-daily" style="display:none">
     <div class="controls">
       <label>Période :
@@ -114,7 +111,7 @@
           <option value="motorcycle">Moto</option>
         </select>
       </label>
-      <button onclick="loadDaily()" style="padding:.4rem .8rem;border:1px solid #1a3a5c;border-radius:4px;background:#1a3a5c;color:#fff;cursor:pointer;">Actualiser</button>
+      <button class="btn-refresh" onclick="loadDaily()">Actualiser</button>
     </div>
     <div class="chart-box">
       <h2>Passages par jour</h2>
@@ -127,14 +124,10 @@
       </table>
     </div>
   </div>
-
-  <p id="msg"></p>
 </main>
 
 <script>
-let chartHourly = null;
-let chartDaily = null;
-const COLORS = ['#2563eb','#16a34a','#dc2626','#d97706','#7c3aed','#0891b2'];
+let chartHourly = null, chartDaily = null;
 
 function showTab(name, btn) {
   document.querySelectorAll('.tab-bar button').forEach(b => b.classList.remove('active'));
@@ -145,37 +138,30 @@ function showTab(name, btn) {
 }
 
 async function loadHourly() {
-  const day = document.getElementById('date-picker').value;
+  const day   = document.getElementById('date-picker').value;
   const vtype = document.getElementById('type-picker').value;
-  const res = await fetch(`/api/stats/hourly?date=${day}&vehicle_type=${vtype}`);
-  const data = await res.json();
-  if (data.error) { document.getElementById('msg').textContent = data.error; return; }
+  const res   = await fetch(`/api/stats/hourly?date=${day}&vehicle_type=${vtype}`);
+  const data  = await res.json();
+  if (data.error) return;
 
   const { hourly, summary, breakdown } = data;
   document.getElementById('card-total').textContent = summary.total;
-  document.getElementById('card-peak').textContent = `${summary.peak_hour}h (${summary.peak_count})`;
-  document.getElementById('card-avg').textContent = summary.avg_per_active_hour;
+  document.getElementById('card-peak').textContent  = `${summary.peak_hour}h (${summary.peak_count})`;
+  document.getElementById('card-avg').textContent   = summary.avg_per_active_hour;
 
-  // Chart
-  const labels = hourly.map(h => `${h.hour}h`);
-  const counts = hourly.map(h => h.count);
   if (chartHourly) chartHourly.destroy();
   chartHourly = new Chart(document.getElementById('chart-hourly'), {
     type: 'bar',
-    data: { labels, datasets: [{ label: 'Passages', data: counts, backgroundColor: '#2563eb99', borderColor: '#2563eb', borderWidth: 1 }] },
-    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+    data: { labels: hourly.map(h=>`${h.hour}h`), datasets:[{ label:'Passages', data:hourly.map(h=>h.count), backgroundColor:'#2563eb99', borderColor:'#2563eb', borderWidth:1 }] },
+    options: { responsive:true, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true,ticks:{precision:0}}} }
   });
 
-  // Breakdown
-  const bDiv = document.getElementById('breakdown');
-  bDiv.innerHTML = breakdown.length
-    ? breakdown.map(b => `<span class="badge">${b.vehicle_type} : ${b.count}</span>`).join('')
+  document.getElementById('breakdown').innerHTML = breakdown.length
+    ? breakdown.map(b=>`<span class="badge">${b.vehicle_type} : ${b.count}</span>`).join('')
     : '<em style="color:#888">Aucun passage enregistré</em>';
 
-  // Table
-  const tbody = document.querySelector('#table-hourly tbody');
-  const maxCount = Math.max(...counts, 1);
-  tbody.innerHTML = hourly.map(h => {
+  const maxCount = Math.max(...hourly.map(h=>h.count), 1);
+  document.querySelector('#table-hourly tbody').innerHTML = hourly.map(h => {
     const pct = Math.round(h.count / maxCount * 100);
     const bar = h.count ? `<div style="height:8px;width:${pct}%;background:#2563eb;border-radius:3px;min-width:2px"></div>` : '';
     return `<tr><td>${h.hour}h–${h.hour+1}h</td><td>${h.count}</td><td style="min-width:120px">${bar}</td></tr>`;
@@ -183,38 +169,43 @@ async function loadHourly() {
 }
 
 async function loadDaily() {
-  const days = document.getElementById('days-picker').value;
+  const days  = document.getElementById('days-picker').value;
   const vtype = document.getElementById('type-picker-daily').value;
-  const res = await fetch(`/api/stats/daily?days=${days}&vehicle_type=${vtype}`);
-  const data = await res.json();
-  if (data.error) { document.getElementById('msg').textContent = data.error; return; }
+  const res   = await fetch(`/api/stats/daily?days=${days}&vehicle_type=${vtype}`);
+  const data  = await res.json();
+  if (data.error) return;
 
   const { daily } = data;
-  const labels = daily.map(d => d.date);
-  const counts = daily.map(d => d.count);
   if (chartDaily) chartDaily.destroy();
   chartDaily = new Chart(document.getElementById('chart-daily'), {
     type: 'bar',
-    data: { labels, datasets: [{ label: 'Passages/jour', data: counts, backgroundColor: '#16a34a99', borderColor: '#16a34a', borderWidth: 1 }] },
-    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+    data: { labels:daily.map(d=>d.date), datasets:[{ label:'Passages/jour', data:daily.map(d=>d.count), backgroundColor:'#16a34a99', borderColor:'#16a34a', borderWidth:1 }] },
+    options: { responsive:true, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true,ticks:{precision:0}}} }
   });
-
-  const tbody = document.querySelector('#table-daily tbody');
-  tbody.innerHTML = daily.map(d => `<tr><td>${d.date}</td><td>${d.count}</td></tr>`).join('') || '<tr><td colspan="2" style="color:#888">Aucune donnée</td></tr>';
+  document.querySelector('#table-daily tbody').innerHTML = daily.map(d=>`<tr><td>${d.date}</td><td>${d.count}</td></tr>`).join('') || '<tr><td colspan="2" style="color:#888">Aucune donnée</td></tr>';
 }
 
 async function checkStatus() {
   try {
-    const res = await fetch('/api/status');
+    const res  = await fetch('/api/status');
     const data = await res.json();
-    const dot = document.getElementById('status-dot');
+    const dot  = document.getElementById('status-dot');
     dot.classList.toggle('error', !!data.error);
     dot.title = data.error ? data.error : `${data.done} fichiers traités · dernier : ${data.last_file?.filename ?? '—'}`;
   } catch (_) { document.getElementById('status-dot').classList.add('error'); }
 }
 
-// Init
+async function loadVersion() {
+  try {
+    const res  = await fetch('/api/version');
+    const data = await res.json();
+    const el   = document.getElementById('version-info');
+    el.innerHTML = `v ${data.sha}<br>${data.built_at}`;
+  } catch (_) {}
+}
+
 loadHourly();
+loadVersion();
 checkStatus();
 setInterval(checkStatus, 60000);
 </script>

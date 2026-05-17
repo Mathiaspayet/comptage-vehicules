@@ -32,6 +32,10 @@ ingestion:
   # Délai d'inactivité avant de considérer un fichier comme "terminé" (en secondes)
   # Mettre au moins la durée d'un segment vidéo + marge de sécurité
   file_stable_delay_seconds: 120
+  # Nombre de fichiers récents à traiter par scan (0 = tous).
+  # Si l'arriéré dépasse ce nombre, les plus anciens sont ignorés définitivement.
+  # Mettez 2 ou 3 pour ne traiter que les vidéos récentes.
+  max_recent_files: 5
 
 # --- Paramètres du filtre de mouvement ---
 motion_filter:

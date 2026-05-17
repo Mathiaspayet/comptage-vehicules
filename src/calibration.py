@@ -1,4 +1,4 @@
-"""Outil de calibration — interface web pour définir la ligne de comptage et la ROI."""
+"""Outil de calibration — Flask Blueprint monté sous /calibration."""
 import base64
 import logging
 import os
@@ -6,34 +6,37 @@ from pathlib import Path
 
 import cv2
 import yaml
-from flask import Flask, jsonify, render_template, request
+from flask import Blueprint, jsonify, render_template, request
 
 from .config import Config
 
 logger = logging.getLogger(__name__)
 
 
-def create_calibration_app(config: Config) -> Flask:
-    template_dir = Path(__file__).parent / "templates"
-    app = Flask(__name__, template_folder=str(template_dir))
+def create_calibration_blueprint(config: Config) -> Blueprint:
+    bp = Blueprint(
+        "calibration",
+        __name__,
+        url_prefix="/calibration",
+        template_folder="templates",
+    )
 
-    @app.route("/")
+    @bp.route("/")
     def index():
         return render_template("calibration.html")
 
-    @app.route("/api/frame")
+    @bp.route("/api/frame")
     def api_frame():
-        """Extract a frame from the video folder and return it as base64 JPEG."""
         video_folder = config.video_folder
         frame_path = request.args.get("video")
 
         if frame_path:
-            video_file = Path(frame_path)
+            video_file = video_folder / frame_path
         else:
             video_file = _find_latest_video(video_folder)
 
         if video_file is None or not video_file.exists():
-            return jsonify({"error": "Aucune vidéo trouvée dans le dossier configuré."}), 404
+            return jsonify({"error": "Aucune vidéo trouvée."}), 404
 
         frame_sec = float(request.args.get("second", 5.0))
         frame = _extract_frame(video_file, frame_sec)
@@ -50,31 +53,33 @@ def create_calibration_app(config: Config) -> Flask:
             "source": video_file.name,
         })
 
-    @app.route("/api/videos")
+    @bp.route("/api/videos")
     def api_videos():
-        """List available video files for the user to choose from."""
         folder = config.video_folder
         if not folder.exists():
             return jsonify({"videos": [], "error": "Dossier vidéo introuvable."})
         exts = {".mp4", ".avi", ".mkv", ".mov"}
-        videos = sorted(
-            [f.name for f in folder.iterdir() if f.is_file() and f.suffix.lower() in exts],
-            reverse=True,
-        )[:20]
+        videos = []
+        for entry in folder.iterdir():
+            if entry.is_file() and entry.suffix.lower() in exts:
+                videos.append(entry.name)
+            elif entry.is_dir():
+                for sub in entry.iterdir():
+                    if sub.is_file() and sub.suffix.lower() in exts:
+                        videos.append(sub.name)
+        videos = sorted(videos, reverse=True)[:20]
         return jsonify({"videos": videos, "folder": str(folder)})
 
-    @app.route("/api/current-config")
+    @bp.route("/api/current-config")
     def api_current_config():
-        """Return current counting configuration."""
         return jsonify({
             "line_p1": list(config.line_p1),
             "line_p2": list(config.line_p2),
             "roi_polygon": config.roi_polygon,
         })
 
-    @app.route("/api/save", methods=["POST"])
+    @bp.route("/api/save", methods=["POST"])
     def api_save():
-        """Save the line and ROI coordinates to config.yaml."""
         data = request.get_json()
         if not data:
             return jsonify({"error": "Données manquantes"}), 400
@@ -87,8 +92,6 @@ def create_calibration_app(config: Config) -> Flask:
             return jsonify({"error": "line_p1 et line_p2 sont requis"}), 400
 
         config_path = os.environ.get("CONFIG_PATH", "/app/data/config.yaml")
-
-        # Load existing config or start fresh from example
         try:
             with open(config_path, "r", encoding="utf-8") as f:
                 cfg = yaml.safe_load(f) or {}
@@ -107,31 +110,28 @@ def create_calibration_app(config: Config) -> Flask:
         except IOError as e:
             return jsonify({"error": f"Impossible d'écrire config.yaml : {e}"}), 500
 
-        logger.info(
-            "Calibration enregistrée → ligne: %s–%s, ROI: %d points",
-            line_p1, line_p2, len(roi_polygon),
-        )
+        logger.info("Calibration enregistrée → ligne: %s–%s", line_p1, line_p2)
         return jsonify({"ok": True, "saved_to": config_path})
 
-    return app
-
-
-def run_calibration(config: Config):
-    app = create_calibration_app(config)
-    port = config.calibration_port
-    logger.info("Outil de calibration démarré sur http://0.0.0.0:%d", port)
-    app.run(host="0.0.0.0", port=port, use_reloader=False, threaded=True)
+    return bp
 
 
 # ------------------------------------------------------------------ #
 # Helpers                                                              #
 # ------------------------------------------------------------------ #
 
-def _find_latest_video(folder: Path) -> Path | None:
+def _find_latest_video(folder: Path):
     exts = {".mp4", ".avi", ".mkv", ".mov"}
     if not folder.exists():
         return None
-    videos = [f for f in folder.iterdir() if f.is_file() and f.suffix.lower() in exts]
+    videos = []
+    for entry in folder.iterdir():
+        if entry.is_file() and entry.suffix.lower() in exts:
+            videos.append(entry)
+        elif entry.is_dir():
+            for sub in entry.iterdir():
+                if sub.is_file() and sub.suffix.lower() in exts:
+                    videos.append(sub)
     return max(videos, key=lambda f: f.stat().st_mtime) if videos else None
 
 
@@ -143,7 +143,6 @@ def _extract_frame(video_path: Path, second: float = 5.0):
         cap.set(cv2.CAP_PROP_POS_MSEC, second * 1000)
         ret, frame = cap.read()
         if not ret:
-            # Fallback: first frame
             cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
             ret, frame = cap.read()
         return frame if ret else None

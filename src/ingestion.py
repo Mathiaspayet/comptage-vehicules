@@ -41,24 +41,30 @@ class FileWatcher:
         if not video_files:
             return []
 
-        # The most recent file in the whole tree may still be open
-        result = []
-        for i, path in enumerate(video_files):
-            filename = path.name
+        # Separate unprocessed files (oldest first)
+        pending = [f for f in video_files if not self.db.is_file_processed(f.name)]
 
-            if self.db.is_file_processed(filename):
-                continue
+        # Skip the most recent file if it might still be open
+        if pending and not self._is_file_complete(pending[-1]):
+            logger.debug("Fichier en cours d'écriture, ignoré : %s", pending[-1].name)
+            pending = pending[:-1]
 
-            if i == len(video_files) - 1 and not self._is_file_complete(path):
-                logger.debug("Fichier en cours d'écriture, ignoré : %s", filename)
-                continue
+        if not pending:
+            return []
 
-            result.append(path)
+        # If max_recent_files is set, skip old backlog and only keep the N most recent
+        max_n = self.config.max_recent_files
+        if max_n > 0 and len(pending) > max_n:
+            to_skip = pending[:-max_n]
+            for path in to_skip:
+                logger.info("Ignoré (backlog trop ancien) : %s", path.name)
+                self.db.mark_file_done(path.name, vehicle_count=0)
+            pending = pending[-max_n:]
 
-        if result:
-            logger.info("%d nouveau(x) fichier(s) à traiter", len(result))
+        if pending:
+            logger.info("%d nouveau(x) fichier(s) à traiter", len(pending))
 
-        return result
+        return pending
 
     def _is_file_complete(self, path: Path) -> bool:
         """

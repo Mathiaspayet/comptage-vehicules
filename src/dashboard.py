@@ -1,25 +1,46 @@
-"""Module Tableau de bord web — Flask read-only dashboard."""
+"""Module Tableau de bord web — Flask app avec calibration intégrée."""
+import json
 import logging
 from datetime import date, datetime
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request
 
+from .calibration import create_calibration_blueprint
 from .config import Config
 from .database import Database
 
 logger = logging.getLogger(__name__)
 
+VERSION_FILE = Path("/app/version.json")
 
-def create_dashboard_app(config: Config, db: Database) -> Flask:
+
+def _read_version() -> dict:
+    try:
+        with open(VERSION_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return {"sha": "dev", "built_at": "—"}
+
+
+def create_app(config: Config, db: Database) -> Flask:
     template_dir = Path(__file__).parent / "templates"
     app = Flask(__name__, template_folder=str(template_dir))
     app.config["JSON_SORT_KEYS"] = False
 
+    # ── Calibration sous /calibration ──────────────────────────────
+    calib_bp = create_calibration_blueprint(config)
+    app.register_blueprint(calib_bp)
+
+    # ── Dashboard ──────────────────────────────────────────────────
     @app.route("/")
     def index():
         today = date.today().isoformat()
         return render_template("dashboard.html", today=today)
+
+    @app.route("/api/version")
+    def api_version():
+        return jsonify(_read_version())
 
     @app.route("/api/stats/hourly")
     def api_hourly():
@@ -66,8 +87,7 @@ def create_dashboard_app(config: Config, db: Database) -> Flask:
 
 
 def run_dashboard(config: Config, db: Database):
-    app = create_dashboard_app(config, db)
+    app = create_app(config, db)
     port = config.dashboard_port
-    logger.info("Tableau de bord démarré sur http://0.0.0.0:%d", port)
-    # use_reloader=False is important when running in a thread
+    logger.info("Tableau de bord + calibration démarrés sur http://0.0.0.0:%d", port)
     app.run(host="0.0.0.0", port=port, use_reloader=False, threaded=True)

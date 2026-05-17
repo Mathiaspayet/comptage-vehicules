@@ -19,6 +19,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# --- Version (injectée par GitHub Actions) ---
+ARG GIT_SHA=dev
+ARG BUILD_DATE=unknown
+RUN echo "{\"sha\": \"${GIT_SHA}\", \"built_at\": \"${BUILD_DATE}\"}" > /app/version.json
+
 # --- Code source ---
 COPY src/ ./src/
 
