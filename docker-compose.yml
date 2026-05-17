@@ -28,7 +28,7 @@ services:
     volumes:
       # Vidéos de la sonnette (lecture seule — l'app ne peut pas les modifier)
       # L'app scanne aussi les sous-dossiers (20260427PM, 20260428AM…)
-      - /volume1/surveillance/Interphone:/video:ro
+      - /volume2/surveillance/Interphone:/video:ro
 
       # Données persistantes (base de données, config, logs, modèle IA)
       - /volume1/docker/comptage/data:/app/data

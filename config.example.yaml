@@ -9,7 +9,7 @@
 # Chemin vers le dossier racine de la sonnette sur le NAS.
 # L'application scanne aussi les sous-dossiers (ex: 20260427PM, 20260428AM…)
 # créés automatiquement par la sonnette Interphone/Reolink.
-video_folder: "/volume1/surveillance/Interphone"
+video_folder: "/volume2/surveillance/Interphone"
 
 # --- Format du nom de fichier ---
 # Sert à extraire la date/heure de début depuis le nom du fichier.
