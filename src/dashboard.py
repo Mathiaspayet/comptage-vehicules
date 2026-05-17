@@ -10,6 +10,7 @@ from .calibration import create_calibration_blueprint
 from .config import Config
 from .config_editor import create_config_blueprint
 from .database import Database
+from .debug import create_debug_blueprint
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,10 @@ def create_app(config: Config, db: Database) -> Flask:
     # ── Configuration sous /config ─────────────────────────────────
     config_bp = create_config_blueprint(config)
     app.register_blueprint(config_bp)
+
+    # ── Débogage sous /debug ────────────────────────────────────────
+    debug_bp = create_debug_blueprint(config)
+    app.register_blueprint(debug_bp)
 
     # ── Dashboard ──────────────────────────────────────────────────
     @app.route("/")

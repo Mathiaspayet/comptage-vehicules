@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Débogage détection — Comptage de véhicules</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f4f6f9; color: #222; }
+    header { background: #1a3a5c; color: #fff; padding: .75rem 1.5rem; display: flex; align-items: center; gap: 1rem; }
+    header h1 { font-size: 1.1rem; flex: 1; }
+    .btn-back { background: #2e6da4; color: #fff; border: none; border-radius: 4px; padding: .35rem .8rem; font-size: .82rem; cursor: pointer; text-decoration: none; }
+    main { max-width: 1000px; margin: 1.5rem auto; padding: 0 1rem 2rem; }
+    .card { background: #fff; border-radius: 6px; padding: 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 1rem; }
+    .card h2 { font-size: .95rem; color: #1a3a5c; margin-bottom: 1rem; }
+    .controls { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
+    select, input { padding: .4rem .65rem; border: 1px solid #ccc; border-radius: 4px; font-size: .9rem; }
+    .btn { padding: .45rem .9rem; border: none; border-radius: 4px; font-size: .9rem; cursor: pointer; font-weight: 600; }
+    .btn-primary { background: #1a3a5c; color: #fff; }
+    .btn-primary:hover { background: #2a5080; }
+    label { font-size: .82rem; color: #555; }
+    #img-wrap { background: #000; border-radius: 4px; overflow: hidden; margin-top: .75rem; text-align: center; min-height: 100px; display: flex; align-items: center; justify-content: center; }
+    #img-wrap img { max-width: 100%; display: block; }
+    #img-wrap .placeholder { color: #666; font-size: .9rem; padding: 2rem; }
+    .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
+    .result-box { background: #f8fafc; border: 1px solid #e2e8ef; border-radius: 6px; padding: .75rem; }
+    .result-box h3 { font-size: .82rem; font-weight: 700; margin-bottom: .5rem; text-transform: uppercase; letter-spacing: .05em; color: #555; }
+    .detection-item { display: flex; align-items: center; justify-content: space-between; padding: .3rem 0; border-bottom: 1px solid #eee; font-size: .85rem; }
+    .detection-item:last-child { border-bottom: none; }
+    .conf-badge { background: #1a3a5c; color: #fff; border-radius: 10px; padding: .1rem .5rem; font-size: .75rem; }
+    .conf-badge.low { background: #d97706; }
+    .conf-badge.ok  { background: #16a34a; }
+    .empty { color: #999; font-size: .85rem; font-style: italic; }
+    #status { font-size: .85rem; color: #666; margin-top: .5rem; min-height: 1.2em; }
+    .hint-box { background: #fef9c3; border: 1px solid #fcd34d; border-radius: 6px; padding: .75rem 1rem; font-size: .83rem; line-height: 1.6; margin-top: 1rem; }
+    .hint-box strong { color: #92400e; }
+    .legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: .8rem; margin-top: .5rem; }
+    .legend span { display: flex; align-items: center; gap: .3rem; }
+    .dot { width: 12px; height: 4px; border-radius: 2px; display: inline-block; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>🔍 Débogage — Test de détection</h1>
+  <a class="btn-back" href="/">← Tableau de bord</a>
+</header>
+<main>
+  <div class="card">
+    <h2>Paramètres du test</h2>
+    <div class="controls">
+      <label>Vidéo :
+        <select id="video-select" style="max-width:320px"><option>Chargement…</option></select>
+      </label>
+      <label>Seconde :
+        <input type="number" id="frame-sec" value="10" min="0" max="600" style="width:70px">
+      </label>
+      <label>Seuil confiance :
+        <input type="number" id="conf" value="0.15" min="0.05" max="0.95" step="0.05" style="width:70px">
+        <span style="font-size:.75rem;color:#888">(0.15 = très permissif pour le debug)</span>
+      </label>
+      <button class="btn btn-primary" onclick="runDetect()">▶ Lancer la détection</button>
+    </div>
+    <div id="status"></div>
+    <div class="legend">
+      <span><span class="dot" style="background:#00ff00"></span> ROI (zone d'intérêt)</span>
+      <span><span class="dot" style="background:#00ffff;height:3px"></span> Ligne de comptage</span>
+      <span><span class="dot" style="background:#00c800"></span> Véhicule détecté</span>
+      <span><span class="dot" style="background:#888"></span> Autre objet (ignoré)</span>
+    </div>
+    <div id="img-wrap"><div class="placeholder">L'image annotée apparaîtra ici après le test.</div></div>
+  </div>
+
+  <div class="result-grid" id="results" style="display:none">
+    <div class="result-box">
+      <h3>🚗 Véhicules détectés</h3>
+      <div id="vehicles-list"></div>
+    </div>
+    <div class="result-box">
+      <h3>📦 Autres objets (non comptés)</h3>
+      <div id="others-list"></div>
+    </div>
+  </div>
+
+  <div class="hint-box" id="hint-box" style="display:none"></div>
+</main>
+<script>
+fetch('/calibration/api/videos').then(r=>r.json()).then(data=>{
+  const sel = document.getElementById('video-select');
+  sel.innerHTML = data.videos.length
+    ? data.videos.map(v=>`<option value="${v}">${v}</option>`).join('')
+    : '<option>Aucune vidéo trouvée</option>';
+});
+
+async function runDetect() {
+  const video = document.getElementById('video-select').value;
+  const sec   = document.getElementById('frame-sec').value;
+  const conf  = document.getElementById('conf').value;
+
+  document.getElementById('status').textContent = '⏳ Analyse en cours (peut prendre 20–40s la première fois, YOLO se charge)…';
+  document.getElementById('results').style.display = 'none';
+  document.getElementById('hint-box').style.display = 'none';
+  document.getElementById('img-wrap').innerHTML = '<div class="placeholder">⏳ Chargement…</div>';
+
+  const res  = await fetch(`/debug/api/detect?video=${encodeURIComponent(video)}&second=${sec}&conf=${conf}`);
+  const data = await res.json();
+
+  if (data.error) {
+    document.getElementById('status').textContent = '❌ ' + data.error;
+    return;
+  }
+
+  // Image
+  const img = document.createElement('img');
+  img.src = data.image;
+  const wrap = document.getElementById('img-wrap');
+  wrap.innerHTML = '';
+  wrap.appendChild(img);
+
+  // Véhicules
+  const vList = document.getElementById('vehicles-list');
+  vList.innerHTML = data.vehicles.length
+    ? data.vehicles.map(d => {
+        const cls = d.conf > 0.5 ? 'ok' : d.conf > 0.3 ? '' : 'low';
+        return `<div class="detection-item"><span>${d.name}</span><span class="conf-badge ${cls}">${(d.conf*100).toFixed(0)}%</span></div>`;
+      }).join('')
+    : '<div class="empty">Aucun véhicule détecté à ce seuil.</div>';
+
+  // Autres
+  const oList = document.getElementById('others-list');
+  oList.innerHTML = data.other_detections.length
+    ? data.other_detections.map(d => `<div class="detection-item"><span>${d.name}</span><span class="conf-badge low">${(d.conf*100).toFixed(0)}%</span></div>`).join('')
+    : '<div class="empty">Rien d\'autre détecté.</div>';
+
+  document.getElementById('results').style.display = '';
+
+  // Hint
+  const hint = buildHint(data);
+  if (hint) {
+    document.getElementById('hint-box').innerHTML = hint;
+    document.getElementById('hint-box').style.display = '';
+  }
+
+  document.getElementById('status').textContent =
+    `✅ ${data.vehicles.length} véhicule(s) détecté(s) sur cette frame (seuil ${(data.conf_used*100).toFixed(0)}%) — source : ${data.source}`;
+}
+
+function buildHint(data) {
+  const hints = [];
+  if (data.vehicles.length === 0 && data.other_detections.length === 0) {
+    hints.push('<strong>Aucune détection du tout.</strong> Soit la frame est vide (aucun véhicule visible), soit le modèle YOLO n\'est pas encore chargé. Vérifiez le Journal — vous devriez voir une ligne "Chargement du modèle".');
+  }
+  if (data.vehicles.length === 0 && data.other_detections.length > 0) {
+    hints.push('<strong>Objets détectés mais aucun véhicule.</strong> Les véhicules comptés sont : voiture, camion, bus, moto. Vérifiez que la frame contient bien un de ces types de véhicules.');
+  }
+  if (data.vehicles.length > 0) {
+    hints.push(`<strong>${data.vehicles.length} véhicule(s) visible(s) sur cette frame.</strong> Si le comptage ne fonctionne pas, le problème vient probablement de la <strong>ligne de comptage</strong> (en cyan) : vérifiez qu'elle coupe bien la trajectoire des véhicules. Utilisez l'outil de <a href="/calibration/">calibration</a> pour la repositionner.`);
+  }
+  if (data.vehicles.some(d => d.conf < 0.3)) {
+    hints.push('Certains véhicules ont une confiance très faible (&lt;30%). En mode normal (seuil 0.35), ils seraient ignorés. Essayez un seuil plus bas dans la configuration.');
+  }
+  return hints.map(h => `<p style="margin-bottom:.4rem">${h}</p>`).join('');
+}
+</script>
+</body>
+</html>
