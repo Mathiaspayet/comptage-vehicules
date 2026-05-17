@@ -14,6 +14,7 @@ from .database import Database
 from .detector import VehicleDetector
 from .ingestion import FileWatcher
 from .motion_filter import MotionFilter
+from .progress import tracker as progress_tracker
 
 
 def setup_logging(level: str, log_dir: Path, max_mb: int, backup_count: int):
@@ -52,6 +53,33 @@ def _handle_signal(signum, frame):
     _shutdown.set()
 
 
+def _check_and_reset_if_config_changed(config, db: Database):
+    """Compare the stored detection fingerprint with the current one.
+    If they differ, wipe processed_files + crossings so everything is re-processed."""
+    current_fp = config.detection_fingerprint()
+    stored_fp = db.get_state("detection_fingerprint")
+
+    if stored_fp is None:
+        # First run — just store the fingerprint, don't reset
+        db.set_state("detection_fingerprint", current_fp)
+        logger.info("Empreinte de config enregistrée : %s", current_fp)
+        return
+
+    if stored_fp != current_fp:
+        logger.warning(
+            "Paramètres de détection modifiés (ancienne empreinte=%s, nouvelle=%s) — "
+            "suppression de l'historique pour retraiter tous les fichiers.",
+            stored_fp, current_fp,
+        )
+        progress_tracker.set_resetting("Paramètres modifiés — réinitialisation en cours…")
+        count = db.unmark_all_files()
+        db.set_state("detection_fingerprint", current_fp)
+        progress_tracker.clear_resetting()
+        logger.info("Réinitialisation terminée — %d fichier(s) marqués à retraiter.", count)
+    else:
+        logger.info("Empreinte de config inchangée — pas de réinitialisation.")
+
+
 def processing_loop(watcher: FileWatcher, motion: MotionFilter, detector: VehicleDetector, db: Database):
     logger.info("Boucle de traitement démarrée.")
     while not _shutdown.is_set():
@@ -62,29 +90,53 @@ def processing_loop(watcher: FileWatcher, motion: MotionFilter, detector: Vehicl
             _shutdown.wait(timeout=30)
             continue
 
-        for video_path in new_files:
+        # Update queue size in progress tracker
+        status = db.get_processing_status()
+        queue_done = status.get("done", 0) + status.get("errors", 0)
+        queue_total = queue_done + len(new_files)
+
+        for i, video_path in enumerate(new_files):
             if _shutdown.is_set():
                 break
-            _process_file(video_path, watcher, motion, detector, db)
+            _process_file(video_path, watcher, motion, detector, db, queue_done + i, queue_total)
+
+        if not new_files:
+            progress_tracker.set_idle()
 
         _shutdown.wait(timeout=watcher.config.scan_interval)
 
     logger.info("Boucle de traitement terminée.")
 
 
-def _process_file(video_path, watcher, motion, detector, db):
+def _process_file(video_path, watcher, motion, detector, db, queue_done: int, queue_total: int):
     filename = video_path.name
     logger.info("=== Traitement : %s ===", filename)
     video_start_dt = watcher.extract_datetime(filename)
 
+    progress_tracker.start_file(filename, queue_done, queue_total)
+
     try:
-        segments = motion.analyze_video(video_path)
+        # Phase 1 : filtre mouvement
+        def motion_progress(done: int, total: int):
+            progress_tracker.set_phase("motion", frames_total=total)
+            progress_tracker.update_frame(done)
+
+        segments = motion.analyze_video(video_path, on_progress=motion_progress)
+
         if not segments:
             logger.info("%s — aucun segment actif.", filename)
             db.mark_file_done(filename, vehicle_count=0)
+            progress_tracker.finish_file()
             return
 
-        events = detector.process_video(video_path, segments, video_start_dt)
+        # Phase 2 : détection IA
+        def detection_progress(done: int, total: int):
+            progress_tracker.set_phase("detection", frames_total=total)
+            progress_tracker.update_frame(done)
+
+        events = detector.process_video(
+            video_path, segments, video_start_dt, on_progress=detection_progress
+        )
 
         if events:
             crossings = [
@@ -100,11 +152,13 @@ def _process_file(video_path, watcher, motion, detector, db):
             db.insert_crossings_batch(crossings)
 
         db.mark_file_done(filename, vehicle_count=len(events))
+        progress_tracker.finish_file()
         logger.info("%s — %d véhicule(s) compté(s).", filename, len(events))
 
     except Exception as e:
         logger.exception("Erreur lors du traitement de %s : %s", filename, e)
         db.mark_file_error(filename, str(e))
+        progress_tracker.finish_file()
 
 
 def main():
@@ -126,6 +180,7 @@ def main():
     logger.info("Calibration      : http://0.0.0.0:%d/calibration/", config.dashboard_port)
 
     db = Database(config.db_path)
+    _check_and_reset_if_config_changed(config, db)
     watcher = FileWatcher(config, db)
     motion = MotionFilter(config)
     detector = VehicleDetector(config)

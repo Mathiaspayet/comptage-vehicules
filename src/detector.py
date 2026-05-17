@@ -4,6 +4,7 @@ import shutil
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Callable, Optional
 
 import cv2
 import numpy as np
@@ -89,11 +90,16 @@ class VehicleDetector:
             self._model = YOLO(str(pt_path) if pt_path.exists() else "yolov8n.pt")
 
     def process_video(
-        self, video_path: Path, segments: list[Segment], video_start_dt: datetime | None = None
+        self,
+        video_path: Path,
+        segments: list[Segment],
+        video_start_dt: datetime | None = None,
+        on_progress: Optional[Callable[[int, int], None]] = None,
     ) -> list[CrossingEvent]:
         """
         Runs AI detection only on the active segments of a video.
         Returns a list of crossing events.
+        on_progress(frames_done, frames_total) called after each analysed frame.
         """
         if self._model is None:
             self._load_model()
@@ -103,7 +109,7 @@ class VehicleDetector:
             raise IOError(f"Impossible d'ouvrir la vidéo : {video_path}")
 
         try:
-            return self._process(cap, video_path, segments, video_start_dt)
+            return self._process(cap, video_path, segments, video_start_dt, on_progress)
         finally:
             cap.release()
 
@@ -113,10 +119,17 @@ class VehicleDetector:
         video_path: Path,
         segments: list[Segment],
         video_start_dt: datetime | None,
+        on_progress: Optional[Callable[[int, int], None]] = None,
     ) -> list[CrossingEvent]:
         fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
         sample_fps = self.config.detector_sample_fps
         step = max(1, int(fps / sample_fps))
+
+        # Estimate total frames to analyse across all active segments
+        total_active_frames = max(1, sum(
+            int((seg.end_sec - seg.start_sec) * fps / step)
+            for seg in segments
+        ))
 
         line_p1 = np.array(self.config.line_p1, dtype=np.float32)
         line_p2 = np.array(self.config.line_p2, dtype=np.float32)
@@ -130,6 +143,10 @@ class VehicleDetector:
         seg_idx = 0
         frame_idx = 0
         inside_segment = False
+        analysed_frames = 0
+
+        if on_progress:
+            on_progress(0, total_active_frames)
 
         while seg_idx < len(segments):
             seg = segments[seg_idx]
@@ -165,6 +182,9 @@ class VehicleDetector:
                     track_confs,
                 )
                 crossings.extend(events)
+                analysed_frames += 1
+                if on_progress:
+                    on_progress(analysed_frames, total_active_frames)
 
             frame_idx += 1
             current_sec = frame_idx / fps

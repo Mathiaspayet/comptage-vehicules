@@ -2,6 +2,7 @@
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable, Optional
 
 import cv2
 import numpy as np
@@ -41,27 +42,38 @@ class MotionFilter:
         self._roi_shape = (h, w)
         return mask
 
-    def analyze_video(self, video_path: Path) -> list[Segment]:
+    def analyze_video(
+        self,
+        video_path: Path,
+        on_progress: Optional[Callable[[int, int], None]] = None,
+    ) -> list[Segment]:
         """
         Samples frames from the video and returns a list of active segments
         (time ranges where motion is detected in the ROI).
+        on_progress(frames_done, frames_total) called periodically.
         """
         cap = cv2.VideoCapture(str(video_path))
         if not cap.isOpened():
             raise IOError(f"Impossible d'ouvrir la vidéo : {video_path}")
 
         try:
-            return self._process(cap, video_path)
+            return self._process(cap, video_path, on_progress)
         finally:
             cap.release()
 
-    def _process(self, cap: cv2.VideoCapture, video_path: Path) -> list[Segment]:
+    def _process(
+        self,
+        cap: cv2.VideoCapture,
+        video_path: Path,
+        on_progress: Optional[Callable[[int, int], None]] = None,
+    ) -> list[Segment]:
         fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         duration_sec = total_frames / fps
 
         sample_fps = self.config.motion_sample_fps
         step = max(1, int(fps / sample_fps))  # read every Nth frame
+        sampled_total = max(1, total_frames // step)
 
         threshold = self.config.motion_threshold
         min_area = self.config.min_motion_area
@@ -71,10 +83,14 @@ class MotionFilter:
         active_start: float | None = None
         prev_gray: np.ndarray | None = None
         frame_idx = 0
+        sampled_done = 0
 
         logger.debug(
             "Filtre mouvement : %s | %.1f s | step=%d", video_path.name, duration_sec, step
         )
+
+        if on_progress:
+            on_progress(0, sampled_total)
 
         while True:
             ret, frame = cap.read()
@@ -116,6 +132,9 @@ class MotionFilter:
 
             prev_gray = gray
             frame_idx += 1
+            sampled_done += 1
+            if on_progress:
+                on_progress(sampled_done, sampled_total)
 
         # Close any open segment at end of video
         if active_start is not None:

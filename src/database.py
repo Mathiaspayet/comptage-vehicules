@@ -28,8 +28,14 @@ CREATE TABLE IF NOT EXISTS processed_files (
     error_message   TEXT
 );
 
+CREATE TABLE IF NOT EXISTS app_state (
+    key             TEXT    PRIMARY KEY,
+    value           TEXT    NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_crossings_timestamp ON crossings(timestamp);
 CREATE INDEX IF NOT EXISTS idx_crossings_type      ON crossings(vehicle_type);
+CREATE INDEX IF NOT EXISTS idx_crossings_source    ON crossings(source_file);
 CREATE INDEX IF NOT EXISTS idx_processed_filename  ON processed_files(filename);
 """
 
@@ -223,10 +229,22 @@ class Database:
             rows = conn.execute(query, (limit, offset)).fetchall()
         return [dict(r) for r in rows]
 
-    def unmark_files(self, filenames: list[str]) -> int:
-        """Remove files from processed_files so they get re-processed. Returns count deleted."""
+    def delete_crossings_for_files(self, filenames: list[str]) -> int:
+        """Delete all crossings whose source_file is in the given list. Returns count deleted."""
         if not filenames:
             return 0
+        placeholders = ",".join("?" * len(filenames))
+        with self._connect() as conn:
+            cur = conn.execute(
+                f"DELETE FROM crossings WHERE source_file IN ({placeholders})", filenames
+            )
+            return cur.rowcount
+
+    def unmark_files(self, filenames: list[str]) -> int:
+        """Remove files from processed_files (and their crossings) so they get re-processed."""
+        if not filenames:
+            return 0
+        self.delete_crossings_for_files(filenames)
         placeholders = ",".join("?" * len(filenames))
         with self._connect() as conn:
             cur = conn.execute(
@@ -235,10 +253,30 @@ class Database:
             return cur.rowcount
 
     def unmark_all_files(self) -> int:
-        """Remove ALL files from processed_files. Returns count deleted."""
+        """Remove ALL files from processed_files (and all crossings). Returns count deleted."""
         with self._connect() as conn:
+            conn.execute("DELETE FROM crossings")
             cur = conn.execute("DELETE FROM processed_files")
             return cur.rowcount
+
+    # ------------------------------------------------------------------ #
+    # App state (config fingerprint)                                       #
+    # ------------------------------------------------------------------ #
+
+    def get_state(self, key: str) -> str | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT value FROM app_state WHERE key = ?", (key,)
+            ).fetchone()
+            return row["value"] if row else None
+
+    def set_state(self, key: str, value: str):
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO app_state (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, value),
+            )
 
     def get_processing_status(self) -> dict:
         with self._connect() as conn:

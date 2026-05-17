@@ -1,4 +1,6 @@
 """Configuration loading from YAML file."""
+import hashlib
+import json
 import logging
 import os
 from pathlib import Path
@@ -170,6 +172,22 @@ class Config:
     @property
     def default_days(self) -> int:
         return int(self.get("dashboard", "default_days", default=30))
+
+    def detection_fingerprint(self) -> str:
+        """MD5 of all parameters that affect detection results.
+        If this changes between runs, all files must be re-processed."""
+        relevant = {
+            "line_p1": list(self.line_p1),
+            "line_p2": list(self.line_p2),
+            "roi_polygon": self.roi_polygon,
+            "confidence_threshold": self.confidence_threshold,
+            "vehicle_classes": sorted(self.vehicle_classes),
+            "count_direction": self.count_direction,
+            "motion_threshold": self.motion_threshold,
+            "min_motion_area": self.min_motion_area,
+        }
+        blob = json.dumps(relevant, sort_keys=True)
+        return hashlib.md5(blob.encode()).hexdigest()
 
     def raw(self) -> dict:
         return self._data
