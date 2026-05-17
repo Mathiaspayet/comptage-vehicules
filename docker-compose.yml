@@ -5,7 +5,7 @@
 # via Container Manager ou : docker compose up -d
 #
 # AVANT DE DÉMARRER :
-#   1. Copiez config.example.yaml en config.yaml dans /volume1/docker/comptage/
+#   1. Copiez config.example.yaml en config.yaml dans /volume2/docker/comptage/data/
 #   2. Remplissez config.yaml avec vos valeurs réelles
 #   3. Ajustez VIDEO_PATH ci-dessous avec le chemin de vos vidéos
 # ============================================================
@@ -31,7 +31,7 @@ services:
       - /volume2/surveillance/Interphone:/video:ro
 
       # Données persistantes (base de données, config, logs, modèle IA)
-      - /volume1/docker/comptage/data:/app/data
+      - /volume2/docker/comptage/data:/app/data
 
     environment:
       - CONFIG_PATH=/app/data/config.yaml
