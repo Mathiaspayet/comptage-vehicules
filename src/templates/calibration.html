@@ -24,8 +24,13 @@
     .mode-bar { display: flex; gap: .5rem; margin-bottom: .75rem; }
     .mode-bar button { flex: 1; padding: .5rem; }
     .mode-bar button.active { background: #1a3a5c; color: #fff; border-color: #1a3a5c; }
-    #canvas-wrap { position: relative; overflow: auto; border: 2px solid #ccc; border-radius: 4px; background: #000; display: inline-block; max-width: 100%; }
+    #canvas-outer { overflow: auto; border: 2px solid #ccc; border-radius: 4px; background: #111; width: 100%; }
+    #canvas-wrap  { display: inline-block; transform-origin: top left; }
     canvas { display: block; cursor: crosshair; }
+    .zoom-bar { display: flex; gap: .4rem; align-items: center; margin-bottom: .5rem; flex-wrap: wrap; }
+    .zoom-bar button { padding: .25rem .6rem; font-size: .85rem; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; }
+    .zoom-bar button:hover { background: #f0f3f7; }
+    .zoom-bar span { font-size: .82rem; color: #555; min-width: 3.5rem; text-align: center; }
     #coords { font-family: monospace; font-size: .82rem; background: #f0f3f7; padding: .75rem; border-radius: 4px; margin-top: .75rem; white-space: pre-wrap; }
     #msg { padding: .5rem; font-size: .85rem; border-radius: 4px; margin-top: .5rem; }
     #msg.ok  { background: #dcfce7; color: #166534; }
@@ -73,7 +78,14 @@
       <span><span class="dot" style="background:#ff0;border:2px solid #000"></span> Ligne de comptage</span>
       <span><span class="dot" style="background:#0f0;border:2px solid #000;border-radius:2px"></span> Zone d'intérêt (ROI)</span>
     </div>
-    <div id="canvas-wrap"><canvas id="canvas" width="640" height="360"></canvas></div>
+    <div class="zoom-bar">
+      <button onclick="zoom(-0.25)">−</button>
+      <span id="zoom-label">100%</span>
+      <button onclick="zoom(+0.25)">+</button>
+      <button onclick="zoomFit()">Ajuster</button>
+      <button onclick="zoomReset()">100%</button>
+    </div>
+    <div id="canvas-outer"><div id="canvas-wrap"><canvas id="canvas" width="640" height="360"></canvas></div></div>
     <div class="controls" style="margin-top:.75rem">
       <button class="danger" onclick="resetCurrent()">Effacer le mode actuel</button>
       <button onclick="resetAll()">Tout effacer</button>
@@ -94,8 +106,36 @@
 const BASE = '/calibration';
 let img = null, imgW = 640, imgH = 360;
 let mode = 'line', linePts = [], roiPts = [], roiClosed = false;
+let zoomLevel = 1.0;
 const canvas = document.getElementById('canvas');
 const ctx    = canvas.getContext('2d');
+
+function applyZoom() {
+  const wrap = document.getElementById('canvas-wrap');
+  wrap.style.transform = `scale(${zoomLevel})`;
+  wrap.style.width = imgW + 'px';
+  wrap.style.height = imgH + 'px';
+  const outer = document.getElementById('canvas-outer');
+  outer.style.height = Math.ceil(imgH * zoomLevel) + 'px';
+  document.getElementById('zoom-label').textContent = Math.round(zoomLevel * 100) + '%';
+}
+
+function zoom(delta) {
+  zoomLevel = Math.max(0.1, Math.min(4, zoomLevel + delta));
+  applyZoom();
+}
+
+function zoomFit() {
+  const outer = document.getElementById('canvas-outer');
+  const availW = outer.clientWidth;
+  zoomLevel = Math.min(1, availW / imgW);
+  applyZoom();
+}
+
+function zoomReset() {
+  zoomLevel = 1.0;
+  applyZoom();
+}
 
 fetch(`${BASE}/api/videos`).then(r=>r.json()).then(data=>{
   const sel = document.getElementById('video-select');
@@ -116,7 +156,7 @@ async function loadFrame() {
   imgW = data.width; imgH = data.height;
   canvas.width = imgW; canvas.height = imgH;
   img = new Image();
-  img.onload = () => { draw(); loadCurrentConfig(); };
+  img.onload = () => { draw(); zoomFit(); loadCurrentConfig(); };
   img.src = data.image;
   document.getElementById('load-status').textContent = `✅ Image extraite de "${data.source}"`;
 }
