@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Configuration — Comptage de véhicules</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f4f6f9; color: #222; }
+    header { background: #1a3a5c; color: #fff; padding: .75rem 1.5rem; display: flex; align-items: center; gap: 1rem; }
+    header h1 { font-size: 1.1rem; flex: 1; }
+    .btn-back { background: #2e6da4; color: #fff; border: none; border-radius: 4px; padding: .35rem .8rem; font-size: .82rem; cursor: pointer; text-decoration: none; }
+    .btn-back:hover { background: #3a7fc1; }
+    main { max-width: 780px; margin: 1.5rem auto; padding: 0 1rem 3rem; }
+    .card { background: #fff; border-radius: 6px; padding: 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 1.25rem; }
+    .card h2 { font-size: .95rem; color: #1a3a5c; margin-bottom: 1rem; padding-bottom: .5rem; border-bottom: 1px solid #e8edf3; }
+    .field { margin-bottom: .9rem; }
+    .field label { display: block; font-size: .82rem; font-weight: 600; color: #444; margin-bottom: .3rem; }
+    .field .hint { font-size: .75rem; color: #888; margin-top: .2rem; }
+    input[type=text], input[type=number], select { width: 100%; padding: .45rem .65rem; border: 1px solid #ccc; border-radius: 4px; font-size: .9rem; }
+    input[type=range] { width: 100%; margin: .25rem 0; }
+    .range-row { display: flex; align-items: center; gap: .75rem; }
+    .range-row input[type=number] { width: 80px; flex-shrink: 0; }
+    .checkboxes { display: flex; gap: .75rem; flex-wrap: wrap; margin-top: .3rem; }
+    .checkboxes label { display: flex; align-items: center; gap: .3rem; font-weight: normal; font-size: .9rem; cursor: pointer; }
+    .toggle-row { display: flex; align-items: center; gap: .75rem; }
+    .toggle { position: relative; display: inline-block; width: 40px; height: 22px; flex-shrink: 0; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; inset: 0; background: #ccc; border-radius: 22px; transition: .3s; cursor: pointer; }
+    .slider:before { content: ''; position: absolute; width: 16px; height: 16px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: .3s; }
+    input:checked + .slider { background: #1a3a5c; }
+    input:checked + .slider:before { transform: translateX(18px); }
+    .readonly-field { background: #f7f8fa; border: 1px solid #ddd; border-radius: 4px; padding: .45rem .65rem; font-size: .85rem; color: #666; font-family: monospace; }
+    .actions { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; margin-top: 1.5rem; }
+    .btn { padding: .55rem 1.2rem; border: none; border-radius: 4px; font-size: .9rem; cursor: pointer; font-weight: 600; }
+    .btn-save    { background: #1a3a5c; color: #fff; }
+    .btn-save:hover { background: #2a5080; }
+    .btn-restart { background: #d97706; color: #fff; display: none; }
+    .btn-restart:hover { background: #b45309; }
+    #msg { font-size: .85rem; padding: .4rem .8rem; border-radius: 4px; }
+    #msg.ok  { background: #dcfce7; color: #166534; }
+    #msg.err { background: #fee2e2; color: #991b1b; }
+    #msg.warn { background: #fef9c3; color: #854d0e; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>⚙️ Configuration</h1>
+  <a class="btn-back" href="/">← Tableau de bord</a>
+</header>
+<main>
+
+  <!-- VIDÉOS -->
+  <div class="card">
+    <h2>📁 Dossier des vidéos</h2>
+    <div class="field">
+      <label>Chemin dans le conteneur</label>
+      <div class="readonly-field">/video</div>
+      <div class="hint">Fixé par le volume Docker — correspond à <strong>/volume2/surveillance/Interphone</strong> sur le NAS.</div>
+    </div>
+    <div class="field">
+      <label for="filename_datetime_format">Format du nom de fichier</label>
+      <input type="text" id="filename_datetime_format" placeholder="Interphone-%Y%m%d-%H%M%S">
+      <div class="hint">Codes : %Y=année, %m=mois, %d=jour, %H=heure, %M=minute, %S=seconde. Le suffixe variable est ignoré automatiquement.</div>
+    </div>
+    <div class="field">
+      <label for="timezone">Fuseau horaire</label>
+      <select id="timezone">
+        <option value="Europe/Paris">Europe/Paris</option>
+        <option value="Europe/London">Europe/London</option>
+        <option value="Europe/Berlin">Europe/Berlin</option>
+        <option value="Europe/Madrid">Europe/Madrid</option>
+        <option value="Europe/Rome">Europe/Rome</option>
+        <option value="UTC">UTC</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- PLANIFICATION -->
+  <div class="card">
+    <h2>⏱ Planification</h2>
+    <div class="field">
+      <label for="scan_interval_seconds">Intervalle de scan du dossier (secondes)</label>
+      <div class="range-row">
+        <input type="range" id="scan_interval_range" min="10" max="300" step="10" oninput="sync('scan_interval_seconds', this.value)">
+        <input type="number" id="scan_interval_seconds" min="10" max="300" oninput="sync('scan_interval_range', this.value)">
+      </div>
+      <div class="hint">Fréquence à laquelle l'app vérifie s'il y a de nouvelles vidéos.</div>
+    </div>
+    <div class="field">
+      <label for="file_stable_delay_seconds">Délai avant de considérer un fichier comme terminé (secondes)</label>
+      <div class="range-row">
+        <input type="range" id="file_stable_delay_range" min="30" max="600" step="30" oninput="sync('file_stable_delay_seconds', this.value)">
+        <input type="number" id="file_stable_delay_seconds" min="30" max="600" oninput="sync('file_stable_delay_range', this.value)">
+      </div>
+      <div class="hint">Mettre au moins la durée d'un segment vidéo. Évite d'analyser un fichier encore en cours d'écriture.</div>
+    </div>
+    <div class="field">
+      <label for="max_recent_files">Nombre de vidéos récentes à analyser par cycle (0 = toutes)</label>
+      <div class="range-row">
+        <input type="range" id="max_recent_files_range" min="0" max="20" step="1" oninput="sync('max_recent_files', this.value)">
+        <input type="number" id="max_recent_files" min="0" max="100" oninput="sync('max_recent_files_range', this.value)">
+      </div>
+      <div class="hint">Mettre 2 ou 3 pour ignorer l'arriéré et ne traiter que les vidéos récentes.</div>
+    </div>
+  </div>
+
+  <!-- FILTRE DE MOUVEMENT -->
+  <div class="card">
+    <h2>🎥 Filtre de mouvement</h2>
+    <div class="field">
+      <label for="motion_sample_fps">Images analysées par seconde de vidéo</label>
+      <div class="range-row">
+        <input type="range" id="motion_sample_fps_range" min="1" max="8" step="0.5" oninput="sync('motion_sample_fps', this.value)">
+        <input type="number" id="motion_sample_fps" min="1" max="8" step="0.5" oninput="sync('motion_sample_fps_range', this.value)">
+      </div>
+      <div class="hint">2–4 recommandé. Plus élevé = plus précis mais plus lent.</div>
+    </div>
+    <div class="field">
+      <label for="motion_threshold">Seuil de sensibilité (0–255)</label>
+      <div class="range-row">
+        <input type="range" id="motion_threshold_range" min="5" max="100" step="1" oninput="sync('motion_threshold', this.value)">
+        <input type="number" id="motion_threshold" min="5" max="100" oninput="sync('motion_threshold_range', this.value)">
+      </div>
+      <div class="hint">Augmenter si trop de faux positifs (feuilles, pluie). Diminuer si des véhicules sont manqués.</div>
+    </div>
+    <div class="field">
+      <label for="min_motion_area">Surface minimale de mouvement (pixels²)</label>
+      <input type="number" id="min_motion_area" min="100" max="10000" step="100">
+      <div class="hint">Filtre les petits mouvements parasites. 500 est une bonne valeur de départ.</div>
+    </div>
+    <div class="field">
+      <label for="segment_padding_seconds">Marge autour des segments actifs (secondes)</label>
+      <div class="range-row">
+        <input type="range" id="segment_padding_range" min="0" max="5" step="0.5" oninput="sync('segment_padding_seconds', this.value)">
+        <input type="number" id="segment_padding_seconds" min="0" max="5" step="0.5" oninput="sync('segment_padding_range', this.value)">
+      </div>
+    </div>
+  </div>
+
+  <!-- DÉTECTION IA -->
+  <div class="card">
+    <h2>🤖 Détection IA</h2>
+    <div class="field">
+      <label for="detector_sample_fps">Images analysées par seconde (IA)</label>
+      <div class="range-row">
+        <input type="range" id="detector_sample_fps_range" min="0.5" max="4" step="0.5" oninput="sync('detector_sample_fps', this.value)">
+        <input type="number" id="detector_sample_fps" min="0.5" max="4" step="0.5" oninput="sync('detector_sample_fps_range', this.value)">
+      </div>
+      <div class="hint">1–2 recommandé. L'IA est plus coûteuse que le filtre de mouvement.</div>
+    </div>
+    <div class="field">
+      <label for="confidence_threshold">Seuil de confiance (0.0–1.0)</label>
+      <div class="range-row">
+        <input type="range" id="confidence_threshold_range" min="0.1" max="0.9" step="0.05" oninput="sync('confidence_threshold', this.value)">
+        <input type="number" id="confidence_threshold" min="0.1" max="0.9" step="0.05" oninput="sync('confidence_threshold_range', this.value)">
+      </div>
+      <div class="hint">Augmenter pour moins de faux positifs. Diminuer si des véhicules ne sont pas détectés.</div>
+    </div>
+    <div class="field">
+      <label>Types de véhicules à compter</label>
+      <div class="checkboxes" id="vehicle_classes">
+        <label><input type="checkbox" value="car"> Voiture</label>
+        <label><input type="checkbox" value="truck"> Camion</label>
+        <label><input type="checkbox" value="bus"> Bus</label>
+        <label><input type="checkbox" value="motorcycle"> Moto</label>
+      </div>
+    </div>
+    <div class="field">
+      <label>Compter le sens de circulation</label>
+      <div class="toggle-row">
+        <label class="toggle">
+          <input type="checkbox" id="count_direction">
+          <span class="slider"></span>
+        </label>
+        <span style="font-size:.85rem;color:#666">Si activé, distingue gauche→droite et droite→gauche</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- INTERFACE -->
+  <div class="card">
+    <h2>📊 Interface</h2>
+    <div class="field">
+      <label for="default_days">Nombre de jours affichés par défaut (vue quotidienne)</label>
+      <input type="number" id="default_days" min="1" max="365">
+    </div>
+    <div class="field">
+      <label for="log_level">Niveau de journalisation</label>
+      <select id="log_level">
+        <option value="DEBUG">DEBUG (très verbeux)</option>
+        <option value="INFO">INFO (normal)</option>
+        <option value="WARNING">WARNING (erreurs uniquement)</option>
+        <option value="ERROR">ERROR (problèmes graves)</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- ACTIONS -->
+  <div class="actions">
+    <button class="btn btn-save" onclick="saveConfig()">💾 Enregistrer</button>
+    <button class="btn btn-restart" id="btn-restart" onclick="restartApp()">🔄 Redémarrer pour appliquer</button>
+    <span id="msg"></span>
+  </div>
+
+</main>
+<script>
+function sync(targetId, value) {
+  const el = document.getElementById(targetId);
+  if (el) el.value = value;
+}
+
+async function loadConfig() {
+  const res  = await fetch('/config/api/current');
+  const data = await res.json();
+
+  setVal('filename_datetime_format', data.filename_datetime_format);
+  setVal('timezone', data.timezone);
+  setVal('scan_interval_seconds', data.ingestion?.scan_interval_seconds);
+  setVal('scan_interval_range',   data.ingestion?.scan_interval_seconds);
+  setVal('file_stable_delay_seconds', data.ingestion?.file_stable_delay_seconds);
+  setVal('file_stable_delay_range',   data.ingestion?.file_stable_delay_seconds);
+  setVal('max_recent_files', data.ingestion?.max_recent_files);
+  setVal('max_recent_files_range', data.ingestion?.max_recent_files);
+  setVal('motion_sample_fps', data.motion_filter?.sample_fps);
+  setVal('motion_sample_fps_range', data.motion_filter?.sample_fps);
+  setVal('motion_threshold', data.motion_filter?.motion_threshold);
+  setVal('motion_threshold_range', data.motion_filter?.motion_threshold);
+  setVal('min_motion_area', data.motion_filter?.min_motion_area);
+  setVal('segment_padding_seconds', data.motion_filter?.segment_padding_seconds);
+  setVal('segment_padding_range',   data.motion_filter?.segment_padding_seconds);
+  setVal('detector_sample_fps', data.detector?.sample_fps);
+  setVal('detector_sample_fps_range', data.detector?.sample_fps);
+  setVal('confidence_threshold', data.detector?.confidence_threshold);
+  setVal('confidence_threshold_range', data.detector?.confidence_threshold);
+  setVal('default_days', data.dashboard?.default_days);
+  setVal('log_level', data.logging?.level);
+  document.getElementById('count_direction').checked = !!data.detector?.count_direction;
+
+  const classes = data.detector?.vehicle_classes || [];
+  document.querySelectorAll('#vehicle_classes input[type=checkbox]').forEach(cb => {
+    cb.checked = classes.includes(cb.value);
+  });
+}
+
+function setVal(id, val) {
+  const el = document.getElementById(id);
+  if (!el || val === undefined || val === null) return;
+  el.value = val;
+}
+
+async function saveConfig() {
+  const classes = [];
+  document.querySelectorAll('#vehicle_classes input[type=checkbox]:checked').forEach(cb => classes.push(cb.value));
+
+  const payload = {
+    video_folder:               '/video',
+    filename_datetime_format:   document.getElementById('filename_datetime_format').value,
+    timezone:                   document.getElementById('timezone').value,
+    scan_interval_seconds:      document.getElementById('scan_interval_seconds').value,
+    file_stable_delay_seconds:  document.getElementById('file_stable_delay_seconds').value,
+    max_recent_files:           document.getElementById('max_recent_files').value,
+    motion_sample_fps:          document.getElementById('motion_sample_fps').value,
+    motion_threshold:           document.getElementById('motion_threshold').value,
+    min_motion_area:            document.getElementById('min_motion_area').value,
+    segment_padding_seconds:    document.getElementById('segment_padding_seconds').value,
+    detector_sample_fps:        document.getElementById('detector_sample_fps').value,
+    confidence_threshold:       document.getElementById('confidence_threshold').value,
+    vehicle_classes:            classes,
+    count_direction:            document.getElementById('count_direction').checked,
+    default_days:               document.getElementById('default_days').value,
+    log_level:                  document.getElementById('log_level').value,
+  };
+
+  const res  = await fetch('/config/api/save', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+  const data = await res.json();
+
+  if (data.ok) {
+    showMsg('✅ Configuration enregistrée.', 'ok');
+    document.getElementById('btn-restart').style.display = '';
+  } else {
+    showMsg('❌ ' + data.error, 'err');
+  }
+}
+
+async function restartApp() {
+  showMsg('⏳ Redémarrage en cours… la page va se recharger dans 10 secondes.', 'warn');
+  document.getElementById('btn-restart').disabled = true;
+  await fetch('/config/api/restart', { method: 'POST' });
+  setTimeout(() => location.href = '/', 10000);
+}
+
+function showMsg(text, type) {
+  const el = document.getElementById('msg');
+  el.textContent = text;
+  el.className = type;
+}
+
+loadConfig();
+</script>
+</body>
+</html>

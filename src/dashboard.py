@@ -8,6 +8,7 @@ from flask import Flask, jsonify, render_template, request
 
 from .calibration import create_calibration_blueprint
 from .config import Config
+from .config_editor import create_config_blueprint
 from .database import Database
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,10 @@ def create_app(config: Config, db: Database) -> Flask:
     # ── Calibration sous /calibration ──────────────────────────────
     calib_bp = create_calibration_blueprint(config)
     app.register_blueprint(calib_bp)
+
+    # ── Configuration sous /config ─────────────────────────────────
+    config_bp = create_config_blueprint(config)
+    app.register_blueprint(config_bp)
 
     # ── Dashboard ──────────────────────────────────────────────────
     @app.route("/")

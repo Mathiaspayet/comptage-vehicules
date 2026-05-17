@@ -5,9 +5,9 @@
 # via Container Manager ou : docker compose up -d
 #
 # AVANT DE DÉMARRER :
-#   1. Copiez config.example.yaml en config.yaml dans /volume2/docker/comptage/data/
-#   2. Remplissez config.yaml avec vos valeurs réelles
-#   3. Ajustez VIDEO_PATH ci-dessous avec le chemin de vos vidéos
+#   1. Créez le dossier /volume2/docker/comptage/data/ sur le NAS
+#   2. Démarrez les conteneurs — la configuration se fait via l'interface web
+#      http://[IP-NAS]:8080/config/
 # ============================================================
 
 services:
