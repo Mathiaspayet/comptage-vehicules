@@ -198,8 +198,7 @@
 
   <!-- ACTIONS -->
   <div class="actions">
-    <button class="btn btn-save" onclick="saveConfig()">💾 Enregistrer</button>
-    <button class="btn btn-restart" id="btn-restart" onclick="restartApp()">🔄 Redémarrer pour appliquer</button>
+    <button class="btn btn-save" onclick="saveAndRestart()">💾 Enregistrer et redémarrer</button>
     <span id="msg"></span>
   </div>
 
@@ -249,6 +248,15 @@ function setVal(id, val) {
   el.value = val;
 }
 
+async function saveAndRestart() {
+  await saveConfig();
+  const msg = document.getElementById('msg');
+  if (msg.className !== 'ok') return; // don't restart if save failed
+  showMsg('⏳ Redémarrage en cours… retour au tableau de bord dans 12 secondes.', 'warn');
+  await fetch('/config/api/restart', { method: 'POST' });
+  setTimeout(() => location.href = '/', 12000);
+}
+
 async function saveConfig() {
   const classes = [];
   document.querySelectorAll('#vehicle_classes input[type=checkbox]:checked').forEach(cb => classes.push(cb.value));
@@ -277,18 +285,11 @@ async function saveConfig() {
 
   if (data.ok) {
     showMsg('✅ Configuration enregistrée.', 'ok');
-    document.getElementById('btn-restart').style.display = '';
   } else {
     showMsg('❌ ' + data.error, 'err');
   }
 }
 
-async function restartApp() {
-  showMsg('⏳ Redémarrage en cours… la page va se recharger dans 10 secondes.', 'warn');
-  document.getElementById('btn-restart').disabled = true;
-  await fetch('/config/api/restart', { method: 'POST' });
-  setTimeout(() => location.href = '/', 10000);
-}
 
 function showMsg(text, type) {
   const el = document.getElementById('msg');

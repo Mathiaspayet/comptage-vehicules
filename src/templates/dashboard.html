@@ -55,6 +55,7 @@
     <button class="active" onclick="showTab('hourly', this)">Vue horaire</button>
     <button onclick="showTab('daily', this)">Vue quotidienne</button>
     <button onclick="showTab('journal', this)">📋 Journal</button>
+    <button onclick="showTab('files', this)">📁 Fichiers</button>
   </div>
 
   <!-- HOURLY -->
@@ -129,6 +130,40 @@
   </div>
 </main>
 
+  <!-- FICHIERS -->
+  <div id="tab-files" style="display:none">
+    <div class="chart-box">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:.75rem">
+        <h2 style="margin:0">Fichiers traités</h2>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+          <select id="files-filter" onchange="loadFiles()" style="font-size:.85rem;padding:.3rem .5rem">
+            <option value="all">Tous</option>
+            <option value="done">Traités</option>
+            <option value="error">Erreurs</option>
+          </select>
+          <input type="text" id="files-search" placeholder="Rechercher…" oninput="filterFiles()" style="font-size:.85rem;padding:.3rem .5rem;width:180px">
+          <button onclick="resetSelected()" style="font-size:.82rem;padding:.3rem .7rem;border:1px solid #d97706;border-radius:4px;background:#fff;color:#d97706;cursor:pointer">↺ Remettre en attente</button>
+          <button onclick="resetAll()" style="font-size:.82rem;padding:.3rem .7rem;border:1px solid #dc2626;border-radius:4px;background:#fff;color:#dc2626;cursor:pointer">🗑 Tout réinitialiser</button>
+        </div>
+      </div>
+      <div style="font-size:.8rem;color:#666;margin-bottom:.5rem" id="files-info"></div>
+      <div style="overflow-x:auto">
+        <table id="files-table" style="font-size:.82rem">
+          <thead>
+            <tr>
+              <th style="width:30px"><input type="checkbox" id="select-all" onchange="toggleSelectAll(this)"></th>
+              <th>Fichier</th>
+              <th>Traité le</th>
+              <th>Statut</th>
+              <th>Véhicules</th>
+            </tr>
+          </thead>
+          <tbody id="files-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <!-- JOURNAL -->
   <div id="tab-journal" style="display:none">
     <div class="chart-box" style="margin-bottom:1rem">
@@ -172,20 +207,20 @@ let chartHourly = null, chartDaily = null;
 let allLogLines = [];
 let journalTimer = null;
 
+let allFiles = [];
+
 function showTab(name, btn) {
   document.querySelectorAll('.tab-bar button').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  document.getElementById('tab-hourly').style.display  = name === 'hourly'  ? '' : 'none';
-  document.getElementById('tab-daily').style.display   = name === 'daily'   ? '' : 'none';
-  document.getElementById('tab-journal').style.display = name === 'journal' ? '' : 'none';
-  if (name === 'daily') loadDaily();
+  ['hourly','daily','journal','files'].forEach(t =>
+    document.getElementById('tab-'+t).style.display = name === t ? '' : 'none'
+  );
+  if (name === 'daily')   loadDaily();
   if (name === 'journal') {
-    loadJournal();
-    loadProgress();
+    loadJournal(); loadProgress();
     journalTimer = setInterval(() => { loadJournal(); loadProgress(); }, 5000);
-  } else {
-    clearInterval(journalTimer);
-  }
+  } else { clearInterval(journalTimer); }
+  if (name === 'files') loadFiles();
 }
 
 async function loadHourly() {
@@ -302,6 +337,68 @@ function renderLogs() {
 
 function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function loadFiles() {
+  const filter = document.getElementById('files-filter').value;
+  const res  = await fetch(`/api/files?status=${filter}&limit=500`);
+  const data = await res.json();
+  allFiles = data.files || [];
+  document.getElementById('files-search').value = '';
+  renderFiles(allFiles);
+}
+
+function filterFiles() {
+  const q = document.getElementById('files-search').value.toLowerCase();
+  renderFiles(allFiles.filter(f => f.filename.toLowerCase().includes(q)));
+}
+
+function renderFiles(files) {
+  const tbody = document.getElementById('files-tbody');
+  document.getElementById('files-info').textContent = `${files.length} fichier(s) affiché(s)`;
+  if (!files.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="color:#999;padding:.75rem">Aucun fichier.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = files.map(f => {
+    const statusBadge = f.status === 'done'
+      ? `<span style="color:#16a34a;font-weight:600">✓ traité</span>`
+      : `<span style="color:#dc2626;font-weight:600" title="${f.error_message||''}">✗ erreur</span>`;
+    const dt = f.processed_at ? f.processed_at.slice(0,16).replace('T',' ') : '—';
+    return `<tr>
+      <td><input type="checkbox" class="file-cb" value="${escHtml(f.filename)}"></td>
+      <td style="font-family:monospace;font-size:.78rem;word-break:break-all">${escHtml(f.filename)}</td>
+      <td style="white-space:nowrap">${dt}</td>
+      <td>${statusBadge}</td>
+      <td style="text-align:center">${f.vehicle_count ?? 0}</td>
+    </tr>`;
+  }).join('');
+}
+
+function toggleSelectAll(cb) {
+  document.querySelectorAll('.file-cb').forEach(c => c.checked = cb.checked);
+}
+
+function getSelected() {
+  return [...document.querySelectorAll('.file-cb:checked')].map(c => c.value);
+}
+
+async function resetSelected() {
+  const sel = getSelected();
+  if (!sel.length) { alert('Cochez au moins un fichier.'); return; }
+  if (!confirm(`Remettre ${sel.length} fichier(s) en attente de traitement ?`)) return;
+  const res  = await fetch('/api/files/reset', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({filenames: sel}) });
+  const data = await res.json();
+  if (data.ok) { loadFiles(); alert(`${data.reset_count} fichier(s) remis en attente.`); }
+  else alert('Erreur : ' + data.error);
+}
+
+async function resetAll() {
+  if (!confirm('Remettre TOUS les fichiers en attente ? Toutes les analyses seront refaites.')) return;
+  const res  = await fetch('/api/files/reset', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({}) });
+  const data = await res.json();
+  if (data.ok) { loadFiles(); alert(`${data.reset_count} fichier(s) réinitialisés.`); }
+  else alert('Erreur : ' + data.error);
 }
 
 loadHourly();

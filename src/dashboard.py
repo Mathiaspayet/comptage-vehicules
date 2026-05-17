@@ -93,6 +93,30 @@ def create_app(config: Config, db: Database) -> Flask:
         status["server_time"] = datetime.utcnow().isoformat() + "Z"
         return jsonify(status)
 
+    @app.route("/api/files")
+    def api_files():
+        status_filter = request.args.get("status", "all")
+        limit  = int(request.args.get("limit", 200))
+        offset = int(request.args.get("offset", 0))
+        try:
+            files = db.get_processed_files(limit, offset, status_filter)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        return jsonify({"files": files, "count": len(files)})
+
+    @app.route("/api/files/reset", methods=["POST"])
+    def api_files_reset():
+        data = request.get_json() or {}
+        filenames = data.get("filenames")  # None = reset all
+        try:
+            if filenames is None:
+                count = db.unmark_all_files()
+            else:
+                count = db.unmark_files(filenames)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        return jsonify({"ok": True, "reset_count": count})
+
     @app.route("/api/journal")
     def api_journal():
         log_file = Path("/app/data/logs/comptage.log")

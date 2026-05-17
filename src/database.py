@@ -209,6 +209,37 @@ class Database:
             ).fetchall()
         return [r["day"] for r in rows]
 
+    def get_processed_files(self, limit: int = 500, offset: int = 0, status_filter: str = "all") -> list[dict]:
+        """Returns processed files sorted by processing date descending."""
+        where = "" if status_filter == "all" else f"WHERE status = '{status_filter}'"
+        query = f"""
+            SELECT filename, processed_at, status, vehicle_count, error_message
+            FROM processed_files
+            {where}
+            ORDER BY processed_at DESC
+            LIMIT ? OFFSET ?
+        """
+        with self._connect() as conn:
+            rows = conn.execute(query, (limit, offset)).fetchall()
+        return [dict(r) for r in rows]
+
+    def unmark_files(self, filenames: list[str]) -> int:
+        """Remove files from processed_files so they get re-processed. Returns count deleted."""
+        if not filenames:
+            return 0
+        placeholders = ",".join("?" * len(filenames))
+        with self._connect() as conn:
+            cur = conn.execute(
+                f"DELETE FROM processed_files WHERE filename IN ({placeholders})", filenames
+            )
+            return cur.rowcount
+
+    def unmark_all_files(self) -> int:
+        """Remove ALL files from processed_files. Returns count deleted."""
+        with self._connect() as conn:
+            cur = conn.execute("DELETE FROM processed_files")
+            return cur.rowcount
+
     def get_processing_status(self) -> dict:
         with self._connect() as conn:
             total = conn.execute("SELECT COUNT(*) AS n FROM processed_files").fetchone()["n"]
