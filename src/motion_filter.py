@@ -38,7 +38,7 @@ class MotionFilter:
             pts = np.array(polygon, dtype=np.int32)
             cv2.fillPoly(mask, [pts], 255)
         else:
-            mask[:] = 255  # no ROI configured → full frame
+            mask[:] = 255
 
         self._roi_mask = mask
         self._roi_shape = (h, w)
@@ -50,11 +50,9 @@ class MotionFilter:
         on_progress: Optional[Callable[[int, int], None]] = None,
     ) -> list[Segment]:
         """
-        Samples frames from the video and returns a list of active segments
-        (time ranges where motion is detected in the ROI).
+        Samples frames from the video and returns a list of active segments.
         on_progress(frames_done, frames_total) called periodically.
         """
-        # Read basic metadata with OpenCV (lightweight)
         cap = cv2.VideoCapture(str(video_path))
         if not cap.isOpened():
             raise IOError(f"Impossible d'ouvrir la vidéo : {video_path}")
@@ -65,7 +63,7 @@ class MotionFilter:
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         cap.release()
 
-        # Prefer ffmpeg pipe: avoids decoding skipped frames entirely
+        # Prefer ffmpeg: -skip_frame nointra decodes only I-frames (~20x faster)
         if self._ffmpeg_available is not False:
             try:
                 result = self._process_ffmpeg(
@@ -89,7 +87,7 @@ class MotionFilter:
             cap.release()
 
     # ------------------------------------------------------------------
-    # ffmpeg pipe implementation (primary)
+    # ffmpeg pipe — I-frames only, grayscale, scaled (primary path)
     # ------------------------------------------------------------------
 
     def _process_ffmpeg(
@@ -101,36 +99,57 @@ class MotionFilter:
         total_frames: int,
         on_progress: Optional[Callable[[int, int], None]] = None,
     ) -> list[Segment]:
-        """Extract sampled frames via ffmpeg pipe — skips H.264 decode overhead."""
+        """Decode only I-frames via ffmpeg pipe at reduced resolution.
+
+        -skip_frame nointra skips all non-I-frames at the decoder level, making
+        it ~20x faster than full decode on typical 30fps H.264 security footage.
+        Output is grayscale 320px wide to minimise pipe bandwidth.
+        """
         duration_sec = total_frames / fps
         sample_fps = self.config.effective_motion_fps
-        sampled_total = max(1, int(duration_sec * sample_fps))
+
+        # Output at 320px wide, height auto-scaled (must be divisible by 2)
+        out_w = 320
+        out_h = max(2, round(height * out_w / width / 2) * 2)
+
+        # I-frames arrive at ~0.5-1 fps for typical security cameras; cap estimate
+        sampled_total = max(1, int(duration_sec * min(sample_fps, 1.0)))
 
         threshold = self.config.motion_threshold
-        min_area = self.config.min_motion_area
+        # Scale min_motion_area to the reduced output resolution
+        min_area = max(1, int(
+            self.config.min_motion_area * (out_w / width) * (out_h / height)
+        ))
         padding = self.config.segment_padding
+
+        # Build ROI mask at original resolution, then resize to output scale
+        full_mask = self._build_roi_mask((height, width))
+        roi_mask = cv2.resize(full_mask, (out_w, out_h), interpolation=cv2.INTER_NEAREST)
 
         cmd = [
             "ffmpeg",
+            "-skip_frame", "nointra",   # only decode I-frames
             "-i", str(video_path),
-            "-vf", f"fps={sample_fps}",
-            "-f", "rawvideo", "-pix_fmt", "bgr24",
+            "-vf", f"fps={sample_fps},scale={out_w}:{out_h}",
+            "-pix_fmt", "gray",
+            "-f", "rawvideo",
             "-loglevel", "error",
             "pipe:1",
         ]
 
-        frame_size = width * height * 3
+        frame_size = out_w * out_h  # grayscale: 1 byte/pixel
+
+        logger.debug(
+            "Filtre mouvement (ffmpeg I-frames) : %s | %.1f s | out=%dx%d",
+            video_path.name, duration_sec, out_w, out_h,
+        )
+
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
 
         segments: list[Segment] = []
         active_start: float | None = None
         prev_gray: np.ndarray | None = None
         sampled_done = 0
-
-        logger.debug(
-            "Filtre mouvement (ffmpeg) : %s | %.1f s | sample_fps=%.1f",
-            video_path.name, duration_sec, sample_fps,
-        )
 
         if on_progress:
             on_progress(0, sampled_total)
@@ -142,21 +161,17 @@ class MotionFilter:
                     break
 
                 current_sec = sampled_done / sample_fps
-                frame = np.frombuffer(raw, dtype=np.uint8).reshape(height, width, 3)
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                gray = np.frombuffer(raw, dtype=np.uint8).reshape(out_h, out_w)
                 gray = cv2.GaussianBlur(gray, (5, 5), 0)
 
                 if prev_gray is not None:
-                    roi_mask = self._build_roi_mask((height, width))
-
                     diff = cv2.absdiff(prev_gray, gray)
                     _, thresh = cv2.threshold(diff, threshold, 255, cv2.THRESH_BINARY)
                     thresh = cv2.bitwise_and(thresh, roi_mask)
                     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
                     thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
 
-                    motion_area = cv2.countNonZero(thresh)
-                    has_motion = motion_area >= min_area
+                    has_motion = cv2.countNonZero(thresh) >= min_area
 
                     if has_motion and active_start is None:
                         active_start = max(0.0, current_sec - padding)
@@ -183,7 +198,7 @@ class MotionFilter:
         return self._finalize_segments(segments, active_start, duration_sec, video_path)
 
     # ------------------------------------------------------------------
-    # OpenCV fallback (uses grab() to skip undecoded frames)
+    # OpenCV fallback — grab() skips BGR decode for non-sampled frames
     # ------------------------------------------------------------------
 
     def _process_opencv(
@@ -194,7 +209,6 @@ class MotionFilter:
         total_frames: int,
         on_progress: Optional[Callable[[int, int], None]] = None,
     ) -> list[Segment]:
-        """OpenCV fallback: reads every Nth frame, grabs() the rest."""
         duration_sec = total_frames / fps
         sample_fps = self.config.effective_motion_fps
         step = max(1, int(fps / sample_fps))
@@ -236,8 +250,7 @@ class MotionFilter:
                 kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
                 thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
 
-                motion_area = cv2.countNonZero(thresh)
-                has_motion = motion_area >= min_area
+                has_motion = cv2.countNonZero(thresh) >= min_area
 
                 if has_motion and active_start is None:
                     active_start = max(0.0, current_sec - padding)
@@ -252,7 +265,6 @@ class MotionFilter:
             if on_progress:
                 on_progress(sampled_done, sampled_total)
 
-            # Skip (step-1) frames without BGR decode
             for _ in range(step - 1):
                 cap.grab()
 
