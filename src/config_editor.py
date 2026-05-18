@@ -69,15 +69,18 @@ def create_config_blueprint(config: Config) -> Blueprint:
                     "segment_padding_seconds": float(data.get("segment_padding_seconds", 1.0)),
                 },
                 "detector": {
-                    "sample_fps": float(data.get("detector_sample_fps", 2)),
+                    "sample_fps": float(data.get("detector_sample_fps", 4)),
                     "confidence_threshold": float(data.get("confidence_threshold", 0.35)),
                     "night_confidence_threshold": float(data.get("night_confidence_threshold", 0.18)),
-                    "night_start_hour": int(data.get("night_start_hour", 21)),
-                    "night_end_hour": int(data.get("night_end_hour", 7)),
                     "night_enhance": bool(data.get("night_enhance", True)),
                     "vehicle_classes": data.get("vehicle_classes", ["car", "motorcycle", "bus", "truck"]),
                     "count_direction": bool(data.get("count_direction", False)),
                     "model_dir": "/app/data/models",
+                },
+                "location": {
+                    "latitude": float(data.get("latitude", 43.67)),
+                    "longitude": float(data.get("longitude", 1.42)),
+                    "timezone_offset": int(data.get("timezone_offset", 1)),
                 },
                 "dashboard": {
                     "port": 8080,

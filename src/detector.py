@@ -1,5 +1,6 @@
 """Module Détection IA & Comptage — YOLO + ByteTrack + line crossing."""
 import logging
+import math
 import shutil
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -197,12 +198,31 @@ class VehicleDetector:
         )
         return crossings
 
+    def _sunrise_sunset_local(self, dt: datetime) -> tuple[float, float]:
+        """Returns (sunrise_hour, sunset_hour) in local time for the configured location."""
+        lat = self.config.latitude
+        lon = self.config.longitude
+        tz_offset = self.config.timezone_offset
+        n = dt.timetuple().tm_yday
+        # Solar declination
+        b = math.radians(360 / 365 * (n - 81))
+        decl = math.radians(23.45 * math.sin(b))
+        # Hour angle at sunrise
+        lat_r = math.radians(lat)
+        cos_ha = -math.tan(lat_r) * math.tan(decl)
+        cos_ha = max(-1.0, min(1.0, cos_ha))
+        ha = math.degrees(math.acos(cos_ha))
+        # UTC hours, then convert to local
+        sunrise_utc = 12 - ha / 15 - lon / 15
+        sunset_utc = 12 + ha / 15 - lon / 15
+        return sunrise_utc + tz_offset, sunset_utc + tz_offset
+
     def _is_night(self, dt: datetime | None) -> bool:
         if dt is None:
             return False
-        h = dt.hour
-        start, end = self.config.night_start_hour, self.config.night_end_hour
-        return h >= start or h < end
+        sunrise, sunset = self._sunrise_sunset_local(dt)
+        h = dt.hour + dt.minute / 60
+        return h < sunrise or h >= sunset
 
     def _enhance_frame(self, frame: np.ndarray) -> np.ndarray:
         lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)

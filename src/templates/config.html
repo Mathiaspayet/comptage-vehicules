@@ -178,22 +178,23 @@
       <div class="hint">Seuil abaissé automatiquement la nuit. Valeur recommandée : 0.18.</div>
     </div>
     <div class="field">
-      <label>🌙 Mode nuit — plage horaire</label>
-      <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
-        <label style="font-size:.85rem;color:#555">De <input type="number" id="night_start_hour" min="0" max="23" style="width:60px;padding:.3rem;border:1px solid #ccc;border-radius:4px;font-size:.9rem"> h</label>
-        <label style="font-size:.85rem;color:#555">À <input type="number" id="night_end_hour" min="0" max="23" style="width:60px;padding:.3rem;border:1px solid #ccc;border-radius:4px;font-size:.9rem"> h</label>
-      </div>
-      <div class="hint">Par défaut : de 21h à 7h.</div>
-    </div>
-    <div class="field">
       <label>🌙 Mode nuit — rehaussement de contraste (CLAHE)</label>
       <div class="toggle-row">
         <label class="toggle">
           <input type="checkbox" id="night_enhance">
           <span class="slider"></span>
         </label>
-        <span style="font-size:.85rem;color:#666">Améliore la détection sur images sombres</span>
+        <span style="font-size:.85rem;color:#666">Améliore la détection sur images sombres (recommandé)</span>
       </div>
+    </div>
+    <div class="field">
+      <label>📍 Localisation (lever/coucher du soleil automatiques)</label>
+      <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
+        <label style="font-size:.85rem;color:#555">Latitude <input type="number" id="latitude" step="0.01" style="width:90px;padding:.3rem;border:1px solid #ccc;border-radius:4px;font-size:.9rem"></label>
+        <label style="font-size:.85rem;color:#555">Longitude <input type="number" id="longitude" step="0.01" style="width:90px;padding:.3rem;border:1px solid #ccc;border-radius:4px;font-size:.9rem"></label>
+        <label style="font-size:.85rem;color:#555">Fuseau UTC<input type="number" id="timezone_offset" min="-12" max="14" style="width:60px;padding:.3rem;border:1px solid #ccc;border-radius:4px;font-size:.9rem"></label>
+      </div>
+      <div class="hint">Le mode nuit s'active automatiquement entre le coucher et le lever du soleil. Launaguet : 43.67 / 1.42 / UTC+1 (UTC+2 en été).</div>
     </div>
     <div class="field">
       <label>Types de véhicules à compter</label>
@@ -336,9 +337,10 @@ async function loadConfig() {
   setVal('confidence_threshold_range',data.detector?.confidence_threshold);
   setVal('night_confidence_threshold',      data.detector?.night_confidence_threshold);
   setVal('night_confidence_threshold_range',data.detector?.night_confidence_threshold);
-  setVal('night_start_hour', data.detector?.night_start_hour);
-  setVal('night_end_hour',   data.detector?.night_end_hour);
   document.getElementById('night_enhance').checked = !!data.detector?.night_enhance;
+  setVal('latitude',        data.location?.latitude);
+  setVal('longitude',       data.location?.longitude);
+  setVal('timezone_offset', data.location?.timezone_offset);
 
   setVal('default_days', data.dashboard?.default_days);
   setVal('log_level',    data.logging?.level);
@@ -371,9 +373,10 @@ async function saveConfig() {
     detector_sample_fps:      document.getElementById('detector_sample_fps').value,
     confidence_threshold:          document.getElementById('confidence_threshold').value,
     night_confidence_threshold:    document.getElementById('night_confidence_threshold').value,
-    night_start_hour:              parseInt(document.getElementById('night_start_hour').value),
-    night_end_hour:                parseInt(document.getElementById('night_end_hour').value),
     night_enhance:                 document.getElementById('night_enhance').checked,
+    latitude:                      parseFloat(document.getElementById('latitude').value),
+    longitude:                     parseFloat(document.getElementById('longitude').value),
+    timezone_offset:               parseInt(document.getElementById('timezone_offset').value),
     vehicle_classes:               classes,
     count_direction:          document.getElementById('count_direction').checked,
     default_days:             document.getElementById('default_days').value,
