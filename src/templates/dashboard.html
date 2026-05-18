@@ -46,8 +46,9 @@
     .pending-row { display:flex; align-items:center; gap:.5rem; padding:.25rem 0; border-bottom:1px solid #f3f3f3; font-size:.79rem; }
     .pending-row:last-child { border-bottom:none; }
     .pill { border-radius:10px; padding:.1rem .55rem; font-size:.73rem; font-weight:600; }
-    .pill-ready { background:#fef3c7; color:#92400e; }
-    .pill-soon  { background:#f1f5f9; color:#64748b; }
+    .pill-ready    { background:#fef3c7; color:#92400e; }
+    .pill-soon     { background:#f1f5f9; color:#64748b; }
+    .pill-writing  { background:#fee2e2; color:#991b1b; }
   </style>
 </head>
 <body>
@@ -534,43 +535,41 @@ async function loadPending() {
   renderPending(data);
 }
 
-function renderPending({ pending, too_recent, min_age_minutes }) {
+function renderPending({ pending, writing, stable_delay_seconds }) {
   const el = document.getElementById('pending-section');
-  const nPending    = pending?.length    || 0;
-  const nTooRecent  = too_recent?.length || 0;
+  const nPending = pending?.length || 0;
+  const nWriting = writing?.length || 0;
 
-  if (!nPending && !nTooRecent) {
+  if (!nPending && !nWriting) {
     el.innerHTML = '<em style="color:#888">Aucun fichier en attente.</em>';
     return;
   }
 
   let html = '';
 
-  if (nPending) {
+  if (nWriting) {
     html += `<div style="margin-bottom:.65rem">
-      <div style="font-size:.8rem;font-weight:600;color:#92400e;margin-bottom:.3rem">
-        🟡 ${nPending} fichier(s) prêt(s) à analyser
+      <div style="font-size:.8rem;font-weight:600;color:#991b1b;margin-bottom:.3rem">
+        🔴 ${nWriting} fichier(s) en cours d'écriture
       </div>`;
-    html += pending.map(f => `
-      <div class="pending-row">
-        <span class="pill pill-ready">${f.age_minutes} min</span>
+    html += writing.map(f => `
+      <div class="pending-row" style="color:#991b1b">
+        <span class="pill pill-writing" title="${f.size_kb} Ko">${f.size_kb} Ko</span>
         <span style="font-family:monospace;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.78rem">${escHtml(f.filename)}</span>
       </div>`).join('');
     html += '</div>';
   }
 
-  if (nTooRecent) {
+  if (nPending) {
     html += `<div>
-      <div style="font-size:.8rem;font-weight:600;color:#94a3b8;margin-bottom:.3rem">
-        ⏰ ${nTooRecent} fichier(s) trop récent(s) — attente ${min_age_minutes} min avant traitement
+      <div style="font-size:.8rem;font-weight:600;color:#92400e;margin-bottom:.3rem">
+        🟡 ${nPending} fichier(s) prêt(s) à analyser
       </div>`;
-    html += too_recent.map(f => {
-      const remaining = Math.max(0, min_age_minutes - f.age_minutes);
-      return `<div class="pending-row" style="color:#94a3b8">
-        <span class="pill pill-soon" title="Âge : ${f.age_minutes.toFixed(1)} min">encore ${remaining.toFixed(0)} min</span>
+    html += pending.map(f => `
+      <div class="pending-row">
+        <span class="pill pill-ready" title="${f.size_kb} Ko">${f.age_minutes} min</span>
         <span style="font-family:monospace;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.78rem">${escHtml(f.filename)}</span>
-      </div>`;
-    }).join('');
+      </div>`).join('');
     html += '</div>';
   }
 

@@ -17,6 +17,10 @@ logger = logging.getLogger(__name__)
 
 VERSION_FILE = Path("/app/version.json")
 
+# Module-level size cache for the pending-files API endpoint.
+# Maps filename → (size, timestamp when size was first seen at this value).
+_pending_size_cache: dict[str, tuple[int, float]] = {}
+
 
 def _read_version() -> dict:
     try:
@@ -113,12 +117,12 @@ def create_app(config: Config, db: Database) -> Flask:
         """Returns video files on disk that haven't been processed yet."""
         import time as _time
         folder = config.video_folder
-        min_age_sec = config.min_file_age_minutes * 60
+        stable_delay = config.file_stable_delay
         now = _time.time()
         exts = {".mp4", ".avi", ".mkv", ".mov"}
 
         if not folder.exists():
-            return jsonify({"pending": [], "too_recent": []})
+            return jsonify({"pending": [], "writing": []})
 
         all_videos: list[Path] = []
         try:
@@ -137,28 +141,40 @@ def create_app(config: Config, db: Database) -> Flask:
 
         processed_names = db.get_all_processed_filenames()
         pending = []
-        too_recent = []
+        writing = []
 
         for f in sorted(all_videos, key=lambda x: x.stat().st_mtime):
             if f.name in processed_names:
                 continue
             try:
+                current_size = f.stat().st_size
                 age_sec = now - f.stat().st_mtime
             except FileNotFoundError:
+                _pending_size_cache.pop(f.name, None)
                 continue
+
+            cached = _pending_size_cache.get(f.name)
+            if cached is None or cached[0] != current_size:
+                _pending_size_cache[f.name] = (current_size, now)
+                stable_since = now
+            else:
+                stable_since = cached[1]
+
+            is_stable = (now - stable_since) >= stable_delay
             entry = {
                 "filename": f.name,
                 "age_minutes": round(age_sec / 60, 1),
+                "size_kb": round(current_size / 1024, 0),
             }
-            if age_sec >= min_age_sec:
+            if is_stable:
                 pending.append(entry)
             else:
-                too_recent.append(entry)
+                writing.append(entry)
 
         return jsonify({
             "pending": pending,
-            "too_recent": too_recent,
-            "min_age_minutes": config.min_file_age_minutes,
+            "writing": writing,
+            "stable_delay_seconds": stable_delay,
         })
 
     @app.route("/api/files/reset", methods=["POST"])
