@@ -90,3 +90,31 @@ def test_motion_cache_fp_mismatch(tmp_db):
     segments = [{"start_sec": 0.0, "end_sec": 3.0}]
     tmp_db.set_motion_cache("video.mp4", "fp_abc", segments)
     assert tmp_db.get_motion_cache("video.mp4", "fp_xyz") is None
+
+
+def test_delete_old_crossings(tmp_db):
+    from datetime import timedelta
+    today = datetime.utcnow()
+    old = (today - timedelta(days=100)).strftime("%Y-%m-%dT%H:%M:%S")
+    recent = today.strftime("%Y-%m-%dT%H:%M:%S")
+    tmp_db.insert_crossings_batch([
+        {"timestamp": old,    "vehicle_type": "car", "direction": None, "confidence": 0.9, "source_file": "old.mp4"},
+        {"timestamp": recent, "vehicle_type": "car", "direction": None, "confidence": 0.9, "source_file": "new.mp4"},
+    ])
+    deleted = tmp_db.delete_old_crossings(days=30)
+    assert deleted == 1
+    remaining = tmp_db.get_crossings_export()
+    assert len(remaining) == 1
+    assert remaining[0]["source_file"] == "new.mp4"
+
+
+def test_crossings_export_filters(tmp_db):
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    tmp_db.insert_crossings_batch([
+        {"timestamp": f"{today}T08:00:00", "vehicle_type": "car",   "direction": None, "confidence": 0.9, "source_file": "v1.mp4"},
+        {"timestamp": f"{today}T09:00:00", "vehicle_type": "truck", "direction": None, "confidence": 0.8, "source_file": "v2.mp4"},
+    ])
+    all_rows = tmp_db.get_crossings_export()
+    assert len(all_rows) == 2
+    cars = tmp_db.get_crossings_export(vehicle_type="car")
+    assert len(cars) == 1 and cars[0]["vehicle_type"] == "car"

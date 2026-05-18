@@ -73,6 +73,16 @@ def _handle_signal(signum, frame):
     _shutdown.set()
 
 
+def _auto_purge(config, db: Database):
+    """Delete crossings older than data_retention_days if configured (> 0)."""
+    days = config.data_retention_days
+    if days <= 0:
+        return
+    count = db.delete_old_crossings(days)
+    if count:
+        logger.info("Rétention des données : %d franchissement(s) de plus de %d jours supprimé(s).", count, days)
+
+
 def _check_and_reset_if_config_changed(config, db: Database):
     """Compare the stored detection fingerprint with the current one.
     If they differ, wipe processed_files + crossings so everything is re-processed."""
@@ -293,6 +303,7 @@ def main():
     logger.info("Calibration      : http://0.0.0.0:%d/calibration/", config.dashboard_port)
 
     db = Database(config.db_path)
+    _auto_purge(config, db)
     _check_and_reset_if_config_changed(config, db)
     watcher = FileWatcher(config, db)
     motion = MotionFilter(config)

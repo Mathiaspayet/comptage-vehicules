@@ -87,12 +87,22 @@ database:
   # Chemin du fichier SQLite (dans le volume persistant)
   path: "/app/data/vehicles.db"
 
+# --- Données ---
+data:
+  # Rétention des données : supprimer automatiquement les franchissements
+  # de plus de N jours au démarrage (0 = conserver indéfiniment)
+  retention_days: 0
+
 # --- Tableau de bord web ---
 dashboard:
   # Port sur lequel le tableau de bord est accessible (ex: http://[IP-NAS]:8080)
   port: 8080
   # Nombre de jours affichés par défaut dans la vue quotidienne
   default_days: 30
+  # Authentification basique optionnelle (laisser vides pour désactiver)
+  # Peut aussi être défini via les variables d'env DASHBOARD_USERNAME / DASHBOARD_PASSWORD
+  username: ""
+  password: ""
 
 # --- Outil de calibration ---
 calibration:
@@ -107,3 +117,12 @@ logging:
   max_size_mb: 10
   # Nombre de fichiers de log à conserver
   backup_count: 3
+
+# --- Performance ---
+performance:
+  # Pré-calcul du filtre de mouvement en arrière-plan pendant la détection IA
+  prefetch_motion: true
+  # Seuil du backlog (nombre de fichiers) au-delà duquel les FPS sont réduits
+  backlog_throttle_threshold: 10
+  # Facteur de réduction des FPS en cas de backlog important (0.5 = moitié)
+  backlog_fps_factor: 0.5

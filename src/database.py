@@ -155,6 +155,46 @@ class Database:
                 crossings,
             )
 
+    def delete_old_crossings(self, days: int) -> int:
+        """Delete crossings older than `days` days. Returns count deleted."""
+        if days <= 0:
+            return 0
+        with self._connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM crossings WHERE timestamp < datetime('now', ?)",
+                (f"-{days} days",),
+            )
+            return cur.rowcount
+
+    def get_crossings_export(
+        self,
+        date_from: "str | None" = None,
+        date_to: "str | None" = None,
+        vehicle_type: str = "all",
+    ) -> list[dict]:
+        """Returns all crossings matching filters, ordered by timestamp (for CSV export)."""
+        clauses: list[str] = []
+        params: dict = {}
+        if date_from:
+            clauses.append("date(timestamp) >= :date_from")
+            params["date_from"] = date_from
+        if date_to:
+            clauses.append("date(timestamp) <= :date_to")
+            params["date_to"] = date_to
+        if vehicle_type != "all":
+            clauses.append("vehicle_type = :vtype")
+            params["vtype"] = vehicle_type
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        query = f"""
+            SELECT timestamp, vehicle_type, direction, confidence, source_file
+            FROM crossings
+            {where}
+            ORDER BY timestamp
+        """
+        with self._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+        return [dict(r) for r in rows]
+
     # ------------------------------------------------------------------ #
     # Statistics queries                                                   #
     # ------------------------------------------------------------------ #

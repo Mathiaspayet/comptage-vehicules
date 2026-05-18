@@ -293,6 +293,30 @@
       </div>
     </div>
 
+    <!-- Export CSV -->
+    <div class="chart-box" style="margin-top:.75rem">
+      <h2 style="margin:0 0 .75rem">📥 Export CSV</h2>
+      <div style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end">
+        <label style="font-size:.83rem;color:#555">Du
+          <input type="date" id="exp-from" style="margin-left:.3rem;font-size:.82rem">
+        </label>
+        <label style="font-size:.83rem;color:#555">Au
+          <input type="date" id="exp-to" style="margin-left:.3rem;font-size:.82rem">
+        </label>
+        <label style="font-size:.83rem;color:#555">Type
+          <select id="exp-type" style="margin-left:.3rem;font-size:.82rem">
+            <option value="all">Tous</option>
+            <option value="car">Voiture</option>
+            <option value="motorcycle">Moto</option>
+            <option value="bus">Bus</option>
+            <option value="truck">Camion</option>
+          </select>
+        </label>
+        <button onclick="exportCrossings()" style="font-size:.82rem;padding:.3rem .75rem;border:1px solid #2563eb;border-radius:4px;background:#2563eb;color:#fff;cursor:pointer">⬇ Franchissements</button>
+        <button onclick="exportFiles()" style="font-size:.82rem;padding:.3rem .75rem;border:1px solid #6b7280;border-radius:4px;background:#fff;color:#6b7280;cursor:pointer">⬇ Fichiers traités</button>
+      </div>
+    </div>
+
     <!-- Maintenance -->
     <div class="chart-box" style="margin-top:.75rem">
       <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem">
@@ -815,6 +839,8 @@ async function loadMaintenance() {
       <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.25rem">
         <button onclick="cleanLogs()" style="font-size:.8rem;padding:.28rem .65rem;border:1px solid #6b7280;border-radius:4px;background:#fff;color:#6b7280;cursor:pointer">🗑 Purger les journaux archivés (.log.1, .log.2…)</button>
         <button onclick="clearMotionCache()" style="font-size:.8rem;padding:.28rem .65rem;border:1px solid #d97706;border-radius:4px;background:#fff;color:#d97706;cursor:pointer">⚡ Vider le cache de mouvement</button>
+        <button onclick="purgeOldData()" style="font-size:.8rem;padding:.28rem .65rem;border:1px solid #dc2626;border-radius:4px;background:#fff;color:#dc2626;cursor:pointer">🗑 Purger les anciennes données</button>
+        <a href="/api/maintenance/backup-db" style="font-size:.8rem;padding:.28rem .65rem;border:1px solid #059669;border-radius:4px;background:#fff;color:#059669;cursor:pointer;text-decoration:none">💾 Télécharger la base</a>
       </div>
     `;
   } catch(e) {
@@ -841,6 +867,37 @@ async function clearMotionCache() {
     alert(`Cache vidé — ${data.deleted} entrée(s) supprimée(s).`);
     loadMaintenance();
   } else alert('Erreur : ' + data.error);
+}
+
+async function purgeOldData() {
+  const days = prompt('Supprimer les franchissements de plus de combien de jours ?', '90');
+  if (!days) return;
+  const n = parseInt(days, 10);
+  if (isNaN(n) || n <= 0) { alert('Valeur invalide.'); return; }
+  if (!confirm(`Supprimer définitivement tous les franchissements de plus de ${n} jours ?`)) return;
+  const res  = await fetch('/api/maintenance/purge-data', {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({days: n})
+  });
+  const data = await res.json();
+  if (data.ok) {
+    alert(`${data.deleted} franchissement(s) supprimé(s).`);
+    loadMaintenance();
+  } else alert('Erreur : ' + data.error);
+}
+
+function exportCrossings() {
+  const from = document.getElementById('exp-from').value;
+  const to   = document.getElementById('exp-to').value;
+  const type = document.getElementById('exp-type').value;
+  let url = '/api/export/crossings.csv?';
+  if (from) url += `date_from=${encodeURIComponent(from)}&`;
+  if (to)   url += `date_to=${encodeURIComponent(to)}&`;
+  if (type && type !== 'all') url += `vehicle_type=${encodeURIComponent(type)}&`;
+  window.location.href = url;
+}
+
+function exportFiles() {
+  window.location.href = '/api/export/files.csv';
 }
 
 function escHtml(s) {

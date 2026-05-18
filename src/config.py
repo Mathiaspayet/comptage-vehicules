@@ -53,6 +53,8 @@ DEFAULTS = {
     "dashboard": {
         "port": 8080,
         "default_days": 30,
+        "username": "",
+        "password": "",
     },
     "calibration": {
         "port": 8081,
@@ -66,6 +68,9 @@ DEFAULTS = {
         "prefetch_motion": True,
         "backlog_throttle_threshold": 10,
         "backlog_fps_factor": 0.5,
+    },
+    "data": {
+        "retention_days": 0,  # 0 = keep forever
     },
 }
 
@@ -223,6 +228,18 @@ class Config:
         return int(self.get("dashboard", "default_days", default=30))
 
     @property
+    def dashboard_username(self) -> str:
+        return self.get("dashboard", "username", default="") or ""
+
+    @property
+    def dashboard_password(self) -> str:
+        return self.get("dashboard", "password", default="") or ""
+
+    @property
+    def data_retention_days(self) -> int:
+        return int(self.get("data", "retention_days", default=0))
+
+    @property
     def prefetch_motion(self) -> bool:
         return bool(self.get("performance", "prefetch_motion", default=True))
 
@@ -321,5 +338,32 @@ def load_config(config_path: str | Path | None = None) -> Config:
             "Fichier de configuration introuvable : %s. Utilisation des valeurs par défaut.",
             config_path,
         )
+
+    # Environment variable overrides (highest priority — override config file)
+    _env_overrides = [
+        ("DASHBOARD_PORT",        ("dashboard", "port"),          int),
+        ("VIDEO_FOLDER",          ("video_folder", None),         str),
+        ("DB_PATH",               ("database", "path"),           str),
+        ("LOG_LEVEL",             ("logging", "level"),           str),
+        ("DASHBOARD_USERNAME",    ("dashboard", "username"),      str),
+        ("DASHBOARD_PASSWORD",    ("dashboard", "password"),      str),
+        ("DATA_RETENTION_DAYS",   ("data", "retention_days"),     int),
+    ]
+    for env_key, (section, key), cast in _env_overrides:
+        val = os.environ.get(env_key)
+        if val is None:
+            continue
+        try:
+            typed = cast(val)
+        except (ValueError, TypeError) as exc:
+            logger.warning("Variable d'env %s invalide (%r) : %s", env_key, val, exc)
+            continue
+        if key is None:
+            data[section] = typed
+        else:
+            if section not in data or not isinstance(data[section], dict):
+                data[section] = {}
+            data[section][key] = typed
+        logger.info("Override env %s → %s.%s = %r", env_key, section, key, typed)
 
     return Config(data, config_path=config_path)

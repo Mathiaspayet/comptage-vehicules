@@ -1,10 +1,12 @@
 """Module Tableau de bord web — Flask app avec calibration intégrée."""
+import csv
+import io
 import json
 import logging
 from datetime import date, datetime
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, jsonify, make_response, render_template, request, send_file
 
 from .calibration import create_calibration_blueprint
 from .config import Config
@@ -34,6 +36,32 @@ def create_app(config: Config, db: Database) -> Flask:
     template_dir = Path(__file__).parent / "templates"
     app = Flask(__name__, template_folder=str(template_dir))
     app.config["JSON_SORT_KEYS"] = False
+
+    # ── Auth basique optionnelle ────────────────────────────────────
+    @app.before_request
+    def _check_auth():
+        username = config.dashboard_username
+        if not username:
+            return None
+        # Healthcheck must bypass auth so Docker can reach /api/status
+        if request.path == "/api/status":
+            return None
+        auth = request.authorization
+        if not auth or auth.username != username or auth.password != config.dashboard_password:
+            return Response(
+                "Accès restreint — authentification requise.",
+                401,
+                {"WWW-Authenticate": 'Basic realm="Comptage véhicules"'},
+            )
+
+    # ── En-têtes de sécurité HTTP ───────────────────────────────────
+    @app.after_request
+    def _add_security_headers(response: Response) -> Response:
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+        response.headers.setdefault("X-XSS-Protection", "1; mode=block")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        return response
 
     # ── Calibration sous /calibration ──────────────────────────────
     calib_bp = create_calibration_blueprint(config)
@@ -281,6 +309,81 @@ def create_app(config: Config, db: Database) -> Flask:
         except Exception as e:
             return jsonify({"error": str(e)}), 500
         return jsonify({"ok": True, "deleted": count})
+
+    @app.route("/api/maintenance/purge-data", methods=["POST"])
+    def api_maintenance_purge_data():
+        """Delete crossings older than `days` days."""
+        data = request.get_json() or {}
+        try:
+            days = int(data.get("days", 90))
+        except (ValueError, TypeError):
+            return jsonify({"error": "Paramètre days invalide"}), 400
+        if days <= 0:
+            return jsonify({"error": "days doit être > 0"}), 400
+        try:
+            count = db.delete_old_crossings(days)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        return jsonify({"ok": True, "deleted": count, "days": days})
+
+    @app.route("/api/maintenance/backup-db")
+    def api_maintenance_backup_db():
+        """Download a copy of the SQLite database."""
+        db_path = config.db_path
+        if not db_path.exists():
+            return jsonify({"error": "Base de données introuvable"}), 404
+        now = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        return send_file(
+            str(db_path),
+            as_attachment=True,
+            download_name=f"vehicles_backup_{now}.db",
+            mimetype="application/octet-stream",
+        )
+
+    @app.route("/api/export/crossings.csv")
+    def api_export_crossings():
+        """Export crossing events as CSV with optional date/type filters."""
+        date_from = request.args.get("date_from") or None
+        date_to = request.args.get("date_to") or None
+        vehicle_type = request.args.get("vehicle_type", "all")
+        try:
+            rows = db.get_crossings_export(date_from, date_to, vehicle_type)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        buf = io.StringIO()
+        writer = csv.DictWriter(
+            buf,
+            fieldnames=["timestamp", "vehicle_type", "direction", "confidence", "source_file"],
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+        resp = make_response(buf.getvalue())
+        resp.headers["Content-Type"] = "text/csv; charset=utf-8"
+        resp.headers["Content-Disposition"] = "attachment; filename=franchissements.csv"
+        return resp
+
+    @app.route("/api/export/files.csv")
+    def api_export_files():
+        """Export processed files list as CSV."""
+        max_age_days = int(request.args.get("max_age_days", 0))
+        try:
+            rows = db.get_processed_files(
+                limit=100_000, offset=0, status_filter="all", max_age_days=max_age_days
+            )
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        fields = [
+            "filename", "processed_at", "status",
+            "vehicle_count", "processing_duration_seconds", "error_message",
+        ]
+        buf = io.StringIO()
+        writer = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+        resp = make_response(buf.getvalue())
+        resp.headers["Content-Type"] = "text/csv; charset=utf-8"
+        resp.headers["Content-Disposition"] = "attachment; filename=fichiers_traites.csv"
+        return resp
 
     @app.route("/api/journal")
     def api_journal():

@@ -36,6 +36,11 @@ services:
     environment:
       - CONFIG_PATH=/app/data/config.yaml
       - TZ=Europe/Paris  # Fuseau horaire du NAS — à ajuster si besoin
+      # Authentification basique optionnelle (décommentez et remplissez pour activer)
+      # - DASHBOARD_USERNAME=admin
+      # - DASHBOARD_PASSWORD=changeme
+      # Rétention automatique des données (0 = conserver indéfiniment)
+      # - DATA_RETENTION_DAYS=365
 
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
