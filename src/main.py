@@ -17,6 +17,20 @@ from .motion_filter import MotionFilter
 from .progress import tracker as progress_tracker
 
 
+def _check_video(path: Path) -> str | None:
+    """Quick sanity check — returns an error string if the file can't be decoded, None if OK."""
+    import cv2 as _cv2
+    cap = _cv2.VideoCapture(str(path))
+    if not cap.isOpened():
+        cap.release()
+        return "Impossible d'ouvrir le fichier vidéo (fichier corrompu ou format non supporté)"
+    ret, _ = cap.read()
+    cap.release()
+    if not ret:
+        return "Le fichier vidéo est vide ou ne contient aucune image lisible"
+    return None
+
+
 def setup_logging(level: str, log_dir: Path, max_mb: int, backup_count: int):
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / "comptage.log"
@@ -138,6 +152,14 @@ def processing_loop(watcher: FileWatcher, motion: MotionFilter, detector: Vehicl
 def _process_file(video_path, watcher, motion, detector, db, queue_done: int, queue_total: int):
     filename = video_path.name
     logger.info("=== Traitement : %s ===", filename)
+
+    err = _check_video(video_path)
+    if err:
+        logger.warning("Fichier ignoré — %s : %s", err, filename)
+        db.mark_file_error(filename, err)
+        progress_tracker.finish_file()
+        return
+
     video_start_dt = watcher.extract_datetime(filename)
 
     progress_tracker.start_file(filename, queue_done, queue_total)

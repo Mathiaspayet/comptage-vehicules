@@ -20,12 +20,32 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupération du code
+        uses: actions/checkout@v4
+
+      - name: Installation Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Installation des dépendances de test
+        run: pip install pyyaml opencv-python-headless numpy pytest pytest-cov
+
+      - name: Lancement des tests
+        run: python -m pytest --tb=short
+
   build-and-push:
     name: Build & Push to GHCR
     runs-on: ubuntu-latest
+    needs: test
     permissions:
       contents: read
-      packages: write   # Nécessaire pour publier sur GHCR
+      packages: write
 
     steps:
       - name: Récupération du code
