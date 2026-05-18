@@ -295,6 +295,8 @@ class Config:
             self._data = new_data
             if changed:
                 logger.info("Configuration rechargée — sections modifiées : %s", changed)
+                for w in validate_config(new_data):
+                    logger.warning("Config : %s", w)
             return changed
         except Exception as e:
             logger.error("Erreur rechargement config : %s", e)
@@ -319,6 +321,59 @@ class Config:
 
     def raw(self) -> dict:
         return self._data
+
+    def validate(self) -> list[str]:
+        return validate_config(self._data)
+
+
+def validate_config(data: dict) -> list[str]:
+    """Returns a list of human-readable warnings for invalid config values."""
+    warnings: list[str] = []
+    counting = data.get("counting", {})
+
+    for key in ("line_p1", "line_p2"):
+        val = counting.get(key)
+        if val is not None and (not isinstance(val, (list, tuple)) or len(val) != 2):
+            warnings.append(f"counting.{key} doit être [x, y] — valeur actuelle : {val!r}")
+
+    roi = counting.get("roi_polygon")
+    if roi is not None:
+        if not isinstance(roi, list) or len(roi) < 3:
+            n = len(roi) if isinstance(roi, list) else "invalide"
+            warnings.append(f"counting.roi_polygon doit avoir au moins 3 points (actuel : {n})")
+        else:
+            for i, pt in enumerate(roi):
+                if not isinstance(pt, (list, tuple)) or len(pt) != 2:
+                    warnings.append(f"counting.roi_polygon[{i}] doit être [x, y] — valeur : {pt!r}")
+
+    detector = data.get("detector", {})
+    for key in ("confidence_threshold", "night_confidence_threshold"):
+        val = detector.get(key)
+        if val is not None:
+            try:
+                v = float(val)
+                if not 0.0 <= v <= 1.0:
+                    warnings.append(f"detector.{key} doit être entre 0 et 1 (actuel : {v})")
+            except (ValueError, TypeError):
+                warnings.append(f"detector.{key} doit être un nombre (actuel : {val!r})")
+
+    for section, key in [("motion_filter", "sample_fps"), ("detector", "sample_fps")]:
+        val = data.get(section, {}).get(key)
+        if val is not None:
+            try:
+                if float(val) <= 0:
+                    warnings.append(f"{section}.{key} doit être > 0 (actuel : {val})")
+            except (ValueError, TypeError):
+                warnings.append(f"{section}.{key} doit être un nombre (actuel : {val!r})")
+
+    valid_classes = {"car", "motorcycle", "bus", "truck"}
+    classes = detector.get("vehicle_classes", [])
+    if isinstance(classes, list):
+        unknown = [c for c in classes if c not in valid_classes]
+        if unknown:
+            warnings.append(f"detector.vehicle_classes contient des valeurs inconnues : {unknown}")
+
+    return warnings
 
 
 def load_config(config_path: str | Path | None = None) -> Config:
@@ -365,5 +420,8 @@ def load_config(config_path: str | Path | None = None) -> Config:
                 data[section] = {}
             data[section][key] = typed
         logger.info("Override env %s → %s.%s = %r", env_key, section, key, typed)
+
+    for w in validate_config(data):
+        logger.warning("Config : %s", w)
 
     return Config(data, config_path=config_path)

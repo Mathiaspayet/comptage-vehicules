@@ -87,3 +87,41 @@ def test_reload_no_file():
     config = Config(DEFAULTS.copy(), config_path=None)
     changed = config.reload()
     assert changed == set()
+
+
+# ------------------------------------------------------------------ #
+# Config validation                                                   #
+# ------------------------------------------------------------------ #
+
+def test_validate_clean_defaults():
+    from src.config import validate_config
+    warnings = validate_config(DEFAULTS)
+    assert warnings == []
+
+
+def test_validate_bad_line_p1():
+    from src.config import validate_config
+    data = _deep_merge(DEFAULTS, {"counting": {"line_p1": [0]}})  # missing y
+    warnings = validate_config(data)
+    assert any("line_p1" in w for w in warnings)
+
+
+def test_validate_bad_roi_too_few_points():
+    from src.config import validate_config
+    data = _deep_merge(DEFAULTS, {"counting": {"roi_polygon": [[0, 0], [1, 1]]}})
+    warnings = validate_config(data)
+    assert any("roi_polygon" in w for w in warnings)
+
+
+def test_validate_confidence_out_of_range():
+    from src.config import validate_config
+    data = _deep_merge(DEFAULTS, {"detector": {"confidence_threshold": 1.5}})
+    warnings = validate_config(data)
+    assert any("confidence_threshold" in w for w in warnings)
+
+
+def test_validate_unknown_vehicle_class():
+    from src.config import validate_config
+    data = _deep_merge(DEFAULTS, {"detector": {"vehicle_classes": ["car", "bicycle"]}})
+    warnings = validate_config(data)
+    assert any("bicycle" in w for w in warnings)

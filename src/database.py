@@ -48,10 +48,26 @@ CREATE INDEX IF NOT EXISTS idx_processed_filename  ON processed_files(filename);
 
 
 class Database:
-    def __init__(self, db_path: Path):
+    def __init__(self, db_path: Path, timezone: str = "UTC"):
         self.db_path = db_path
+        self._timezone = timezone
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_schema()
+
+    def _tz_mod(self) -> str:
+        """SQLite datetime modifier that converts UTC timestamps to local time.
+        Computed at query time so DST transitions are handled correctly."""
+        if self._timezone in ("UTC", ""):
+            return "+0 hours"
+        try:
+            from zoneinfo import ZoneInfo
+            tz = ZoneInfo(self._timezone)
+            offset_sec = datetime.now(tz).utcoffset().total_seconds()
+            hours = offset_sec / 3600
+            sign = "+" if hours >= 0 else ""
+            return f"{sign}{hours:g} hours"
+        except Exception:
+            return "+0 hours"
 
     @contextmanager
     def _connect(self) -> Generator[sqlite3.Connection, None, None]:
@@ -173,13 +189,14 @@ class Database:
         vehicle_type: str = "all",
     ) -> list[dict]:
         """Returns all crossings matching filters, ordered by timestamp (for CSV export)."""
+        tzmod = self._tz_mod()
         clauses: list[str] = []
-        params: dict = {}
+        params: dict = {"tzmod": tzmod}
         if date_from:
-            clauses.append("date(timestamp) >= :date_from")
+            clauses.append("date(datetime(timestamp, :tzmod)) >= :date_from")
             params["date_from"] = date_from
         if date_to:
-            clauses.append("date(timestamp) <= :date_to")
+            clauses.append("date(datetime(timestamp, :tzmod)) <= :date_to")
             params["date_to"] = date_to
         if vehicle_type != "all":
             clauses.append("vehicle_type = :vtype")
@@ -200,39 +217,40 @@ class Database:
     # ------------------------------------------------------------------ #
 
     def get_hourly_stats(self, date_str: str, vehicle_type: str = "all") -> list[dict]:
-        """Returns list of {hour, count} for a given date (YYYY-MM-DD)."""
+        """Returns list of {hour, count} for a given date (YYYY-MM-DD) in local time."""
+        tzmod = self._tz_mod()
         type_filter = "" if vehicle_type == "all" else "AND vehicle_type = :vtype"
         query = f"""
             SELECT
-                CAST(strftime('%H', timestamp) AS INTEGER) AS hour,
+                CAST(strftime('%H', datetime(timestamp, :tzmod)) AS INTEGER) AS hour,
                 COUNT(*) AS count
             FROM crossings
-            WHERE date(timestamp) = :date
+            WHERE date(datetime(timestamp, :tzmod)) = :date
             {type_filter}
             GROUP BY hour
             ORDER BY hour
         """
-        params = {"date": date_str, "vtype": vehicle_type}
+        params = {"date": date_str, "vtype": vehicle_type, "tzmod": tzmod}
         with self._connect() as conn:
             rows = conn.execute(query, params).fetchall()
-        # Fill in all 24 hours
         hourly = {r["hour"]: r["count"] for r in rows}
         return [{"hour": h, "count": hourly.get(h, 0)} for h in range(24)]
 
     def get_daily_stats(self, days: int = 30, vehicle_type: str = "all") -> list[dict]:
-        """Returns list of {date, count} for the last N days."""
+        """Returns list of {date, count} for the last N days (dates in local time)."""
+        tzmod = self._tz_mod()
         type_filter = "" if vehicle_type == "all" else "AND vehicle_type = :vtype"
         query = f"""
             SELECT
-                date(timestamp) AS day,
+                date(datetime(timestamp, :tzmod)) AS day,
                 COUNT(*) AS count
             FROM crossings
-            WHERE date(timestamp) >= date('now', :offset)
+            WHERE date(datetime(timestamp, :tzmod)) >= date(datetime('now', :tzmod), :offset)
             {type_filter}
             GROUP BY day
             ORDER BY day
         """
-        params = {"offset": f"-{days} days", "vtype": vehicle_type}
+        params = {"offset": f"-{days} days", "vtype": vehicle_type, "tzmod": tzmod}
         with self._connect() as conn:
             rows = conn.execute(query, params).fetchall()
         return [{"date": r["day"], "count": r["count"]} for r in rows]
@@ -252,21 +270,25 @@ class Database:
         }
 
     def get_vehicle_type_breakdown(self, date_str: str) -> list[dict]:
+        tzmod = self._tz_mod()
         query = """
             SELECT vehicle_type, COUNT(*) AS count
             FROM crossings
-            WHERE date(timestamp) = :date
+            WHERE date(datetime(timestamp, :tzmod)) = :date
             GROUP BY vehicle_type
             ORDER BY count DESC
         """
         with self._connect() as conn:
-            rows = conn.execute(query, {"date": date_str}).fetchall()
+            rows = conn.execute(query, {"date": date_str, "tzmod": tzmod}).fetchall()
         return [{"vehicle_type": r["vehicle_type"], "count": r["count"]} for r in rows]
 
     def get_available_dates(self) -> list[str]:
+        tzmod = self._tz_mod()
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT DISTINCT date(timestamp) AS day FROM crossings ORDER BY day DESC LIMIT 90"
+                "SELECT DISTINCT date(datetime(timestamp, :tzmod)) AS day "
+                "FROM crossings ORDER BY day DESC LIMIT 90",
+                {"tzmod": tzmod},
             ).fetchall()
         return [r["day"] for r in rows]
 
@@ -433,31 +455,33 @@ class Database:
             return cur.rowcount
 
     def get_calendar_stats(self, year: int, month: int) -> list[dict]:
-        """Returns daily counts for a calendar month."""
+        """Returns daily counts for a calendar month (dates in local time)."""
         import calendar as _cal
+        tzmod = self._tz_mod()
         last_day = _cal.monthrange(year, month)[1]
         date_from = f"{year:04d}-{month:02d}-01"
         date_to   = f"{year:04d}-{month:02d}-{last_day:02d}"
         query = """
-            SELECT date(timestamp) AS day, COUNT(*) AS count
+            SELECT date(datetime(timestamp, :tzmod)) AS day, COUNT(*) AS count
             FROM crossings
-            WHERE date(timestamp) BETWEEN :from AND :to
+            WHERE date(datetime(timestamp, :tzmod)) BETWEEN :from AND :to
             GROUP BY day
         """
         with self._connect() as conn:
-            rows = conn.execute(query, {"from": date_from, "to": date_to}).fetchall()
+            rows = conn.execute(query, {"from": date_from, "to": date_to, "tzmod": tzmod}).fetchall()
         return [{"date": r["day"], "count": r["count"]} for r in rows]
 
     def get_direction_stats(self, date_str: str) -> dict:
-        """Returns direction counts for a given date. Only crossings with direction != NULL."""
+        """Returns direction counts for a given date (local time). Only non-NULL directions."""
+        tzmod = self._tz_mod()
         query = """
             SELECT direction, COUNT(*) AS count
             FROM crossings
-            WHERE date(timestamp) = :date AND direction IS NOT NULL
+            WHERE date(datetime(timestamp, :tzmod)) = :date AND direction IS NOT NULL
             GROUP BY direction
         """
         with self._connect() as conn:
-            rows = conn.execute(query, {"date": date_str}).fetchall()
+            rows = conn.execute(query, {"date": date_str, "tzmod": tzmod}).fetchall()
         result = {"left_to_right": 0, "right_to_left": 0}
         for r in rows:
             if r["direction"] in result:

@@ -66,11 +66,30 @@ def setup_logging(level: str, log_dir: Path, max_mb: int, backup_count: int):
 logger = logging.getLogger(__name__)
 
 _shutdown = threading.Event()
+_processing_start: "float | None" = None
+_PROCESSING_TIMEOUT_SEC = 600  # 10 min max per file
 
 
 def _handle_signal(signum, frame):
-    logger.info("Signal %s reçu — arrêt en cours…", signum)
+    logger.info("Signal %s reçu — arrêt en cours… (fichier en cours terminé avant fermeture)", signum)
     _shutdown.set()
+
+
+def _watchdog_loop():
+    """Daemon thread: force-kills the process if a single file takes too long."""
+    while not _shutdown.is_set():
+        _shutdown.wait(timeout=30)
+        start = _processing_start
+        if start is not None:
+            elapsed = time.monotonic() - start
+            if elapsed > _PROCESSING_TIMEOUT_SEC:
+                logger.error(
+                    "Timeout de traitement : bloqué depuis %d s — arrêt forcé.",
+                    int(elapsed),
+                )
+                import os as _os
+                _os.kill(_os.getpid(), signal.SIGTERM)
+                return
 
 
 def _auto_purge(config, db: Database):
@@ -206,8 +225,10 @@ def _process_file(
     motion_fp: str | None = None,
     prefetch_future: "Future | None" = None,
 ):
+    global _processing_start
     filename = video_path.name
     logger.info("=== Traitement : %s ===", filename)
+    _processing_start = time.monotonic()
 
     err = _check_video(video_path)
     if err:
@@ -282,6 +303,8 @@ def _process_file(
         logger.exception("Erreur lors du traitement de %s : %s", filename, e)
         db.mark_file_error(filename, str(e))
         progress_tracker.finish_file()
+    finally:
+        _processing_start = None
 
 
 def main():
@@ -302,7 +325,7 @@ def main():
     logger.info("Dashboard        : http://0.0.0.0:%d", config.dashboard_port)
     logger.info("Calibration      : http://0.0.0.0:%d/calibration/", config.dashboard_port)
 
-    db = Database(config.db_path)
+    db = Database(config.db_path, timezone=config.timezone)
     _auto_purge(config, db)
     _check_and_reset_if_config_changed(config, db)
     watcher = FileWatcher(config, db)
@@ -311,6 +334,8 @@ def main():
 
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
+
+    threading.Thread(target=_watchdog_loop, daemon=True, name="watchdog").start()
 
     # Un seul serveur web (dashboard + calibration)
     dashboard_thread = threading.Thread(

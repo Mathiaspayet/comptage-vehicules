@@ -108,6 +108,24 @@ def test_delete_old_crossings(tmp_db):
     assert remaining[0]["source_file"] == "new.mp4"
 
 
+def test_timezone_aware_hourly(tmp_path):
+    """A crossing at 23:00 UTC should appear in the next day for UTC+2."""
+    from src.database import Database
+    db = Database(tmp_path / "tz_test.db", timezone="Europe/Paris")
+    # Insert a crossing at 23:30 UTC on 2026-01-15 (UTC+1 in January → 00:30 Jan 16)
+    db.insert_crossings_batch([{
+        "timestamp": "2026-01-15T23:30:00",
+        "vehicle_type": "car", "direction": None,
+        "confidence": 0.9, "source_file": "v.mp4",
+    }])
+    # UTC date 2026-01-15 should have 0 hits (crossing is at 00:30 Jan 16 local time)
+    stats_15 = db.get_hourly_stats("2026-01-15")
+    assert sum(h["count"] for h in stats_15) == 0
+    # UTC+1 date 2026-01-16 should have 1 hit
+    stats_16 = db.get_hourly_stats("2026-01-16")
+    assert sum(h["count"] for h in stats_16) == 1
+
+
 def test_crossings_export_filters(tmp_db):
     today = datetime.utcnow().strftime("%Y-%m-%d")
     tmp_db.insert_crossings_batch([

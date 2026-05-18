@@ -47,16 +47,17 @@ def create_debug_blueprint(config: Config) -> Blueprint:
         # Run YOLO
         try:
             from ultralytics import YOLO
+            model_name = config.model_name
             model_dir = config.model_dir
-            ov_path = model_dir / "yolov8n_openvino_model"
-            pt_path = model_dir / "yolov8n.pt"
+            ov_path = model_dir / f"{model_name}_openvino_model"
+            pt_path = model_dir / f"{model_name}.pt"
 
             if ov_path.exists():
                 model = YOLO(str(ov_path))
             elif pt_path.exists():
                 model = YOLO(str(pt_path))
             else:
-                model = YOLO("yolov8n.pt")
+                model = YOLO(f"{model_name}.pt")
 
             conf = float(conf_override) if conf_override else 0.15  # very low threshold for debug
             results = model(frame, conf=conf, verbose=False)

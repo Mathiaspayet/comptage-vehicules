@@ -787,7 +787,7 @@ async function resetSelected() {
   const sel = getSelected();
   if (!sel.length) { alert('Cochez au moins un fichier.'); return; }
   if (!confirm(`Remettre ${sel.length} fichier(s) en attente de traitement ?`)) return;
-  const res  = await fetch('/api/files/reset', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({filenames: sel}) });
+  const res  = await fetch('/api/files/reset', { method:'POST', headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'}, body: JSON.stringify({filenames: sel}) });
   const data = await res.json();
   if (data.ok) { loadFiles(); loadPending(); alert(`${data.reset_count} fichier(s) remis en attente.`); }
   else alert('Erreur : ' + data.error);
@@ -795,7 +795,7 @@ async function resetSelected() {
 
 async function resetAll() {
   if (!confirm('Remettre TOUS les fichiers en attente ? Toutes les analyses seront refaites.')) return;
-  const res  = await fetch('/api/files/reset', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({}) });
+  const res  = await fetch('/api/files/reset', { method:'POST', headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'}, body: JSON.stringify({}) });
   const data = await res.json();
   if (data.ok) { loadFiles(); loadPending(); alert(`${data.reset_count} fichier(s) réinitialisés.`); }
   else alert('Erreur : ' + data.error);
@@ -806,7 +806,7 @@ async function resetAll() {
 ───────────────────────────────────────────────────────────── */
 async function skipAllPending() {
   if (!confirm('Ignorer tous les fichiers en attente ? Ils seront marqués comme traités sans analyse. Seuls les nouveaux fichiers seront analysés à partir de maintenant.')) return;
-  const res  = await fetch('/api/files/skip-all', { method:'POST' });
+  const res  = await fetch('/api/files/skip-all', { method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'} });
   const data = await res.json();
   if (data.ok) { loadFiles(); loadPending(); alert(`${data.skipped_count} fichier(s) ignoré(s). L'analyse reprendra sur les prochains fichiers.`); }
   else alert('Erreur : ' + data.error);
@@ -850,7 +850,7 @@ async function loadMaintenance() {
 
 async function cleanLogs() {
   if (!confirm('Supprimer les fichiers journaux archivés (*.log.1, *.log.2, *.log.3) ?')) return;
-  const res  = await fetch('/api/maintenance/clean-logs', { method:'POST' });
+  const res  = await fetch('/api/maintenance/clean-logs', { method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'} });
   const data = await res.json();
   if (data.ok) {
     const freed = data.freed_bytes < 1024*1024 ? `${(data.freed_bytes/1024).toFixed(1)} Ko` : `${(data.freed_bytes/1024/1024).toFixed(1)} Mo`;
@@ -861,7 +861,7 @@ async function cleanLogs() {
 
 async function clearMotionCache() {
   if (!confirm('Vider le cache de mouvement ? Les segments seront recalculés lors du prochain traitement.')) return;
-  const res  = await fetch('/api/maintenance/clear-motion-cache', { method:'POST' });
+  const res  = await fetch('/api/maintenance/clear-motion-cache', { method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'} });
   const data = await res.json();
   if (data.ok) {
     alert(`Cache vidé — ${data.deleted} entrée(s) supprimée(s).`);
@@ -876,7 +876,7 @@ async function purgeOldData() {
   if (isNaN(n) || n <= 0) { alert('Valeur invalide.'); return; }
   if (!confirm(`Supprimer définitivement tous les franchissements de plus de ${n} jours ?`)) return;
   const res  = await fetch('/api/maintenance/purge-data', {
-    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({days: n})
+    method: 'POST', headers: {'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'}, body: JSON.stringify({days: n})
   });
   const data = await res.json();
   if (data.ok) {

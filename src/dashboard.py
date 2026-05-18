@@ -37,6 +37,14 @@ def create_app(config: Config, db: Database) -> Flask:
     app = Flask(__name__, template_folder=str(template_dir))
     app.config["JSON_SORT_KEYS"] = False
 
+    # ── Protection CSRF : tous les POST/DELETE doivent être AJAX ───
+    @app.before_request
+    def _check_csrf():
+        if request.method not in ("POST", "PUT", "DELETE", "PATCH"):
+            return None
+        if request.headers.get("X-Requested-With") != "XMLHttpRequest":
+            return jsonify({"error": "Requête invalide (header X-Requested-With manquant)"}), 403
+
     # ── Auth basique optionnelle ────────────────────────────────────
     @app.before_request
     def _check_auth():

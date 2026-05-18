@@ -222,7 +222,7 @@ function resetAll() { linePts=[]; roiPts=[]; roiClosed=false; draw(); updateCoor
 async function saveConfig() {
   if (linePts.length!==2) { showMsg("Définissez d'abord les deux points de la ligne.", 'err'); return; }
   const payload = { line_p1:[linePts[0].x,linePts[0].y], line_p2:[linePts[1].x,linePts[1].y], roi_polygon:roiClosed?roiPts.map(p=>[p.x,p.y]):[] };
-  const res  = await fetch(`${BASE}/api/save`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+  const res  = await fetch(`${BASE}/api/save`, { method:'POST', headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'}, body:JSON.stringify(payload) });
   const data = await res.json();
   if (data.ok) showMsg(`✅ Enregistré dans ${data.saved_to}. Redémarrez le conteneur pour appliquer.`, 'ok');
   else showMsg('❌ ' + data.error, 'err');

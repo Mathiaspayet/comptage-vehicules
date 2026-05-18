@@ -447,7 +447,7 @@ async function saveConfig() {
     log_level:                document.getElementById('log_level').value,
   };
 
-  const res  = await fetch('/config/api/save', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+  const res  = await fetch('/config/api/save', { method:'POST', headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'}, body:JSON.stringify(payload) });
   const data = await res.json();
   if (data.ok) {
     showMsg('✅ Paramètres enregistrés — pris en compte au prochain scan.', 'ok');
@@ -463,14 +463,14 @@ async function saveAndRestart() {
   const msg = document.getElementById('msg');
   if (msg.className !== 'ok') return;
   showMsg('⏳ Redémarrage en cours… retour au tableau de bord dans 12 secondes.', 'warn');
-  await fetch('/config/api/restart', { method: 'POST' });
+  await fetch('/config/api/restart', { method: 'POST', headers:{'X-Requested-With':'XMLHttpRequest'} });
   setTimeout(() => location.href = '/', 12000);
 }
 
 async function manualRestart() {
   if (!confirm('Redémarrer le service sans sauvegarder ?')) return;
   showMsg('⏳ Redémarrage en cours… retour au tableau de bord dans 12 secondes.', 'warn');
-  await fetch('/config/api/restart', { method: 'POST' });
+  await fetch('/config/api/restart', { method: 'POST', headers:{'X-Requested-With':'XMLHttpRequest'} });
   setTimeout(() => location.href = '/', 12000);
 }
 

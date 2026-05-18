@@ -9,7 +9,7 @@ from pathlib import Path
 import yaml
 from flask import Blueprint, jsonify, render_template, request
 
-from .config import Config, DEFAULTS, _deep_merge
+from .config import Config, DEFAULTS, _deep_merge, validate_config
 
 logger = logging.getLogger(__name__)
 
@@ -88,12 +88,22 @@ def create_config_blueprint(config: Config) -> Blueprint:
                 "dashboard": {
                     "port": 8080,
                     "default_days": int(data.get("default_days", 30)),
+                    "username": str(data.get("dashboard_username", "")).strip(),
+                    "password": str(data.get("dashboard_password", "")).strip(),
                 },
                 "database": {"path": "/app/data/vehicles.db"},
+                "data": {
+                    "retention_days": int(data.get("data_retention_days", 0)),
+                },
                 "logging": {
                     "level": data.get("log_level", "INFO"),
                     "max_size_mb": 10,
                     "backup_count": 3,
+                },
+                "performance": {
+                    "prefetch_motion": bool(data.get("prefetch_motion", True)),
+                    "backlog_throttle_threshold": int(data.get("backlog_throttle_threshold", 10)),
+                    "backlog_fps_factor": float(data.get("backlog_fps_factor", 0.5)),
                 },
             }
 
@@ -102,9 +112,14 @@ def create_config_blueprint(config: Config) -> Blueprint:
             if "counting" in existing:
                 cfg["counting"] = existing["counting"]
 
+            merged_check = _deep_merge(DEFAULTS, cfg)
+            warnings = validate_config(merged_check)
+            for w in warnings:
+                logger.warning("Config : %s", w)
+
             _save_raw(cfg)
             logger.info("Configuration sauvegardée via l'interface web.")
-            return jsonify({"ok": True})
+            return jsonify({"ok": True, "warnings": warnings})
 
         except Exception as e:
             logger.error("Erreur sauvegarde config : %s", e)

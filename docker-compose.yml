@@ -51,6 +51,8 @@ services:
         max-size: "10m"
         max-file: "3"
 
+    stop_grace_period: 2m
+
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8080/api/status || exit 1"]
       interval: 30s
