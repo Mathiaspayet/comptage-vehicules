@@ -22,6 +22,8 @@ class FileWatcher:
     def __init__(self, config: Config, db: Database):
         self.config = config
         self.db = db
+        # name → (size, timestamp when size was first seen at this value)
+        self._size_cache: dict[str, tuple[int, float]] = {}
 
     def scan_new_files(self) -> list[Path]:
         folder = self.config.video_folder
@@ -33,8 +35,11 @@ class FileWatcher:
         if not video_files:
             return []
 
-        # Only process files old enough (not still being written by camera)
-        ready_files = [f for f in video_files if self._is_file_old_enough(f)]
+        now = time.time()
+        stable_delay = self.config.file_stable_delay
+
+        # Only process files whose size has been stable for file_stable_delay seconds
+        ready_files = [f for f in video_files if self._is_file_stable(f, now, stable_delay)]
 
         pending = [f for f in ready_files if not self.db.is_file_processed(f.name)]
 
@@ -54,13 +59,21 @@ class FileWatcher:
 
         return pending
 
-    def _is_file_old_enough(self, path: Path) -> bool:
-        """Returns True if file is old enough to be considered completely written."""
+    def _is_file_stable(self, path: Path, now: float, stable_delay: int) -> bool:
+        """Returns True if file size hasn't changed for stable_delay seconds."""
         try:
-            age_sec = time.time() - path.stat().st_mtime
-            return age_sec >= self.config.min_file_age_minutes * 60
+            current_size = path.stat().st_size
         except FileNotFoundError:
+            self._size_cache.pop(path.name, None)
             return False
+
+        cached = self._size_cache.get(path.name)
+        if cached is None or cached[0] != current_size:
+            self._size_cache[path.name] = (current_size, now)
+            return False
+
+        _, stable_since = cached
+        return (now - stable_since) >= stable_delay
 
     def extract_datetime(self, filename: str) -> datetime | None:
         """
