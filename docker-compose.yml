@@ -37,44 +37,12 @@ services:
       - CONFIG_PATH=/app/data/config.yaml
       - TZ=Europe/Paris  # Fuseau horaire du NAS — à ajuster si besoin
 
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
 
-  # --------------------------------------------------------
-  # Watchtower — mise à jour automatique du conteneur
-  # Surveille GHCR et redémarre l'app quand une nouvelle
-  # image est disponible (après chaque git push).
-  #
-  # NOTE : si un autre Watchtower tourne déjà sur le NAS
-  # (ex. pour audio-recorder), supprimez ce bloc et ajoutez
-  # "comptage-vehicules" à la commande de l'autre instance.
-  # Ex :  command: audio-recorder comptage-vehicules
-  # --------------------------------------------------------
-  watchtower:
-    image: containrrr/watchtower:latest
-    container_name: watchtower-comptage
-    restart: always
-
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-
-    environment:
-      # Vérifier les mises à jour toutes les 10 minutes
-      - WATCHTOWER_POLL_INTERVAL=600
-      # Supprimer les anciennes images après mise à jour
-      - WATCHTOWER_CLEANUP=true
-      # Image privée GHCR : décommentez si votre image est privée
-      # - REPO_USER=VOTRE_COMPTE_GITHUB
-      # - REPO_PASS=ghp_VOTRE_TOKEN_GITHUB
-
-    # Surveille UNIQUEMENT ce conteneur (filtre par nom)
-    command: comptage-vehicules
-
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "5m"
-        max-file: "2"
