@@ -415,7 +415,7 @@ async function saveConfig() {
 
   const res  = await fetch('/config/api/save', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
   const data = await res.json();
-  if (data.ok) showMsg('✅ Configuration enregistrée.', 'ok');
+  if (data.ok) showMsg('✅ Configuration enregistrée — prise en compte au prochain scan (pas de redémarrage nécessaire). Seul un changement de port ou de base de données requiert un redémarrage.', 'ok');
   else showMsg('❌ ' + data.error, 'err');
 }
 
