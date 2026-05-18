@@ -33,8 +33,12 @@
     .readonly-field { background: #f7f8fa; border: 1px solid #ddd; border-radius: 4px; padding: .45rem .65rem; font-size: .85rem; color: #666; font-family: monospace; }
     .actions { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; margin-top: 1.5rem; }
     .btn { padding: .55rem 1.2rem; border: none; border-radius: 4px; font-size: .9rem; cursor: pointer; font-weight: 600; }
-    .btn-save    { background: #1a3a5c; color: #fff; }
-    .btn-save:hover { background: #2a5080; }
+    .btn-save         { background: #1a3a5c; color: #fff; }
+    .btn-save:hover   { background: #2a5080; }
+    .btn-restart      { background: #b45309; color: #fff; }
+    .btn-restart:hover{ background: #92400e; }
+    .btn-manual-restart { background: none; color: #6b7280; border: 1px solid #d1d5db; font-size: .78rem; padding: .3rem .7rem; font-weight: 400; }
+    .btn-manual-restart:hover { background: #f3f4f6; }
     #msg { font-size: .85rem; padding: .4rem .8rem; border-radius: 4px; }
     #msg.ok   { background: #dcfce7; color: #166534; }
     #msg.err  { background: #fee2e2; color: #991b1b; }
@@ -275,7 +279,9 @@
 
   <!-- ACTIONS -->
   <div class="actions">
-    <button class="btn btn-save" onclick="saveAndRestart()">💾 Enregistrer et redémarrer</button>
+    <button id="btn-save"         class="btn btn-save"    onclick="saveConfig()">💾 Enregistrer</button>
+    <button id="btn-save-restart" class="btn btn-restart" onclick="saveAndRestart()" style="display:none">💾 Enregistrer et redémarrer</button>
+    <button class="btn btn-manual-restart" onclick="manualRestart()" title="Forcer le redémarrage du service sans sauvegarder">↺ Redémarrer</button>
     <span id="msg"></span>
   </div>
 
@@ -381,6 +387,8 @@ async function loadConfig() {
   });
 
   updateEstimate();
+  _snapshotInitialValues();
+  updateActionButtons();
 }
 
 async function saveConfig() {
@@ -415,8 +423,13 @@ async function saveConfig() {
 
   const res  = await fetch('/config/api/save', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
   const data = await res.json();
-  if (data.ok) showMsg('✅ Configuration enregistrée — prise en compte au prochain scan (pas de redémarrage nécessaire). Seul un changement de port ou de base de données requiert un redémarrage.', 'ok');
-  else showMsg('❌ ' + data.error, 'err');
+  if (data.ok) {
+    showMsg('✅ Paramètres enregistrés — pris en compte au prochain scan.', 'ok');
+    _snapshotInitialValues(); // reset baseline after save
+    updateActionButtons();
+  } else {
+    showMsg('❌ ' + data.error, 'err');
+  }
 }
 
 async function saveAndRestart() {
@@ -428,11 +441,56 @@ async function saveAndRestart() {
   setTimeout(() => location.href = '/', 12000);
 }
 
+async function manualRestart() {
+  if (!confirm('Redémarrer le service sans sauvegarder ?')) return;
+  showMsg('⏳ Redémarrage en cours… retour au tableau de bord dans 12 secondes.', 'warn');
+  await fetch('/config/api/restart', { method: 'POST' });
+  setTimeout(() => location.href = '/', 12000);
+}
+
 function showMsg(text, type) {
   const el = document.getElementById('msg');
   el.textContent = text;
   el.className   = type;
 }
+
+// ── Boutons dynamiques ─────────────────────────────────────────────
+// IDs des champs dont le changement nécessite un redémarrage complet.
+// Port et chemin DB ne sont pas éditables via l'UI donc la liste est vide
+// pour l'instant — à compléter si ces champs deviennent éditables.
+const RESTART_REQUIRED_IDS = new Set([]);
+
+let _initialValues = {};
+
+function _snapshotInitialValues() {
+  RESTART_REQUIRED_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    _initialValues[id] = el.type === 'checkbox' ? el.checked : el.value;
+  });
+}
+
+function _needsRestart() {
+  for (const id of RESTART_REQUIRED_IDS) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    const cur = el.type === 'checkbox' ? el.checked : el.value;
+    if (String(cur) !== String(_initialValues[id])) return true;
+  }
+  return false;
+}
+
+function updateActionButtons() {
+  const restart = _needsRestart();
+  document.getElementById('btn-save').style.display         = restart ? 'none' : '';
+  document.getElementById('btn-save-restart').style.display = restart ? ''     : 'none';
+}
+
+// Attach listeners to all restart-required fields
+RESTART_REQUIRED_IDS.forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('change', updateActionButtons);
+});
 
 loadConfig();
 </script>
