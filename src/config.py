@@ -28,12 +28,14 @@ DEFAULTS = {
     },
     "detector": {
         "sample_fps": 4,
+        "imgsz": 320,
         "confidence_threshold": 0.35,
         "vehicle_classes": ["car", "motorcycle", "bus", "truck"],
         "count_direction": False,
         "model_dir": "/app/data/models",
         "night_confidence_threshold": 0.18,
         "night_enhance": True,
+        "roi_crop": True,
     },
     "location": {
         "latitude": 43.67,
@@ -150,6 +152,14 @@ class Config:
     @property
     def confidence_threshold(self) -> float:
         return float(self.get("detector", "confidence_threshold"))
+
+    @property
+    def imgsz(self) -> int:
+        return int(self.get("detector", "imgsz", default=320))
+
+    @property
+    def roi_crop(self) -> bool:
+        return bool(self.get("detector", "roi_crop", default=True))
 
     @property
     def night_confidence_threshold(self) -> float:
