@@ -1,5 +1,6 @@
 """Module Détection IA & Comptage — YOLO + ByteTrack + line crossing."""
 import logging
+import math
 import shutil
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -197,6 +198,39 @@ class VehicleDetector:
         )
         return crossings
 
+    def _sunrise_sunset_local(self, dt: datetime) -> tuple[float, float]:
+        """Returns (sunrise_hour, sunset_hour) in local time for the configured location."""
+        lat = self.config.latitude
+        lon = self.config.longitude
+        tz_offset = self.config.timezone_offset
+        n = dt.timetuple().tm_yday
+        # Solar declination
+        b = math.radians(360 / 365 * (n - 81))
+        decl = math.radians(23.45 * math.sin(b))
+        # Hour angle at sunrise
+        lat_r = math.radians(lat)
+        cos_ha = -math.tan(lat_r) * math.tan(decl)
+        cos_ha = max(-1.0, min(1.0, cos_ha))
+        ha = math.degrees(math.acos(cos_ha))
+        # UTC hours, then convert to local
+        sunrise_utc = 12 - ha / 15 - lon / 15
+        sunset_utc = 12 + ha / 15 - lon / 15
+        return sunrise_utc + tz_offset, sunset_utc + tz_offset
+
+    def _is_night(self, dt: datetime | None) -> bool:
+        if dt is None:
+            return False
+        sunrise, sunset = self._sunrise_sunset_local(dt)
+        h = dt.hour + dt.minute / 60
+        return h < sunrise or h >= sunset
+
+    def _enhance_frame(self, frame: np.ndarray) -> np.ndarray:
+        lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+        l = clahe.apply(l)
+        return cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
+
     def _analyze_frame(
         self,
         frame: np.ndarray,
@@ -210,11 +244,16 @@ class VehicleDetector:
         track_types: dict,
         track_confs: dict,
     ) -> list[CrossingEvent]:
+        night = self._is_night(video_start_dt)
+        conf = self.config.night_confidence_threshold if night else self.config.confidence_threshold
+        if night and self.config.night_enhance:
+            frame = self._enhance_frame(frame)
+
         results = self._model.track(
             frame,
             persist=True,
             classes=self._active_class_ids,
-            conf=self.config.confidence_threshold,
+            conf=conf,
             verbose=False,
         )
 

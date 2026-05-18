@@ -27,11 +27,18 @@ DEFAULTS = {
         "segment_padding_seconds": 1.0,
     },
     "detector": {
-        "sample_fps": 2,
+        "sample_fps": 4,
         "confidence_threshold": 0.35,
         "vehicle_classes": ["car", "motorcycle", "bus", "truck"],
         "count_direction": False,
         "model_dir": "/app/data/models",
+        "night_confidence_threshold": 0.18,
+        "night_enhance": True,
+    },
+    "location": {
+        "latitude": 43.67,
+        "longitude": 1.42,
+        "timezone_offset": 1,
     },
     "counting": {
         "line_p1": [0, 300],
@@ -143,6 +150,26 @@ class Config:
     @property
     def confidence_threshold(self) -> float:
         return float(self.get("detector", "confidence_threshold"))
+
+    @property
+    def night_confidence_threshold(self) -> float:
+        return float(self.get("detector", "night_confidence_threshold"))
+
+    @property
+    def night_enhance(self) -> bool:
+        return bool(self.get("detector", "night_enhance"))
+
+    @property
+    def latitude(self) -> float:
+        return float(self.get("location", "latitude"))
+
+    @property
+    def longitude(self) -> float:
+        return float(self.get("location", "longitude"))
+
+    @property
+    def timezone_offset(self) -> int:
+        return int(self.get("location", "timezone_offset"))
 
     @property
     def vehicle_classes(self) -> list:
