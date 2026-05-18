@@ -17,7 +17,8 @@ DEFAULTS = {
     "ingestion": {
         "scan_interval_seconds": 60,
         "file_stable_delay_seconds": 120,
-        "max_recent_files": 5,
+        "max_recent_files": 0,
+        "min_file_age_minutes": 45,
     },
     "motion_filter": {
         "sample_fps": 2,
@@ -113,7 +114,11 @@ class Config:
     @property
     def max_recent_files(self) -> int:
         """Max number of recent files to process per scan (0 = unlimited)."""
-        return int(self.get("ingestion", "max_recent_files", default=5))
+        return int(self.get("ingestion", "max_recent_files", default=0))
+
+    @property
+    def min_file_age_minutes(self) -> int:
+        return int(self.get("ingestion", "min_file_age_minutes", default=45))
 
     @property
     def motion_sample_fps(self) -> float:

@@ -59,8 +59,8 @@ def create_config_blueprint(config: Config) -> Blueprint:
                 "timezone": data.get("timezone", "Europe/Paris").strip(),
                 "ingestion": {
                     "scan_interval_seconds": int(data.get("scan_interval_seconds", 60)),
-                    "file_stable_delay_seconds": int(data.get("file_stable_delay_seconds", 120)),
-                    "max_recent_files": int(data.get("max_recent_files", 5)),
+                    "max_recent_files": int(data.get("max_recent_files", 0)),
+                    "min_file_age_minutes": int(data.get("min_file_age_minutes", 45)),
                 },
                 "motion_filter": {
                     "sample_fps": float(data.get("motion_sample_fps", 2)),
@@ -110,5 +110,38 @@ def create_config_blueprint(config: Config) -> Blueprint:
 
         threading.Thread(target=_do_restart, daemon=True).start()
         return jsonify({"ok": True, "message": "Redémarrage en cours…"})
+
+    @bp.route("/api/estimate")
+    def api_estimate():
+        """Estimates processing time per 30-min video based on current config."""
+        raw = _load_raw()
+        merged = _deep_merge(DEFAULTS, raw)
+
+        motion_fps = float(merged.get("motion_filter", {}).get("sample_fps", 2))
+        detector_fps = float(merged.get("detector", {}).get("sample_fps", 2))
+
+        # Empirical constants for NAS DS218+ / Intel Celeron J3355 with OpenVINO
+        # Calibrated: at motion_fps=6, a 33-min video takes ~40 min for motion phase
+        MOTION_SEC_PER_FRAME = 0.20   # seconds per sampled frame (motion OpenCV)
+        DETECT_SEC_PER_FRAME = 0.50   # seconds per YOLO frame (with OpenVINO)
+        ACTIVE_FRACTION = 0.30        # typical fraction of video with motion
+        VIDEO_MINUTES = 30.0
+
+        motion_frames = VIDEO_MINUTES * 60 * motion_fps
+        motion_time_sec = motion_frames * MOTION_SEC_PER_FRAME
+
+        detect_frames = VIDEO_MINUTES * 60 * ACTIVE_FRACTION * detector_fps
+        detect_time_sec = detect_frames * DETECT_SEC_PER_FRAME
+
+        total_min = round((motion_time_sec + detect_time_sec) / 60, 1)
+
+        return jsonify({
+            "video_minutes": VIDEO_MINUTES,
+            "estimated_minutes": total_min,
+            "motion_contribution_min": round(motion_time_sec / 60, 1),
+            "detect_contribution_min": round(detect_time_sec / 60, 1),
+            "motion_fps": motion_fps,
+            "detector_fps": detector_fps,
+        })
 
     return bp

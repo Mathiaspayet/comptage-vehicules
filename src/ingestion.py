@@ -24,35 +24,23 @@ class FileWatcher:
         self.db = db
 
     def scan_new_files(self) -> list[Path]:
-        """
-        Scans the video folder (and one level of subfolders) and returns a
-        sorted list of new, complete video files not yet processed.
-
-        The Reolink/Interphone camera creates subfolders per time slot,
-        e.g.:  surveillance/Interphone/20260427PM/Interphone-20260427-140210-…mp4
-        """
         folder = self.config.video_folder
         if not folder.exists():
             logger.warning("Dossier vidéo inaccessible : %s", folder)
             return []
 
         video_files = _collect_video_files(folder)
-
         if not video_files:
             return []
 
-        # Separate unprocessed files (oldest first)
-        pending = [f for f in video_files if not self.db.is_file_processed(f.name)]
+        # Only process files old enough (not still being written by camera)
+        ready_files = [f for f in video_files if self._is_file_old_enough(f)]
 
-        # Skip the most recent file if it might still be open
-        if pending and not self._is_file_complete(pending[-1]):
-            logger.debug("Fichier en cours d'écriture, ignoré : %s", pending[-1].name)
-            pending = pending[:-1]
+        pending = [f for f in ready_files if not self.db.is_file_processed(f.name)]
 
         if not pending:
             return []
 
-        # If max_recent_files is set, skip old backlog and only keep the N most recent
         max_n = self.config.max_recent_files
         if max_n > 0 and len(pending) > max_n:
             to_skip = pending[:-max_n]
@@ -66,38 +54,13 @@ class FileWatcher:
 
         return pending
 
-    def _is_file_complete(self, path: Path) -> bool:
-        """
-        A file is considered complete when its size has not changed
-        during the configured stable delay.
-        """
+    def _is_file_old_enough(self, path: Path) -> bool:
+        """Returns True if file is old enough to be considered completely written."""
         try:
-            size1 = path.stat().st_size
+            age_sec = time.time() - path.stat().st_mtime
+            return age_sec >= self.config.min_file_age_minutes * 60
         except FileNotFoundError:
             return False
-
-        time.sleep(min(self.config.file_stable_delay, 5))  # quick check first
-
-        try:
-            size2 = path.stat().st_size
-        except FileNotFoundError:
-            return False
-
-        if size1 != size2:
-            return False
-
-        # If still equal after a short wait, wait the full delay
-        elapsed = min(self.config.file_stable_delay, 5)
-        remaining = self.config.file_stable_delay - elapsed
-        if remaining > 0:
-            time.sleep(remaining)
-            try:
-                size3 = path.stat().st_size
-            except FileNotFoundError:
-                return False
-            return size2 == size3
-
-        return True
 
     def extract_datetime(self, filename: str) -> datetime | None:
         """

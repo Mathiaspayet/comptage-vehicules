@@ -114,6 +114,7 @@ def _process_file(video_path, watcher, motion, detector, db, queue_done: int, qu
     video_start_dt = watcher.extract_datetime(filename)
 
     progress_tracker.start_file(filename, queue_done, queue_total)
+    start_time = time.monotonic()
 
     try:
         # Phase 1 : filtre mouvement
@@ -125,7 +126,7 @@ def _process_file(video_path, watcher, motion, detector, db, queue_done: int, qu
 
         if not segments:
             logger.info("%s — aucun segment actif.", filename)
-            db.mark_file_done(filename, vehicle_count=0)
+            db.mark_file_done(filename, vehicle_count=0, duration_seconds=time.monotonic() - start_time)
             progress_tracker.finish_file()
             return
 
@@ -151,7 +152,7 @@ def _process_file(video_path, watcher, motion, detector, db, queue_done: int, qu
             ]
             db.insert_crossings_batch(crossings)
 
-        db.mark_file_done(filename, vehicle_count=len(events))
+        db.mark_file_done(filename, vehicle_count=len(events), duration_seconds=time.monotonic() - start_time)
         progress_tracker.finish_file()
         logger.info("%s — %d véhicule(s) compté(s).", filename, len(events))
 
