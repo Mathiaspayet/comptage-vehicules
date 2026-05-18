@@ -273,6 +273,15 @@ def create_app(config: Config, db: Database) -> Flask:
                     deleted += 1
         return jsonify({"ok": True, "deleted": deleted, "freed_bytes": freed})
 
+    @app.route("/api/maintenance/clear-motion-cache", methods=["POST"])
+    def api_maintenance_clear_motion_cache():
+        """Delete all cached motion segments."""
+        try:
+            count = db.clear_motion_cache()
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        return jsonify({"ok": True, "deleted": count})
+
     @app.route("/api/journal")
     def api_journal():
         log_file = Path("/app/data/logs/comptage.log")

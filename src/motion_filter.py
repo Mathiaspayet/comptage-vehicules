@@ -71,7 +71,7 @@ class MotionFilter:
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         duration_sec = total_frames / fps
 
-        sample_fps = self.config.motion_sample_fps
+        sample_fps = self.config.effective_motion_fps
         step = max(1, int(fps / sample_fps))  # read every Nth frame
         sampled_total = max(1, total_frames // step)
 

@@ -33,6 +33,13 @@ CREATE TABLE IF NOT EXISTS app_state (
     value           TEXT    NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS motion_cache (
+    filename     TEXT PRIMARY KEY,
+    motion_fp    TEXT NOT NULL,
+    segments_json TEXT NOT NULL,
+    cached_at    TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_crossings_timestamp ON crossings(timestamp);
 CREATE INDEX IF NOT EXISTS idx_crossings_type      ON crossings(vehicle_type);
 CREATE INDEX IF NOT EXISTS idx_crossings_source    ON crossings(source_file);
@@ -347,6 +354,43 @@ class Database:
                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
                 (key, value),
             )
+
+    # ------------------------------------------------------------------ #
+    # Motion cache                                                         #
+    # ------------------------------------------------------------------ #
+
+    def get_motion_cache(self, filename: str, motion_fp: str) -> "list[dict] | None":
+        """Returns cached segments as list of {start_sec, end_sec} or None on miss/stale."""
+        import json as _json
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT segments_json FROM motion_cache WHERE filename = ? AND motion_fp = ?",
+                (filename, motion_fp),
+            ).fetchone()
+        return _json.loads(row["segments_json"]) if row else None
+
+    def set_motion_cache(self, filename: str, motion_fp: str, segments: list) -> None:
+        """Stores serialised segments. segments is a list of {start_sec, end_sec} dicts."""
+        import json as _json
+        now = datetime.utcnow().isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO motion_cache (filename, motion_fp, segments_json, cached_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(filename) DO UPDATE SET
+                    motion_fp = excluded.motion_fp,
+                    segments_json = excluded.segments_json,
+                    cached_at = excluded.cached_at
+                """,
+                (filename, motion_fp, _json.dumps(segments), now),
+            )
+
+    def clear_motion_cache(self) -> int:
+        """Deletes all cached motion segments. Returns number of rows deleted."""
+        with self._connect() as conn:
+            cur = conn.execute("DELETE FROM motion_cache")
+            return cur.rowcount
 
     def get_calendar_stats(self, year: int, month: int) -> list[dict]:
         """Returns daily counts for a calendar month."""

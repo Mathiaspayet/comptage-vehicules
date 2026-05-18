@@ -149,7 +149,7 @@ class VehicleDetector:
         on_progress: Optional[Callable[[int, int], None]] = None,
     ) -> list[CrossingEvent]:
         fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
-        sample_fps = self.config.detector_sample_fps
+        sample_fps = self.config.effective_detector_fps
         step = max(1, int(fps / sample_fps))
 
         total_active_frames = max(1, sum(

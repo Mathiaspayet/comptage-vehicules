@@ -812,7 +812,10 @@ async function loadMaintenance() {
           <div style="font-weight:700;color:#1a3a5c">${fmt(data.total || 0)}</div>
         </div>
       </div>
-      <button onclick="cleanLogs()" style="font-size:.8rem;padding:.28rem .65rem;border:1px solid #6b7280;border-radius:4px;background:#fff;color:#6b7280;cursor:pointer">🗑 Purger les journaux archivés (.log.1, .log.2…)</button>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.25rem">
+        <button onclick="cleanLogs()" style="font-size:.8rem;padding:.28rem .65rem;border:1px solid #6b7280;border-radius:4px;background:#fff;color:#6b7280;cursor:pointer">🗑 Purger les journaux archivés (.log.1, .log.2…)</button>
+        <button onclick="clearMotionCache()" style="font-size:.8rem;padding:.28rem .65rem;border:1px solid #d97706;border-radius:4px;background:#fff;color:#d97706;cursor:pointer">⚡ Vider le cache de mouvement</button>
+      </div>
     `;
   } catch(e) {
     el.innerHTML = '<em style="color:#dc2626">Erreur de chargement</em>';
@@ -826,6 +829,16 @@ async function cleanLogs() {
   if (data.ok) {
     const freed = data.freed_bytes < 1024*1024 ? `${(data.freed_bytes/1024).toFixed(1)} Ko` : `${(data.freed_bytes/1024/1024).toFixed(1)} Mo`;
     alert(`${data.deleted} fichier(s) supprimé(s), ${freed} libérés.`);
+    loadMaintenance();
+  } else alert('Erreur : ' + data.error);
+}
+
+async function clearMotionCache() {
+  if (!confirm('Vider le cache de mouvement ? Les segments seront recalculés lors du prochain traitement.')) return;
+  const res  = await fetch('/api/maintenance/clear-motion-cache', { method:'POST' });
+  const data = await res.json();
+  if (data.ok) {
+    alert(`Cache vidé — ${data.deleted} entrée(s) supprimée(s).`);
     loadMaintenance();
   } else alert('Erreur : ' + data.error);
 }

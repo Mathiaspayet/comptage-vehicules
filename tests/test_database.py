@@ -73,3 +73,20 @@ def test_state_overwrite(tmp_db):
     tmp_db.set_state("key", "first")
     tmp_db.set_state("key", "second")
     assert tmp_db.get_state("key") == "second"
+
+
+def test_motion_cache_miss(tmp_db):
+    assert tmp_db.get_motion_cache("video.mp4", "fp_abc") is None
+
+
+def test_motion_cache_set_get(tmp_db):
+    segments = [{"start_sec": 1.0, "end_sec": 5.0}, {"start_sec": 10.0, "end_sec": 15.0}]
+    tmp_db.set_motion_cache("video.mp4", "fp_abc", segments)
+    result = tmp_db.get_motion_cache("video.mp4", "fp_abc")
+    assert result == segments
+
+
+def test_motion_cache_fp_mismatch(tmp_db):
+    segments = [{"start_sec": 0.0, "end_sec": 3.0}]
+    tmp_db.set_motion_cache("video.mp4", "fp_abc", segments)
+    assert tmp_db.get_motion_cache("video.mp4", "fp_xyz") is None

@@ -62,6 +62,11 @@ DEFAULTS = {
         "max_size_mb": 10,
         "backup_count": 3,
     },
+    "performance": {
+        "prefetch_motion": True,
+        "backlog_throttle_threshold": 10,
+        "backlog_fps_factor": 0.5,
+    },
 }
 
 
@@ -79,6 +84,7 @@ class Config:
     def __init__(self, data: dict, config_path: "Path | None" = None):
         self._data = data
         self._config_path = config_path
+        self._backlog_size: int = 0  # set by processing_loop for adaptive fps
 
     def get(self, *keys: str, default: Any = None) -> Any:
         node = self._data
@@ -215,6 +221,46 @@ class Config:
     @property
     def default_days(self) -> int:
         return int(self.get("dashboard", "default_days", default=30))
+
+    @property
+    def prefetch_motion(self) -> bool:
+        return bool(self.get("performance", "prefetch_motion", default=True))
+
+    @property
+    def backlog_throttle_threshold(self) -> int:
+        return int(self.get("performance", "backlog_throttle_threshold", default=10))
+
+    @property
+    def backlog_fps_factor(self) -> float:
+        return float(self.get("performance", "backlog_fps_factor", default=0.5))
+
+    @property
+    def effective_motion_fps(self) -> float:
+        base = self.motion_sample_fps
+        t = self.backlog_throttle_threshold
+        if t > 0 and self._backlog_size > t:
+            return max(0.5, base * self.backlog_fps_factor)
+        return base
+
+    @property
+    def effective_detector_fps(self) -> float:
+        base = self.detector_sample_fps
+        t = self.backlog_throttle_threshold
+        if t > 0 and self._backlog_size > t:
+            return max(1.0, base * self.backlog_fps_factor)
+        return base
+
+    def motion_fingerprint(self) -> str:
+        """MD5 of parameters that affect only motion detection (not AI inference)."""
+        relevant = {
+            "motion_threshold": self.motion_threshold,
+            "min_motion_area": self.min_motion_area,
+            "motion_sample_fps": self.motion_sample_fps,
+            "segment_padding": self.segment_padding,
+            "roi_polygon": self.roi_polygon,
+        }
+        blob = json.dumps(relevant, sort_keys=True)
+        return hashlib.md5(blob.encode()).hexdigest()
 
     def reload(self) -> set:
         """Re-reads the config file and updates _data in place.
