@@ -66,6 +66,8 @@ services:
       - WATCHTOWER_POLL_INTERVAL=600
       # Supprimer les anciennes images après mise à jour
       - WATCHTOWER_CLEANUP=true
+      # Logs détaillés pour diagnostic
+      - WATCHTOWER_DEBUG=true
       # Image privée GHCR : décommentez si votre image est privée
       # - REPO_USER=VOTRE_COMPTE_GITHUB
       # - REPO_PASS=ghp_VOTRE_TOKEN_GITHUB
