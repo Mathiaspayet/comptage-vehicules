@@ -70,9 +70,11 @@ def create_config_blueprint(config: Config) -> Blueprint:
                 },
                 "detector": {
                     "sample_fps": float(data.get("detector_sample_fps", 4)),
+                    "imgsz": int(data.get("imgsz", 320)),
                     "confidence_threshold": float(data.get("confidence_threshold", 0.35)),
                     "night_confidence_threshold": float(data.get("night_confidence_threshold", 0.18)),
                     "night_enhance": bool(data.get("night_enhance", True)),
+                    "roi_crop": bool(data.get("roi_crop", True)),
                     "vehicle_classes": data.get("vehicle_classes", ["car", "motorcycle", "bus", "truck"]),
                     "count_direction": bool(data.get("count_direction", False)),
                     "model_dir": "/app/data/models",
@@ -125,20 +127,26 @@ def create_config_blueprint(config: Config) -> Blueprint:
         merged = _deep_merge(DEFAULTS, raw)
 
         motion_fps = float(merged.get("motion_filter", {}).get("sample_fps", 2))
-        detector_fps = float(merged.get("detector", {}).get("sample_fps", 2))
+        detector_fps = float(merged.get("detector", {}).get("sample_fps", 4))
+        imgsz = int(merged.get("detector", {}).get("imgsz", 320))
+        roi_crop = bool(merged.get("detector", {}).get("roi_crop", True))
 
         # Empirical constants for NAS DS218+ / Intel Celeron J3355 with OpenVINO
-        # Calibrated: at motion_fps=6, a 33-min video takes ~40 min for motion phase
         MOTION_SEC_PER_FRAME = 0.20   # seconds per sampled frame (motion OpenCV)
-        DETECT_SEC_PER_FRAME = 0.50   # seconds per YOLO frame (with OpenVINO)
+        DETECT_SEC_PER_FRAME_640 = 0.50   # seconds per YOLO frame at imgsz=640
         ACTIVE_FRACTION = 0.30        # typical fraction of video with motion
         VIDEO_MINUTES = 30.0
+
+        # imgsz=320 is ~4x faster; roi_crop reduces pixels by ~60% → ~2x faster
+        imgsz_factor = 4.0 if imgsz <= 320 else 1.0
+        roi_factor = 2.0 if roi_crop else 1.0
+        detect_sec_per_frame = DETECT_SEC_PER_FRAME_640 / (imgsz_factor * roi_factor)
 
         motion_frames = VIDEO_MINUTES * 60 * motion_fps
         motion_time_sec = motion_frames * MOTION_SEC_PER_FRAME
 
         detect_frames = VIDEO_MINUTES * 60 * ACTIVE_FRACTION * detector_fps
-        detect_time_sec = detect_frames * DETECT_SEC_PER_FRAME
+        detect_time_sec = detect_frames * detect_sec_per_frame
 
         total_min = round((motion_time_sec + detect_time_sec) / 60, 1)
 

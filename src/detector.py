@@ -1,4 +1,5 @@
 """Module Détection IA & Comptage — YOLO + ByteTrack + line crossing."""
+import json
 import logging
 import math
 import shutil
@@ -48,43 +49,56 @@ class VehicleDetector:
         return ids or list(COCO_VEHICLE_CLASSES.values())
 
     def _load_model(self):
-        """Loads the YOLO model, preferring OpenVINO format for Intel CPUs."""
+        """Loads the YOLO model, preferring OpenVINO format for Intel CPUs.
+        Re-exports if the cached model was built with a different imgsz."""
         from ultralytics import YOLO
 
         model_dir = self.config.model_dir
         model_dir.mkdir(parents=True, exist_ok=True)
 
         ov_path = model_dir / "yolov8n_openvino_model"
+        meta_path = model_dir / "yolov8n_openvino_model" / "_meta.json"
         pt_path = model_dir / "yolov8n.pt"
+        imgsz = self.config.imgsz
 
+        # Check if the cached OpenVINO model matches the requested imgsz
         if ov_path.exists():
-            logger.info("Chargement du modèle OpenVINO : %s", ov_path)
-            self._model = YOLO(str(ov_path))
-            return
+            cached_imgsz = None
+            try:
+                cached_imgsz = json.loads(meta_path.read_text())["imgsz"]
+            except Exception:
+                pass
+            if cached_imgsz == imgsz:
+                logger.info("Chargement du modèle OpenVINO (imgsz=%d) : %s", imgsz, ov_path)
+                self._model = YOLO(str(ov_path))
+                return
+            else:
+                logger.info(
+                    "imgsz changé (%s→%d) — re-export du modèle OpenVINO…",
+                    cached_imgsz, imgsz,
+                )
+                shutil.rmtree(ov_path)
 
-        # Download .pt if needed (ultralytics handles the download automatically)
         if not pt_path.exists():
             logger.info("Téléchargement du modèle yolov8n.pt…")
-        model_pt = YOLO("yolov8n.pt")
+        model_pt = YOLO(str(pt_path) if pt_path.exists() else "yolov8n.pt")
 
-        # Try to export to OpenVINO for faster inference on Intel CPU
         try:
-            logger.info("Export du modèle au format OpenVINO…")
-            model_pt.export(format="openvino", imgsz=640, half=False)
-            # ultralytics creates the folder in the current dir
+            logger.info("Export OpenVINO (imgsz=%d)…", imgsz)
+            model_pt.export(format="openvino", imgsz=imgsz, half=False)
             local_ov = Path("yolov8n_openvino_model")
             if local_ov.exists():
                 shutil.copytree(local_ov, ov_path)
                 shutil.rmtree(local_ov)
-            # Also save the .pt
             pt_source = Path("yolov8n.pt")
             if pt_source.exists() and not pt_path.exists():
                 shutil.copy(pt_source, pt_path)
-            logger.info("Modèle OpenVINO exporté et enregistré : %s", ov_path)
+            # Save metadata
+            meta_path.write_text(json.dumps({"imgsz": imgsz}))
+            logger.info("Modèle OpenVINO exporté : %s", ov_path)
             self._model = YOLO(str(ov_path))
         except Exception as e:
             logger.warning("Export OpenVINO échoué (%s), utilisation du modèle .pt", e)
-            # Copy .pt to persistent location
             pt_source = Path("yolov8n.pt")
             if pt_source.exists() and not pt_path.exists():
                 shutil.copy(pt_source, pt_path)
@@ -97,11 +111,7 @@ class VehicleDetector:
         video_start_dt: datetime | None = None,
         on_progress: Optional[Callable[[int, int], None]] = None,
     ) -> list[CrossingEvent]:
-        """
-        Runs AI detection only on the active segments of a video.
-        Returns a list of crossing events.
-        on_progress(frames_done, frames_total) called after each analysed frame.
-        """
+        """Runs AI detection only on the active segments of a video."""
         if self._model is None:
             self._load_model()
 
@@ -113,6 +123,20 @@ class VehicleDetector:
             return self._process(cap, video_path, segments, video_start_dt, on_progress)
         finally:
             cap.release()
+
+    def _roi_crop_bbox(self) -> tuple[int, int, int, int] | None:
+        """Returns (x0, y0, x1, y1) bounding box of the ROI polygon, or None if disabled."""
+        if not self.config.roi_crop:
+            return None
+        roi = self.config.roi_polygon
+        if not roi or len(roi) < 3:
+            return None
+        pts = np.array(roi)
+        x0, y0 = int(pts[:, 0].min()), int(pts[:, 1].min())
+        x1, y1 = int(pts[:, 0].max()), int(pts[:, 1].max())
+        if x1 <= x0 or y1 <= y0:
+            return None
+        return x0, y0, x1, y1
 
     def _process(
         self,
@@ -126,7 +150,6 @@ class VehicleDetector:
         sample_fps = self.config.detector_sample_fps
         step = max(1, int(fps / sample_fps))
 
-        # Estimate total frames to analyse across all active segments
         total_active_frames = max(1, sum(
             int((seg.end_sec - seg.start_sec) * fps / step)
             for seg in segments
@@ -135,9 +158,22 @@ class VehicleDetector:
         line_p1 = np.array(self.config.line_p1, dtype=np.float32)
         line_p2 = np.array(self.config.line_p2, dtype=np.float32)
 
-        track_sides: dict[int, float] = {}   # {track_id: side_sign}
-        track_types: dict[int, str] = {}     # {track_id: vehicle_type_name}
-        track_confs: dict[int, float] = {}   # {track_id: best_confidence}
+        # Precompute ROI crop and adjust line coordinates into cropped space
+        crop_bbox = self._roi_crop_bbox()
+        if crop_bbox:
+            x0, y0, x1, y1 = crop_bbox
+            offset = np.array([x0, y0], dtype=np.float32)
+            line_p1_use = line_p1 - offset
+            line_p2_use = line_p2 - offset
+            logger.debug("ROI crop activé : (%d,%d)→(%d,%d) — %dx%d px au lieu de la frame entière",
+                         x0, y0, x1, y1, x1 - x0, y1 - y0)
+        else:
+            line_p1_use = line_p1
+            line_p2_use = line_p2
+
+        track_sides: dict[int, float] = {}
+        track_types: dict[int, str] = {}
+        track_confs: dict[int, float] = {}
         crossings: list[CrossingEvent] = []
 
         source_name = video_path.name
@@ -153,7 +189,6 @@ class VehicleDetector:
             seg = segments[seg_idx]
             current_sec = frame_idx / fps
 
-            # Skip frames before segment start
             if current_sec < seg.start_sec:
                 cap.set(cv2.CAP_PROP_POS_MSEC, seg.start_sec * 1000)
                 frame_idx = int(seg.start_sec * fps)
@@ -170,14 +205,17 @@ class VehicleDetector:
                 break
 
             if frame_idx % step == 0 and inside_segment:
+                # Crop to ROI bounding box before inference
+                inference_frame = frame[y0:y1, x0:x1] if crop_bbox else frame
+
                 events = self._analyze_frame(
-                    frame,
+                    inference_frame,
                     frame_idx,
                     fps,
                     video_start_dt,
                     source_name,
-                    line_p1,
-                    line_p2,
+                    line_p1_use,
+                    line_p2_use,
                     track_sides,
                     track_types,
                     track_confs,
@@ -204,15 +242,12 @@ class VehicleDetector:
         lon = self.config.longitude
         tz_offset = self.config.timezone_offset
         n = dt.timetuple().tm_yday
-        # Solar declination
         b = math.radians(360 / 365 * (n - 81))
         decl = math.radians(23.45 * math.sin(b))
-        # Hour angle at sunrise
         lat_r = math.radians(lat)
         cos_ha = -math.tan(lat_r) * math.tan(decl)
         cos_ha = max(-1.0, min(1.0, cos_ha))
         ha = math.degrees(math.acos(cos_ha))
-        # UTC hours, then convert to local
         sunrise_utc = 12 - ha / 15 - lon / 15
         sunset_utc = 12 + ha / 15 - lon / 15
         return sunrise_utc + tz_offset, sunset_utc + tz_offset
@@ -254,6 +289,7 @@ class VehicleDetector:
             persist=True,
             classes=self._active_class_ids,
             conf=conf,
+            imgsz=self.config.imgsz,
             verbose=False,
         )
 
@@ -283,7 +319,6 @@ class VehicleDetector:
 
             side = _side_of_line(centroid, line_p1, line_p2)
 
-            # Update best confidence and type
             track_confs[tid] = max(track_confs.get(tid, 0.0), conf)
             track_types[tid] = _coco_id_to_name(cid)
 
@@ -328,7 +363,6 @@ def _side_of_line(point: np.ndarray, p1: np.ndarray, p2: np.ndarray) -> float:
     px = point[0] - p1[0]
     py = point[1] - p1[1]
     cross = dx * py - dy * px
-    # Return 0 only if exactly on the line (rare in practice)
     return cross
 
 
