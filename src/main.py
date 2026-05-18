@@ -67,7 +67,8 @@ logger = logging.getLogger(__name__)
 
 _shutdown = threading.Event()
 _processing_start: "float | None" = None
-_PROCESSING_TIMEOUT_SEC = 600  # 10 min max per file
+_PROCESSING_TIMEOUT_SEC = 600   # watchdog global : 10 min max par fichier
+_MOTION_TIMEOUT_SEC = 300       # timeout spécifique au filtre mouvement : 5 min
 
 
 def _handle_signal(signum, frame):
@@ -250,19 +251,39 @@ def _process_file(
             logger.debug("%s — %d segment(s) depuis le cache de mouvement.", filename, len(segments))
             progress_tracker.set_phase("motion", frames_total=0)
         elif prefetch_future is not None:
-            # Motion already running in background — wait for result
+            # Motion already running in background — wait for result (with timeout)
             progress_tracker.set_phase("motion", frames_total=0)
-            segments = prefetch_future.result()
+            try:
+                segments = prefetch_future.result(timeout=_MOTION_TIMEOUT_SEC)
+            except TimeoutError:
+                logger.error(
+                    "Timeout filtre mouvement sur %s (>%ds) — fichier marqué en erreur.",
+                    filename, _MOTION_TIMEOUT_SEC,
+                )
+                db.mark_file_error(filename, f"Filtre de mouvement bloqué (timeout >{_MOTION_TIMEOUT_SEC}s)")
+                progress_tracker.finish_file()
+                return
             if motion_fp:
                 db.set_motion_cache(filename, motion_fp,
                                     [{"start_sec": s.start_sec, "end_sec": s.end_sec} for s in segments])
         else:
-            # Fallback: run synchronously with progress bar
+            # Fallback: run synchronously in a thread so we can apply a timeout
             def motion_progress(done: int, total: int):
                 progress_tracker.set_phase("motion", frames_total=total)
                 progress_tracker.update_frame(done)
 
-            segments = motion.analyze_video(video_path, on_progress=motion_progress)
+            with ThreadPoolExecutor(max_workers=1, thread_name_prefix="motion-sync") as _ex:
+                _fut = _ex.submit(motion.analyze_video, video_path, motion_progress)
+                try:
+                    segments = _fut.result(timeout=_MOTION_TIMEOUT_SEC)
+                except TimeoutError:
+                    logger.error(
+                        "Timeout filtre mouvement sur %s (>%ds) — fichier marqué en erreur.",
+                        filename, _MOTION_TIMEOUT_SEC,
+                    )
+                    db.mark_file_error(filename, f"Filtre de mouvement bloqué (timeout >{_MOTION_TIMEOUT_SEC}s)")
+                    progress_tracker.finish_file()
+                    return
             if motion_fp:
                 db.set_motion_cache(filename, motion_fp,
                                     [{"start_sec": s.start_sec, "end_sec": s.end_sec} for s in segments])
