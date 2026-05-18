@@ -63,6 +63,13 @@ class Database:
     def _init_schema(self):
         with self._connect() as conn:
             conn.executescript(SCHEMA)
+            # Migration: add processing_duration_seconds if it doesn't exist yet
+            try:
+                conn.execute(
+                    "ALTER TABLE processed_files ADD COLUMN processing_duration_seconds REAL"
+                )
+            except sqlite3.OperationalError:
+                pass  # column already exists
         logger.debug("Schéma base de données initialisé : %s", self.db_path)
 
     # ------------------------------------------------------------------ #
@@ -76,20 +83,21 @@ class Database:
             ).fetchone()
             return row is not None
 
-    def mark_file_done(self, filename: str, vehicle_count: int):
+    def mark_file_done(self, filename: str, vehicle_count: int, duration_seconds: float | None = None):
         now = datetime.utcnow().isoformat()
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO processed_files (filename, processed_at, status, vehicle_count)
-                VALUES (?, ?, 'done', ?)
+                INSERT INTO processed_files (filename, processed_at, status, vehicle_count, processing_duration_seconds)
+                VALUES (?, ?, 'done', ?, ?)
                 ON CONFLICT(filename) DO UPDATE SET
                     processed_at = excluded.processed_at,
                     status = 'done',
                     vehicle_count = excluded.vehicle_count,
-                    error_message = NULL
+                    error_message = NULL,
+                    processing_duration_seconds = excluded.processing_duration_seconds
                 """,
-                (filename, now, vehicle_count),
+                (filename, now, vehicle_count, duration_seconds),
             )
 
     def mark_file_error(self, filename: str, error_message: str):
@@ -215,19 +223,50 @@ class Database:
             ).fetchall()
         return [r["day"] for r in rows]
 
-    def get_processed_files(self, limit: int = 500, offset: int = 0, status_filter: str = "all") -> list[dict]:
-        """Returns processed files sorted by processing date descending."""
-        where = "" if status_filter == "all" else f"WHERE status = '{status_filter}'"
+    def get_processed_files(
+        self,
+        limit: int = 500,
+        offset: int = 0,
+        status_filter: str = "all",
+        max_age_days: int = 30,
+        sort_by: str = "processed_at",
+        sort_dir: str = "desc",
+    ) -> list[dict]:
+        """Returns processed files with optional age filter and sorting."""
+        where_clauses = []
+        params: list = []
+
+        if status_filter != "all":
+            where_clauses.append("status = ?")
+            params.append(status_filter)
+        if max_age_days > 0:
+            where_clauses.append("processed_at >= datetime('now', ?)")
+            params.append(f"-{max_age_days} days")
+
+        where = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+        _valid_sort = {"processed_at", "filename", "vehicle_count", "processing_duration_seconds"}
+        if sort_by not in _valid_sort:
+            sort_by = "processed_at"
+        order = f"{sort_by} {'DESC' if sort_dir.lower() == 'desc' else 'ASC'}"
+
         query = f"""
-            SELECT filename, processed_at, status, vehicle_count, error_message
+            SELECT filename, processed_at, status, vehicle_count, error_message, processing_duration_seconds
             FROM processed_files
             {where}
-            ORDER BY processed_at DESC
+            ORDER BY {order}
             LIMIT ? OFFSET ?
         """
+        params += [limit, offset]
         with self._connect() as conn:
-            rows = conn.execute(query, (limit, offset)).fetchall()
+            rows = conn.execute(query, params).fetchall()
         return [dict(r) for r in rows]
+
+    def get_all_processed_filenames(self) -> set[str]:
+        """Returns the set of all processed filenames (for pending file detection)."""
+        with self._connect() as conn:
+            rows = conn.execute("SELECT filename FROM processed_files").fetchall()
+        return {r["filename"] for r in rows}
 
     def delete_crossings_for_files(self, filenames: list[str]) -> int:
         """Delete all crossings whose source_file is in the given list. Returns count deleted."""

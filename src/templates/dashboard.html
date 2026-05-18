@@ -16,11 +16,11 @@
     .btn-calib:hover { background: #3a7fc1; }
     .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #4caf50; flex-shrink: 0; }
     .status-dot.error { background: #f44336; }
-    main { max-width: 1100px; margin: 1.5rem auto; padding: 0 1rem; }
+    main { max-width: 1100px; margin: 1.5rem auto; padding: 0 1rem 2rem; }
     .controls { display: flex; flex-wrap: wrap; gap: .75rem; margin-bottom: 1.25rem; align-items: center; }
     .controls label { font-size: .85rem; color: #555; }
     .controls input, .controls select { padding: .4rem .6rem; border: 1px solid #ccc; border-radius: 4px; font-size: .9rem; }
-    .tab-bar { display: flex; gap: .5rem; margin-bottom: 1rem; }
+    .tab-bar { display: flex; gap: .5rem; margin-bottom: 1rem; flex-wrap: wrap; }
     .tab-bar button { padding: .45rem 1rem; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; font-size: .9rem; }
     .tab-bar button.active { background: #1a3a5c; color: #fff; border-color: #1a3a5c; }
     .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .75rem; margin-bottom: 1.25rem; }
@@ -36,7 +36,18 @@
     tr:hover td { background: #f9fafb; }
     .breakdown { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .5rem; }
     .badge { background: #e3eaf3; color: #1a3a5c; border-radius: 12px; padding: .2rem .65rem; font-size: .8rem; font-weight: 600; }
-    .btn-refresh { padding:.4rem .8rem;border:1px solid #1a3a5c;border-radius:4px;background:#1a3a5c;color:#fff;cursor:pointer; }
+    .btn-refresh { padding:.4rem .8rem; border:1px solid #1a3a5c; border-radius:4px; background:#1a3a5c; color:#fff; cursor:pointer; }
+    /* Files tab */
+    .files-controls { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin-bottom:.75rem; }
+    .files-controls select, .files-controls input[type=text] { padding:.3rem .55rem; border:1px solid #ccc; border-radius:4px; font-size:.83rem; }
+    th.sortable { cursor:pointer; user-select:none; white-space:nowrap; }
+    th.sortable:hover { background:#e4e9f0; }
+    .sort-arrow { color:#1a3a5c; font-size:.7rem; }
+    .pending-row { display:flex; align-items:center; gap:.5rem; padding:.25rem 0; border-bottom:1px solid #f3f3f3; font-size:.79rem; }
+    .pending-row:last-child { border-bottom:none; }
+    .pill { border-radius:10px; padding:.1rem .55rem; font-size:.73rem; font-weight:600; }
+    .pill-ready { background:#fef3c7; color:#92400e; }
+    .pill-soon  { background:#f1f5f9; color:#64748b; }
   </style>
 </head>
 <body>
@@ -50,15 +61,16 @@
     <span id="status-dot" class="status-dot" title="Statut du service"></span>
   </div>
 </header>
+
 <main>
   <div class="tab-bar">
     <button class="active" onclick="showTab('hourly', this)">Vue horaire</button>
     <button onclick="showTab('daily', this)">Vue quotidienne</button>
-    <button onclick="showTab('journal', this)">📋 Journal</button>
     <button onclick="showTab('files', this)">📁 Fichiers</button>
+    <button onclick="showTab('journal', this)">📋 Journal</button>
   </div>
 
-  <!-- HOURLY -->
+  <!-- ══════════════ HORAIRE ══════════════ -->
   <div id="tab-hourly">
     <div class="controls">
       <label>Date : <input type="date" id="date-picker" value="{{ today }}"></label>
@@ -95,7 +107,7 @@
     </div>
   </div>
 
-  <!-- DAILY -->
+  <!-- ══════════════ QUOTIDIEN ══════════════ -->
   <div id="tab-daily" style="display:none">
     <div class="controls">
       <label>Période :
@@ -128,34 +140,85 @@
       </table>
     </div>
   </div>
-</main>
 
-  <!-- FICHIERS -->
+  <!-- ══════════════ FICHIERS ══════════════ -->
   <div id="tab-files" style="display:none">
+
+    <!-- Statut en cours (compact) -->
+    <div class="chart-box" style="padding:.9rem 1.25rem;margin-bottom:.75rem">
+      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <div id="fp-status" style="font-size:.88rem;font-weight:600;color:#1a3a5c">💤 Inactif</div>
+          <div id="fp-filename" style="font-size:.73rem;color:#888;font-family:monospace;margin-top:.15rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+        </div>
+        <div id="fp-queue-wrap" style="font-size:.8rem;color:#555;text-align:right;flex-shrink:0"></div>
+      </div>
+      <div id="fp-bar-wrap" style="display:none;margin-top:.6rem">
+        <div style="background:#e5e7eb;border-radius:4px;height:6px;overflow:hidden">
+          <div id="fp-bar" style="height:100%;border-radius:4px;transition:width .3s;background:#2563eb;width:0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- En attente -->
+    <div class="chart-box" style="margin-bottom:.75rem">
+      <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.6rem">
+        <h2 style="margin:0;flex:1">⏳ En attente de traitement</h2>
+        <button onclick="loadPending()" style="font-size:.8rem;padding:.25rem .6rem;border:1px solid #ccc;border-radius:4px;cursor:pointer;background:#fff">↺</button>
+      </div>
+      <div id="pending-section" style="font-size:.83rem;color:#888">Chargement…</div>
+    </div>
+
+    <!-- Fichiers traités -->
     <div class="chart-box">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:.75rem">
-        <h2 style="margin:0">Fichiers traités</h2>
+        <h2 style="margin:0">✅ Fichiers traités</h2>
         <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
-          <select id="files-filter" onchange="loadFiles()" style="font-size:.85rem;padding:.3rem .5rem">
+          <button onclick="resetSelected()" style="font-size:.8rem;padding:.28rem .65rem;border:1px solid #d97706;border-radius:4px;background:#fff;color:#d97706;cursor:pointer">↺ Remettre en attente</button>
+          <button onclick="resetAll()" style="font-size:.8rem;padding:.28rem .65rem;border:1px solid #dc2626;border-radius:4px;background:#fff;color:#dc2626;cursor:pointer">🗑 Tout réinitialiser</button>
+        </div>
+      </div>
+
+      <!-- Contrôles de filtre/tri -->
+      <div class="files-controls">
+        <label style="font-size:.83rem;color:#555">Statut :
+          <select id="files-filter" onchange="loadFiles()">
             <option value="all">Tous</option>
             <option value="done">Traités</option>
             <option value="error">Erreurs</option>
           </select>
-          <input type="text" id="files-search" placeholder="Rechercher…" oninput="filterFiles()" style="font-size:.85rem;padding:.3rem .5rem;width:180px">
-          <button onclick="resetSelected()" style="font-size:.82rem;padding:.3rem .7rem;border:1px solid #d97706;border-radius:4px;background:#fff;color:#d97706;cursor:pointer">↺ Remettre en attente</button>
-          <button onclick="resetAll()" style="font-size:.82rem;padding:.3rem .7rem;border:1px solid #dc2626;border-radius:4px;background:#fff;color:#dc2626;cursor:pointer">🗑 Tout réinitialiser</button>
-        </div>
+        </label>
+        <label style="font-size:.83rem;color:#555">Afficher :
+          <select id="files-age" onchange="loadFiles()">
+            <option value="7">7 derniers jours</option>
+            <option value="14">14 jours</option>
+            <option value="30" selected>30 jours</option>
+            <option value="90">90 jours</option>
+            <option value="0">Tout l'historique</option>
+          </select>
+        </label>
+        <input type="text" id="files-search" placeholder="🔍 Rechercher un fichier…" oninput="filterFiles()" style="width:200px">
+        <span id="files-info" style="font-size:.78rem;color:#888;margin-left:auto"></span>
       </div>
-      <div style="font-size:.8rem;color:#666;margin-bottom:.5rem" id="files-info"></div>
+
       <div style="overflow-x:auto">
         <table id="files-table" style="font-size:.82rem">
           <thead>
             <tr>
               <th style="width:30px"><input type="checkbox" id="select-all" onchange="toggleSelectAll(this)"></th>
-              <th>Fichier</th>
-              <th>Traité le</th>
+              <th class="sortable" data-sort="filename" onclick="setSort('filename')">
+                Fichier <span class="sort-arrow" data-arrow="filename"></span>
+              </th>
+              <th class="sortable" data-sort="processed_at" onclick="setSort('processed_at')">
+                Traité le <span class="sort-arrow" data-arrow="processed_at">↓</span>
+              </th>
+              <th class="sortable" data-sort="processing_duration_seconds" onclick="setSort('processing_duration_seconds')" style="text-align:right">
+                Durée <span class="sort-arrow" data-arrow="processing_duration_seconds"></span>
+              </th>
+              <th class="sortable" data-sort="vehicle_count" onclick="setSort('vehicle_count')" style="text-align:center">
+                🚗 <span class="sort-arrow" data-arrow="vehicle_count"></span>
+              </th>
               <th>Statut</th>
-              <th>Véhicules</th>
             </tr>
           </thead>
           <tbody id="files-tbody"></tbody>
@@ -164,24 +227,21 @@
     </div>
   </div>
 
-  <!-- JOURNAL -->
+  <!-- ══════════════ JOURNAL ══════════════ -->
   <div id="tab-journal" style="display:none">
     <div class="chart-box" style="margin-bottom:1rem">
       <h2>Progression du traitement</h2>
 
-      <!-- Bandeau reset en cours -->
       <div id="reset-banner" style="display:none;background:#fef3c7;border:1px solid #d97706;border-radius:6px;padding:.6rem 1rem;margin-bottom:.75rem;font-size:.85rem;color:#92400e">
         ⏳ <span id="reset-reason"></span>
       </div>
 
-      <!-- Cartes stats -->
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.75rem;margin-bottom:1rem">
         <div class="card"><div class="value" id="p-processed">—</div><div class="label">Traités (BDD)</div></div>
         <div class="card"><div class="value" id="p-queue-done">—</div><div class="label">Dans la file</div></div>
         <div class="card"><div class="value" id="p-errors" style="color:#dc2626">—</div><div class="label">Erreurs</div></div>
       </div>
 
-      <!-- Barre de file (niveau fichier) -->
       <div style="margin-bottom:.75rem">
         <div style="display:flex;justify-content:space-between;font-size:.78rem;color:#555;margin-bottom:.3rem">
           <span>File de traitement</span>
@@ -192,7 +252,6 @@
         </div>
       </div>
 
-      <!-- Barre de fichier courant (niveau frame) -->
       <div id="current-file-block" style="display:none;margin-bottom:.5rem">
         <div style="display:flex;justify-content:space-between;font-size:.78rem;color:#555;margin-bottom:.3rem">
           <span id="phase-label">—</span>
@@ -211,9 +270,7 @@
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">
         <h2 style="margin:0">Journal en direct</h2>
         <div style="display:flex;gap:.5rem;align-items:center">
-          <label style="font-size:.8rem;color:#666">
-            <input type="checkbox" id="autoscroll" checked> Auto-scroll
-          </label>
+          <label style="font-size:.8rem;color:#666"><input type="checkbox" id="autoscroll" checked> Auto-scroll</label>
           <select id="log-filter" style="font-size:.8rem;padding:.2rem .4rem" onchange="renderLogs()">
             <option value="ALL">Tout</option>
             <option value="INFO">INFO+</option>
@@ -227,30 +284,50 @@
     </div>
   </div>
 
-<script>
-let chartHourly = null, chartDaily = null;
+</main>
 
+<script>
+/* ─────────────────────────────────────────────────────────────
+   Globals
+───────────────────────────────────────────────────────────── */
+let chartHourly = null, chartDaily = null;
 let allLogLines = [];
 let journalTimer = null, journalTimer2 = null;
+let filesTimer  = null;
+let allFiles    = [];
+let filesSortBy  = 'processed_at';
+let filesSortDir = 'desc';
 
-let allFiles = [];
-
+/* ─────────────────────────────────────────────────────────────
+   Tabs
+───────────────────────────────────────────────────────────── */
 function showTab(name, btn) {
   document.querySelectorAll('.tab-bar button').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  ['hourly','daily','journal','files'].forEach(t =>
+  ['hourly','daily','files','journal'].forEach(t =>
     document.getElementById('tab-'+t).style.display = name === t ? '' : 'none'
   );
-  if (name === 'daily')   loadDaily();
+  clearInterval(journalTimer);
+  clearInterval(journalTimer2);
+  clearInterval(filesTimer);
+
+  if (name === 'daily')  loadDaily();
   if (name === 'journal') {
     loadJournal(); loadProgress();
-    // Progress toutes les secondes, logs toutes les 5s
-    journalTimer = setInterval(loadProgress, 1000);
+    journalTimer  = setInterval(loadProgress, 1000);
     journalTimer2 = setInterval(loadJournal, 5000);
-  } else { clearInterval(journalTimer); clearInterval(journalTimer2); }
-  if (name === 'files') loadFiles();
+  }
+  if (name === 'files') {
+    loadFiles();
+    loadPending();
+    loadFilesProgress();
+    filesTimer = setInterval(() => { loadPending(); loadFilesProgress(); }, 15000);
+  }
 }
 
+/* ─────────────────────────────────────────────────────────────
+   Horaire
+───────────────────────────────────────────────────────────── */
 async function loadHourly() {
   const day   = document.getElementById('date-picker').value;
   const vtype = document.getElementById('type-picker').value;
@@ -282,6 +359,9 @@ async function loadHourly() {
   }).join('');
 }
 
+/* ─────────────────────────────────────────────────────────────
+   Quotidien
+───────────────────────────────────────────────────────────── */
 async function loadDaily() {
   const days  = document.getElementById('days-picker').value;
   const vtype = document.getElementById('type-picker-daily').value;
@@ -299,6 +379,9 @@ async function loadDaily() {
   document.querySelector('#table-daily tbody').innerHTML = daily.map(d=>`<tr><td>${d.date}</td><td>${d.count}</td></tr>`).join('') || '<tr><td colspan="2" style="color:#888">Aucune donnée</td></tr>';
 }
 
+/* ─────────────────────────────────────────────────────────────
+   Status dot + version
+───────────────────────────────────────────────────────────── */
 async function checkStatus() {
   try {
     const res  = await fetch('/api/status');
@@ -311,64 +394,49 @@ async function checkStatus() {
 
 async function loadVersion() {
   try {
-    const res  = await fetch('/api/version');
-    const data = await res.json();
-    const el   = document.getElementById('version-info');
-    el.textContent = data.built_at || '—';
+    const data = await (await fetch('/api/version')).json();
+    document.getElementById('version-info').textContent = data.built_at || '—';
   } catch (_) {}
 }
 
-const PHASE_LABELS = {
-  motion:    '🔍 Filtre mouvement',
-  detection: '🤖 Détection IA',
-  idle:      '💤 En attente',
-};
-const PHASE_COLORS = {
-  motion:    '#d97706',
-  detection: '#2563eb',
-  idle:      '#9ca3af',
-};
+/* ─────────────────────────────────────────────────────────────
+   Journal — progress
+───────────────────────────────────────────────────────────── */
+const PHASE_LABELS = { motion:'🔍 Filtre mouvement', detection:'🤖 Détection IA', idle:'💤 En attente' };
+const PHASE_COLORS = { motion:'#d97706', detection:'#2563eb', idle:'#9ca3af' };
 
 async function loadProgress() {
   let data;
-  try {
-    const res = await fetch('/api/progress');
-    data = await res.json();
-  } catch (_) { return; }
+  try { data = await (await fetch('/api/progress')).json(); } catch(_){ return; }
   if (data.error) return;
 
-  // Reset banner
   const banner = document.getElementById('reset-banner');
   banner.style.display = data.resetting ? '' : 'none';
   if (data.resetting) document.getElementById('reset-reason').textContent = data.reset_reason || 'Réinitialisation…';
 
-  // Cartes
   document.getElementById('p-processed').textContent  = data.db_done ?? '—';
   document.getElementById('p-queue-done').textContent = `${data.queue_done} / ${data.queue_total}`;
   document.getElementById('p-errors').textContent     = data.db_errors ?? '—';
 
-  // Barre file globale
   const qPct = data.queue_percent ?? 0;
   document.getElementById('queue-bar').style.width = qPct + '%';
   document.getElementById('queue-label').textContent = data.queue_total
     ? `${data.queue_done} / ${data.queue_total} fichiers (${qPct}%)`
     : 'Aucun fichier en attente';
 
-  // Barre fichier courant (frame par frame)
   const isActive = data.phase && data.phase !== 'idle';
   document.getElementById('current-file-block').style.display = isActive ? '' : 'none';
   if (isActive) {
     const fPct = data.file_percent ?? 0;
     const bar = document.getElementById('file-bar');
-    bar.style.width = fPct + '%';
+    bar.style.width  = fPct + '%';
     bar.style.background = PHASE_COLORS[data.phase] || '#2563eb';
     document.getElementById('phase-label').textContent = PHASE_LABELS[data.phase] || data.phase;
-    document.getElementById('file-label').textContent =
-      data.frames_total ? `${data.frames_done} / ${data.frames_total} frames (${fPct}%)` : `${fPct}%`;
+    document.getElementById('file-label').textContent  = data.frames_total
+      ? `${data.frames_done} / ${data.frames_total} frames (${fPct}%)`
+      : `${fPct}%`;
     document.getElementById('current-filename').textContent = data.current_file || '';
   }
-
-  // Dernier fichier traité
   if (data.last_file) {
     document.getElementById('last-file').textContent =
       `Dernier traité : ${data.last_file.filename} (${data.last_file.processed_at?.slice(0,19).replace('T',' ')})`;
@@ -376,43 +444,135 @@ async function loadProgress() {
 }
 
 async function loadJournal() {
-  const res  = await fetch('/api/journal');
-  const data = await res.json();
+  const data = await (await fetch('/api/journal')).json();
   allLogLines = data.lines || [];
   renderLogs();
 }
 
 function renderLogs() {
-  const filter = document.getElementById('log-filter').value;
-  const levels = { ALL: 0, INFO: 1, WARNING: 2, ERROR: 3 };
+  const filter   = document.getElementById('log-filter').value;
+  const levels   = { ALL:0, INFO:1, WARNING:2, ERROR:3 };
   const minLevel = levels[filter] || 0;
-  const levelOf = line => {
-    if (line.includes('[ERROR]'))   return 3;
-    if (line.includes('[WARNING]')) return 2;
-    if (line.includes('[INFO]'))    return 1;
-    return 0;
-  };
-  const colorOf = line => {
-    if (line.includes('[ERROR]'))   return '#f87171';
-    if (line.includes('[WARNING]')) return '#fbbf24';
-    if (line.includes('[INFO]'))    return '#86efac';
-    if (line.includes('==='))       return '#93c5fd';
-    return '#e2e8f0';
-  };
+  const levelOf  = l => l.includes('[ERROR]') ? 3 : l.includes('[WARNING]') ? 2 : l.includes('[INFO]') ? 1 : 0;
+  const colorOf  = l => l.includes('[ERROR]') ? '#f87171' : l.includes('[WARNING]') ? '#fbbf24' : l.includes('[INFO]') ? '#86efac' : l.includes('===') ? '#93c5fd' : '#e2e8f0';
   const filtered = allLogLines.filter(l => levelOf(l) >= minLevel);
   const box = document.getElementById('log-box');
   box.innerHTML = filtered.map(l => `<span style="color:${colorOf(l)}">${escHtml(l)}</span>`).join('\n');
   if (document.getElementById('autoscroll').checked) box.scrollTop = box.scrollHeight;
 }
 
-function escHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+/* ─────────────────────────────────────────────────────────────
+   Fichiers — progression compacte (bandeau haut)
+───────────────────────────────────────────────────────────── */
+async function loadFilesProgress() {
+  let data;
+  try { data = await (await fetch('/api/progress')).json(); } catch(_){ return; }
+  if (data.error) return;
+
+  const isActive = data.phase && data.phase !== 'idle';
+  const statusEl = document.getElementById('fp-status');
+  const fileEl   = document.getElementById('fp-filename');
+  const barWrap  = document.getElementById('fp-bar-wrap');
+  const bar      = document.getElementById('fp-bar');
+  const queueEl  = document.getElementById('fp-queue-wrap');
+
+  if (data.resetting) {
+    statusEl.textContent  = '⏳ ' + (data.reset_reason || 'Réinitialisation…');
+    fileEl.textContent    = '';
+    barWrap.style.display = 'none';
+    queueEl.textContent   = '';
+    return;
+  }
+
+  if (isActive) {
+    const phaseIcon = data.phase === 'motion' ? '🔍' : '🤖';
+    statusEl.textContent  = `${phaseIcon} En cours — ${PHASE_LABELS[data.phase] || data.phase} (${data.file_percent}%)`;
+    fileEl.textContent    = data.current_file || '';
+    barWrap.style.display = '';
+    bar.style.width       = (data.file_percent || 0) + '%';
+    bar.style.background  = PHASE_COLORS[data.phase] || '#2563eb';
+  } else {
+    statusEl.textContent  = '💤 Inactif — aucun fichier en cours';
+    fileEl.textContent    = data.last_file ? `Dernier : ${data.last_file.filename}` : '';
+    barWrap.style.display = 'none';
+  }
+
+  if (data.queue_total > 0) {
+    queueEl.innerHTML = `<span style="font-size:.8rem;color:#555">File : ${data.queue_done} / ${data.queue_total} <span style="color:#1a3a5c;font-weight:600">(${data.queue_percent}%)</span></span>`;
+  } else {
+    queueEl.innerHTML = '';
+  }
 }
 
+/* ─────────────────────────────────────────────────────────────
+   Fichiers — en attente
+───────────────────────────────────────────────────────────── */
+async function loadPending() {
+  let data;
+  try { data = await (await fetch('/api/files/pending')).json(); } catch(e) {
+    document.getElementById('pending-section').innerHTML = '<em style="color:#dc2626">Erreur de chargement</em>';
+    return;
+  }
+  if (data.error) {
+    document.getElementById('pending-section').innerHTML = `<em style="color:#dc2626">${escHtml(data.error)}</em>`;
+    return;
+  }
+  renderPending(data);
+}
+
+function renderPending({ pending, too_recent, min_age_minutes }) {
+  const el = document.getElementById('pending-section');
+  const nPending    = pending?.length    || 0;
+  const nTooRecent  = too_recent?.length || 0;
+
+  if (!nPending && !nTooRecent) {
+    el.innerHTML = '<em style="color:#888">Aucun fichier en attente.</em>';
+    return;
+  }
+
+  let html = '';
+
+  if (nPending) {
+    html += `<div style="margin-bottom:.65rem">
+      <div style="font-size:.8rem;font-weight:600;color:#92400e;margin-bottom:.3rem">
+        🟡 ${nPending} fichier(s) prêt(s) à analyser
+      </div>`;
+    html += pending.map(f => `
+      <div class="pending-row">
+        <span class="pill pill-ready">${f.age_minutes} min</span>
+        <span style="font-family:monospace;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.78rem">${escHtml(f.filename)}</span>
+      </div>`).join('');
+    html += '</div>';
+  }
+
+  if (nTooRecent) {
+    html += `<div>
+      <div style="font-size:.8rem;font-weight:600;color:#94a3b8;margin-bottom:.3rem">
+        ⏰ ${nTooRecent} fichier(s) trop récent(s) — attente ${min_age_minutes} min avant traitement
+      </div>`;
+    html += too_recent.map(f => `
+      <div class="pending-row" style="color:#94a3b8">
+        <span class="pill pill-soon">${f.age_minutes} min</span>
+        <span style="font-family:monospace;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.78rem">${escHtml(f.filename)}</span>
+      </div>`).join('');
+    html += '</div>';
+  }
+
+  el.innerHTML = html;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Fichiers — tableau des fichiers traités
+───────────────────────────────────────────────────────────── */
 async function loadFiles() {
-  const filter = document.getElementById('files-filter').value;
-  const res  = await fetch(`/api/files?status=${filter}&limit=500`);
-  const data = await res.json();
+  const status    = document.getElementById('files-filter').value;
+  const maxAge    = document.getElementById('files-age').value;
+  const params    = new URLSearchParams({
+    status, max_age_days: maxAge,
+    sort_by: filesSortBy, sort_dir: filesSortDir, limit: 300,
+  });
+  let data;
+  try { data = await (await fetch('/api/files?' + params)).json(); } catch(e) { return; }
   allFiles = data.files || [];
   document.getElementById('files-search').value = '';
   renderFiles(allFiles);
@@ -420,27 +580,78 @@ async function loadFiles() {
 
 function filterFiles() {
   const q = document.getElementById('files-search').value.toLowerCase();
-  renderFiles(allFiles.filter(f => f.filename.toLowerCase().includes(q)));
+  renderFiles(q ? allFiles.filter(f => f.filename.toLowerCase().includes(q)) : allFiles);
+}
+
+function setSort(col) {
+  if (filesSortBy === col) {
+    filesSortDir = filesSortDir === 'desc' ? 'asc' : 'desc';
+  } else {
+    filesSortBy = col;
+    filesSortDir = 'desc';
+  }
+  document.querySelectorAll('[data-arrow]').forEach(el => {
+    el.textContent = el.dataset.arrow === filesSortBy
+      ? (filesSortDir === 'desc' ? ' ↓' : ' ↑')
+      : '';
+  });
+  loadFiles();
+}
+
+function fmtDuration(sec) {
+  if (sec == null || sec === '') return '—';
+  sec = parseFloat(sec);
+  if (isNaN(sec) || sec <= 0) return '—';
+  if (sec < 60)  return `${Math.round(sec)}s`;
+  const m = Math.floor(sec / 60);
+  const s = Math.round(sec % 60);
+  if (m < 60) return s > 0 ? `${m}m ${s}s` : `${m}m`;
+  const h  = Math.floor(m / 60);
+  const mm = m % 60;
+  return `${h}h${mm > 0 ? ` ${mm}m` : ''}`;
+}
+
+function fmtDateShort(iso) {
+  if (!iso) return '—';
+  const [date, time] = iso.slice(0, 16).split('T');
+  const [, m, d]    = date.split('-');
+  return `${d}/${m} ${time}`;
 }
 
 function renderFiles(files) {
   const tbody = document.getElementById('files-tbody');
-  document.getElementById('files-info').textContent = `${files.length} fichier(s) affiché(s)`;
-  if (!files.length) {
-    tbody.innerHTML = '<tr><td colspan="5" style="color:#999;padding:.75rem">Aucun fichier.</td></tr>';
+  const q     = document.getElementById('files-search').value.toLowerCase();
+  const shown = q ? files.filter(f => f.filename.toLowerCase().includes(q)) : files;
+
+  document.getElementById('files-info').textContent = `${shown.length} fichier(s)`;
+
+  if (!shown.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="color:#999;padding:.75rem;text-align:center">Aucun fichier.</td></tr>';
     return;
   }
-  tbody.innerHTML = files.map(f => {
-    const statusBadge = f.status === 'done'
-      ? `<span style="color:#16a34a;font-weight:600">✓ traité</span>`
-      : `<span style="color:#dc2626;font-weight:600" title="${f.error_message||''}">✗ erreur</span>`;
-    const dt = f.processed_at ? f.processed_at.slice(0,16).replace('T',' ') : '—';
-    return `<tr>
+
+  tbody.innerHTML = shown.map(f => {
+    const dur = parseFloat(f.processing_duration_seconds);
+    const isSkipped = f.status === 'done' && f.vehicle_count === 0 && !isNaN(dur) && dur < 5;
+    const hasVehicles = f.vehicle_count > 0;
+
+    const statusBadge = f.status === 'error'
+      ? `<span style="color:#dc2626;font-weight:600" title="${escHtml(f.error_message||'')}">✗ erreur</span>`
+      : isSkipped
+        ? `<span style="color:#9ca3af" title="Ignoré — backlog trop ancien">⊘ ignoré</span>`
+        : `<span style="color:#16a34a;font-weight:600">✓ traité</span>`;
+
+    const rowOpacity = isSkipped ? 'opacity:.55' : '';
+    const countColor = hasVehicles ? '#1a3a5c' : '#aaa';
+    const countWeight = hasVehicles ? '700' : '400';
+
+    return `<tr style="${rowOpacity}">
       <td><input type="checkbox" class="file-cb" value="${escHtml(f.filename)}"></td>
-      <td style="font-family:monospace;font-size:.78rem;word-break:break-all">${escHtml(f.filename)}</td>
-      <td style="white-space:nowrap">${dt}</td>
+      <td style="font-family:monospace;font-size:.75rem;word-break:break-all;max-width:280px">${escHtml(f.filename)}</td>
+      <td style="white-space:nowrap;font-size:.8rem">${fmtDateShort(f.processed_at)}</td>
+      <td style="white-space:nowrap;font-size:.8rem;text-align:right;font-family:monospace">${fmtDuration(f.processing_duration_seconds)}</td>
+      <td style="text-align:center;font-weight:${countWeight};color:${countColor}">${f.vehicle_count ?? 0}</td>
       <td>${statusBadge}</td>
-      <td style="text-align:center">${f.vehicle_count ?? 0}</td>
     </tr>`;
   }).join('');
 }
@@ -459,7 +670,7 @@ async function resetSelected() {
   if (!confirm(`Remettre ${sel.length} fichier(s) en attente de traitement ?`)) return;
   const res  = await fetch('/api/files/reset', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({filenames: sel}) });
   const data = await res.json();
-  if (data.ok) { loadFiles(); alert(`${data.reset_count} fichier(s) remis en attente.`); }
+  if (data.ok) { loadFiles(); loadPending(); alert(`${data.reset_count} fichier(s) remis en attente.`); }
   else alert('Erreur : ' + data.error);
 }
 
@@ -467,10 +678,20 @@ async function resetAll() {
   if (!confirm('Remettre TOUS les fichiers en attente ? Toutes les analyses seront refaites.')) return;
   const res  = await fetch('/api/files/reset', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({}) });
   const data = await res.json();
-  if (data.ok) { loadFiles(); alert(`${data.reset_count} fichier(s) réinitialisés.`); }
+  if (data.ok) { loadFiles(); loadPending(); alert(`${data.reset_count} fichier(s) réinitialisés.`); }
   else alert('Erreur : ' + data.error);
 }
 
+/* ─────────────────────────────────────────────────────────────
+   Utils
+───────────────────────────────────────────────────────────── */
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Init
+───────────────────────────────────────────────────────────── */
 loadHourly();
 loadVersion();
 checkStatus();

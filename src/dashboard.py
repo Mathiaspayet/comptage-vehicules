@@ -97,13 +97,69 @@ def create_app(config: Config, db: Database) -> Flask:
     @app.route("/api/files")
     def api_files():
         status_filter = request.args.get("status", "all")
-        limit  = int(request.args.get("limit", 200))
+        limit = int(request.args.get("limit", 200))
         offset = int(request.args.get("offset", 0))
+        max_age_days = int(request.args.get("max_age_days", 30))
+        sort_by = request.args.get("sort_by", "processed_at")
+        sort_dir = request.args.get("sort_dir", "desc")
         try:
-            files = db.get_processed_files(limit, offset, status_filter)
+            files = db.get_processed_files(limit, offset, status_filter, max_age_days, sort_by, sort_dir)
         except Exception as e:
             return jsonify({"error": str(e)}), 500
         return jsonify({"files": files, "count": len(files)})
+
+    @app.route("/api/files/pending")
+    def api_files_pending():
+        """Returns video files on disk that haven't been processed yet."""
+        import time as _time
+        folder = config.video_folder
+        min_age_sec = config.min_file_age_minutes * 60
+        now = _time.time()
+        exts = {".mp4", ".avi", ".mkv", ".mov"}
+
+        if not folder.exists():
+            return jsonify({"pending": [], "too_recent": []})
+
+        all_videos: list[Path] = []
+        try:
+            for entry in folder.iterdir():
+                if entry.is_file() and entry.suffix.lower() in exts:
+                    all_videos.append(entry)
+                elif entry.is_dir():
+                    try:
+                        for sub in entry.iterdir():
+                            if sub.is_file() and sub.suffix.lower() in exts:
+                                all_videos.append(sub)
+                    except PermissionError:
+                        pass
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+        processed_names = db.get_all_processed_filenames()
+        pending = []
+        too_recent = []
+
+        for f in sorted(all_videos, key=lambda x: x.stat().st_mtime):
+            if f.name in processed_names:
+                continue
+            try:
+                age_sec = now - f.stat().st_mtime
+            except FileNotFoundError:
+                continue
+            entry = {
+                "filename": f.name,
+                "age_minutes": round(age_sec / 60, 1),
+            }
+            if age_sec >= min_age_sec:
+                pending.append(entry)
+            else:
+                too_recent.append(entry)
+
+        return jsonify({
+            "pending": pending,
+            "too_recent": too_recent,
+            "min_age_minutes": config.min_file_age_minutes,
+        })
 
     @app.route("/api/files/reset", methods=["POST"])
     def api_files_reset():
