@@ -70,6 +70,7 @@ def create_config_blueprint(config: Config) -> Blueprint:
                 },
                 "detector": {
                     "sample_fps": float(data.get("detector_sample_fps", 4)),
+                    "model_name": data.get("model_name", "yolo11n"),
                     "imgsz": int(data.get("imgsz", 320)),
                     "confidence_threshold": float(data.get("confidence_threshold", 0.35)),
                     "night_confidence_threshold": float(data.get("night_confidence_threshold", 0.18)),

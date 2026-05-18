@@ -84,6 +84,7 @@ def processing_loop(watcher: FileWatcher, motion: MotionFilter, detector: Vehicl
     logger.info("Boucle de traitement démarrée.")
     config = watcher.config
     _prev_imgsz = config.imgsz
+    _prev_model_name = config.model_name
     _prev_log_level = config.log_level
 
     while not _shutdown.is_set():
@@ -97,10 +98,15 @@ def processing_loop(watcher: FileWatcher, motion: MotionFilter, detector: Vehicl
                 _prev_log_level = new_log_level
 
             new_imgsz = config.imgsz
-            if new_imgsz != _prev_imgsz:
-                logger.info("imgsz modifié (%d→%d) — le modèle sera rechargé au prochain fichier.", _prev_imgsz, new_imgsz)
+            new_model_name = config.model_name
+            if new_imgsz != _prev_imgsz or new_model_name != _prev_model_name:
+                logger.info(
+                    "Modèle/imgsz modifié (%s imgsz=%d → %s imgsz=%d) — rechargement au prochain fichier.",
+                    _prev_model_name, _prev_imgsz, new_model_name, new_imgsz,
+                )
                 detector._model = None
                 _prev_imgsz = new_imgsz
+                _prev_model_name = new_model_name
 
             _check_and_reset_if_config_changed(config, db)
 

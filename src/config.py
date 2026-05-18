@@ -28,6 +28,7 @@ DEFAULTS = {
     "detector": {
         "sample_fps": 4,
         "imgsz": 320,
+        "model_name": "yolo11n",
         "confidence_threshold": 0.35,
         "vehicle_classes": ["car", "motorcycle", "bus", "truck"],
         "count_direction": False,
@@ -186,6 +187,10 @@ class Config:
         return bool(self.get("detector", "count_direction"))
 
     @property
+    def model_name(self) -> str:
+        return self.get("detector", "model_name", default="yolo11n")
+
+    @property
     def model_dir(self) -> Path:
         return Path(self.get("detector", "model_dir"))
 
@@ -239,6 +244,7 @@ class Config:
             "line_p1": list(self.line_p1),
             "line_p2": list(self.line_p2),
             "roi_polygon": self.roi_polygon,
+            "model_name": self.model_name,
             "confidence_threshold": self.confidence_threshold,
             "vehicle_classes": sorted(self.vehicle_classes),
             "count_direction": self.count_direction,
