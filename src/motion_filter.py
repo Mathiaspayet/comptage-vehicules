@@ -97,44 +97,40 @@ class MotionFilter:
             if not ret:
                 break
 
-            if frame_idx % step != 0:
-                frame_idx += 1
-                continue
-
             current_sec = frame_idx / fps
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             gray = cv2.GaussianBlur(gray, (5, 5), 0)
 
-            if prev_gray is None:
-                prev_gray = gray
-                frame_idx += 1
-                continue
+            if prev_gray is not None:
+                roi_mask = self._build_roi_mask(frame.shape)
 
-            roi_mask = self._build_roi_mask(frame.shape)
+                diff = cv2.absdiff(prev_gray, gray)
+                _, thresh = cv2.threshold(diff, threshold, 255, cv2.THRESH_BINARY)
+                thresh = cv2.bitwise_and(thresh, roi_mask)
 
-            diff = cv2.absdiff(prev_gray, gray)
-            _, thresh = cv2.threshold(diff, threshold, 255, cv2.THRESH_BINARY)
-            thresh = cv2.bitwise_and(thresh, roi_mask)
+                # Morphological cleanup to reduce noise
+                kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+                thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
 
-            # Morphological cleanup to reduce noise
-            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-            thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
+                motion_area = cv2.countNonZero(thresh)
+                has_motion = motion_area >= min_area
 
-            motion_area = cv2.countNonZero(thresh)
-            has_motion = motion_area >= min_area
-
-            if has_motion and active_start is None:
-                active_start = max(0.0, current_sec - padding)
-            elif not has_motion and active_start is not None:
-                end = min(duration_sec, current_sec + padding)
-                segments.append(Segment(start_sec=active_start, end_sec=end))
-                active_start = None
+                if has_motion and active_start is None:
+                    active_start = max(0.0, current_sec - padding)
+                elif not has_motion and active_start is not None:
+                    end = min(duration_sec, current_sec + padding)
+                    segments.append(Segment(start_sec=active_start, end_sec=end))
+                    active_start = None
 
             prev_gray = gray
-            frame_idx += 1
+            frame_idx += step
             sampled_done += 1
             if on_progress:
                 on_progress(sampled_done, sampled_total)
+
+            # Skip (step-1) frames without decoding — ~5× faster for typical 30fps sources
+            for _ in range(step - 1):
+                cap.grab()
 
         # Close any open segment at end of video
         if active_start is not None:
