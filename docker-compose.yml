@@ -54,6 +54,11 @@ services:
   # Watchtower — mise à jour automatique du conteneur
   # Surveille GHCR et redémarre l'app quand une nouvelle
   # image est disponible (après chaque git push).
+  #
+  # NOTE : si un autre Watchtower tourne déjà sur le NAS
+  # (ex. pour audio-recorder), supprimez ce bloc et ajoutez
+  # "comptage-vehicules" à la commande de l'autre instance.
+  # Ex :  command: audio-recorder comptage-vehicules
   # --------------------------------------------------------
   watchtower:
     image: containrrr/watchtower:latest
@@ -66,16 +71,13 @@ services:
     environment:
       # Vérifier les mises à jour toutes les 10 minutes
       - WATCHTOWER_POLL_INTERVAL=600
-      # Ne surveiller QUE le conteneur de l'application (pas les autres)
-      - WATCHTOWER_SCOPE=comptage-vehicules
       # Supprimer les anciennes images après mise à jour
       - WATCHTOWER_CLEANUP=true
-      # Notification dans les logs en cas de mise à jour
-      - WATCHTOWER_NOTIFICATIONS=shoutrrr
-      # Image privée : décommentez et remplissez si votre image GHCR est privée
+      # Image privée GHCR : décommentez si votre image est privée
       # - REPO_USER=VOTRE_COMPTE_GITHUB
       # - REPO_PASS=ghp_VOTRE_TOKEN_GITHUB
 
+    # Surveille UNIQUEMENT ce conteneur (filtre par nom)
     command: comptage-vehicules
 
     logging:
