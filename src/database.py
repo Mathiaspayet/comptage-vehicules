@@ -298,6 +298,23 @@ class Database:
             cur = conn.execute("DELETE FROM processed_files")
             return cur.rowcount
 
+    def skip_files(self, filenames: list[str]) -> int:
+        """Mark files as skipped (done, 0 vehicles, 0s) so the processor ignores them."""
+        if not filenames:
+            return 0
+        now = datetime.utcnow().isoformat()
+        with self._connect() as conn:
+            conn.executemany(
+                """
+                INSERT INTO processed_files
+                    (filename, processed_at, status, vehicle_count, processing_duration_seconds)
+                VALUES (?, ?, 'done', 0, 0.0)
+                ON CONFLICT(filename) DO NOTHING
+                """,
+                [(f, now) for f in filenames],
+            )
+            return len(filenames)
+
     # ------------------------------------------------------------------ #
     # App state (config fingerprint)                                       #
     # ------------------------------------------------------------------ #
