@@ -35,12 +35,18 @@
     .btn { padding: .55rem 1.2rem; border: none; border-radius: 4px; font-size: .9rem; cursor: pointer; font-weight: 600; }
     .btn-save    { background: #1a3a5c; color: #fff; }
     .btn-save:hover { background: #2a5080; }
-    .btn-restart { background: #d97706; color: #fff; display: none; }
-    .btn-restart:hover { background: #b45309; }
     #msg { font-size: .85rem; padding: .4rem .8rem; border-radius: 4px; }
-    #msg.ok  { background: #dcfce7; color: #166534; }
-    #msg.err { background: #fee2e2; color: #991b1b; }
+    #msg.ok   { background: #dcfce7; color: #166534; }
+    #msg.err  { background: #fee2e2; color: #991b1b; }
     #msg.warn { background: #fef9c3; color: #854d0e; }
+    /* Estimate box */
+    .estimate-box { border-radius: 6px; padding: .75rem 1rem; background: #f8fafc; border: 1px solid #e2e8f0; margin-top: .4rem; }
+    .estimate-row { display: flex; align-items: center; gap: .75rem; margin-bottom: .4rem; }
+    .estimate-value { font-size: 1.4rem; font-weight: 700; color: #1a3a5c; min-width: 70px; }
+    .estimate-detail { font-size: .78rem; color: #64748b; flex: 1; }
+    .estimate-bar-wrap { background: #e5e7eb; border-radius: 4px; height: 8px; overflow: hidden; margin-bottom: .35rem; }
+    .estimate-bar-fill { height: 100%; border-radius: 4px; transition: width .4s, background .4s; }
+    .estimate-hint { font-size: .78rem; font-weight: 600; }
   </style>
 </head>
 <body>
@@ -80,6 +86,16 @@
   <div class="card">
     <h2>⏱ Planification</h2>
     <div class="field">
+      <label for="min_file_age_minutes">Âge minimum d'un fichier avant traitement (minutes)</label>
+      <div class="range-row">
+        <input type="range" id="min_file_age_minutes_range" min="10" max="120" step="5"
+               oninput="sync('min_file_age_minutes', this.value)">
+        <input type="number" id="min_file_age_minutes" min="10" max="120"
+               oninput="sync('min_file_age_minutes_range', this.value)">
+      </div>
+      <div class="hint">Traite un fichier seulement quand il a au moins X minutes. Évite d'analyser un fichier encore en cours d'écriture par la caméra. <strong>45 min recommandé</strong> pour des segments de 30 min.</div>
+    </div>
+    <div class="field">
       <label for="scan_interval_seconds">Intervalle de scan du dossier (secondes)</label>
       <div class="range-row">
         <input type="range" id="scan_interval_range" min="10" max="300" step="10" oninput="sync('scan_interval_seconds', this.value)">
@@ -88,20 +104,12 @@
       <div class="hint">Fréquence à laquelle l'app vérifie s'il y a de nouvelles vidéos.</div>
     </div>
     <div class="field">
-      <label for="file_stable_delay_seconds">Délai avant de considérer un fichier comme terminé (secondes)</label>
+      <label for="max_recent_files">Limite de fichiers à analyser par cycle (0 = aucune limite)</label>
       <div class="range-row">
-        <input type="range" id="file_stable_delay_range" min="30" max="600" step="30" oninput="sync('file_stable_delay_seconds', this.value)">
-        <input type="number" id="file_stable_delay_seconds" min="30" max="600" oninput="sync('file_stable_delay_range', this.value)">
+        <input type="range" id="max_recent_files_range" min="0" max="50" step="1" oninput="sync('max_recent_files', this.value)">
+        <input type="number" id="max_recent_files" min="0" max="200" oninput="sync('max_recent_files_range', this.value)">
       </div>
-      <div class="hint">Mettre au moins la durée d'un segment vidéo. Évite d'analyser un fichier encore en cours d'écriture.</div>
-    </div>
-    <div class="field">
-      <label for="max_recent_files">Nombre de vidéos récentes à analyser par cycle (0 = toutes)</label>
-      <div class="range-row">
-        <input type="range" id="max_recent_files_range" min="0" max="20" step="1" oninput="sync('max_recent_files', this.value)">
-        <input type="number" id="max_recent_files" min="0" max="100" oninput="sync('max_recent_files_range', this.value)">
-      </div>
-      <div class="hint">Mettre 2 ou 3 pour ignorer l'arriéré et ne traiter que les vidéos récentes.</div>
+      <div class="hint">À <strong>0</strong> (recommandé), tous les fichiers sont traités. Une valeur positive ignore définitivement les fichiers trop anciens et ne garde que les N plus récents.</div>
     </div>
   </div>
 
@@ -111,10 +119,12 @@
     <div class="field">
       <label for="motion_sample_fps">Images analysées par seconde de vidéo</label>
       <div class="range-row">
-        <input type="range" id="motion_sample_fps_range" min="1" max="8" step="0.5" oninput="sync('motion_sample_fps', this.value)">
-        <input type="number" id="motion_sample_fps" min="1" max="8" step="0.5" oninput="sync('motion_sample_fps_range', this.value)">
+        <input type="range" id="motion_sample_fps_range" min="1" max="8" step="0.5"
+               oninput="sync('motion_sample_fps', this.value); updateEstimate()">
+        <input type="number" id="motion_sample_fps" min="1" max="8" step="0.5"
+               oninput="sync('motion_sample_fps_range', this.value); updateEstimate()">
       </div>
-      <div class="hint">2–4 recommandé. Plus élevé = plus précis mais plus lent.</div>
+      <div class="hint"><strong>2 recommandé.</strong> Plus élevé = plus précis mais plus lent. Ce paramètre a un impact fort sur la durée de traitement.</div>
     </div>
     <div class="field">
       <label for="motion_threshold">Seuil de sensibilité (0–255)</label>
@@ -126,8 +136,8 @@
     </div>
     <div class="field">
       <label for="min_motion_area">Surface minimale de mouvement (pixels²)</label>
-      <input type="number" id="min_motion_area" min="100" max="10000" step="100">
-      <div class="hint">Filtre les petits mouvements parasites. 500 est une bonne valeur de départ.</div>
+      <input type="number" id="min_motion_area" min="50" max="10000" step="50">
+      <div class="hint">Filtre les petits mouvements parasites. <strong>500</strong> est une bonne valeur de départ.</div>
     </div>
     <div class="field">
       <label for="segment_padding_seconds">Marge autour des segments actifs (secondes)</label>
@@ -144,10 +154,12 @@
     <div class="field">
       <label for="detector_sample_fps">Images analysées par seconde (IA)</label>
       <div class="range-row">
-        <input type="range" id="detector_sample_fps_range" min="0.5" max="4" step="0.5" oninput="sync('detector_sample_fps', this.value)">
-        <input type="number" id="detector_sample_fps" min="0.5" max="4" step="0.5" oninput="sync('detector_sample_fps_range', this.value)">
+        <input type="range" id="detector_sample_fps_range" min="0.5" max="4" step="0.5"
+               oninput="sync('detector_sample_fps', this.value); updateEstimate()">
+        <input type="number" id="detector_sample_fps" min="0.5" max="4" step="0.5"
+               oninput="sync('detector_sample_fps_range', this.value); updateEstimate()">
       </div>
-      <div class="hint">1–2 recommandé. L'IA est plus coûteuse que le filtre de mouvement.</div>
+      <div class="hint"><strong>2 recommandé.</strong> L'IA est bien plus coûteuse que le filtre de mouvement.</div>
     </div>
     <div class="field">
       <label for="confidence_threshold">Seuil de confiance (0.0–1.0)</label>
@@ -175,6 +187,22 @@
         </label>
         <span style="font-size:.85rem;color:#666">Si activé, distingue gauche→droite et droite→gauche</span>
       </div>
+    </div>
+
+    <!-- Estimation du temps de traitement -->
+    <div class="field" style="margin-top:1.1rem">
+      <label>⏱ Temps de traitement estimé — vidéo de 30 min</label>
+      <div class="estimate-box">
+        <div class="estimate-row">
+          <div class="estimate-value" id="est-total">—</div>
+          <div class="estimate-detail" id="est-detail">—</div>
+        </div>
+        <div class="estimate-bar-wrap">
+          <div class="estimate-bar-fill" id="est-bar" style="width:0%"></div>
+        </div>
+        <div class="estimate-hint" id="est-hint"></div>
+      </div>
+      <div class="hint" style="margin-top:.35rem">Objectif : rester sous <strong>30 min</strong> pour traiter en temps réel. Constantes calibrées pour DS218+ avec OpenVINO.</div>
     </div>
   </div>
 
@@ -209,52 +237,89 @@ function sync(targetId, value) {
   if (el) el.value = value;
 }
 
-async function loadConfig() {
-  const res  = await fetch('/config/api/current');
-  const data = await res.json();
-
-  setVal('filename_datetime_format', data.filename_datetime_format);
-  setVal('timezone', data.timezone);
-  setVal('scan_interval_seconds', data.ingestion?.scan_interval_seconds);
-  setVal('scan_interval_range',   data.ingestion?.scan_interval_seconds);
-  setVal('file_stable_delay_seconds', data.ingestion?.file_stable_delay_seconds);
-  setVal('file_stable_delay_range',   data.ingestion?.file_stable_delay_seconds);
-  setVal('max_recent_files', data.ingestion?.max_recent_files);
-  setVal('max_recent_files_range', data.ingestion?.max_recent_files);
-  setVal('motion_sample_fps', data.motion_filter?.sample_fps);
-  setVal('motion_sample_fps_range', data.motion_filter?.sample_fps);
-  setVal('motion_threshold', data.motion_filter?.motion_threshold);
-  setVal('motion_threshold_range', data.motion_filter?.motion_threshold);
-  setVal('min_motion_area', data.motion_filter?.min_motion_area);
-  setVal('segment_padding_seconds', data.motion_filter?.segment_padding_seconds);
-  setVal('segment_padding_range',   data.motion_filter?.segment_padding_seconds);
-  setVal('detector_sample_fps', data.detector?.sample_fps);
-  setVal('detector_sample_fps_range', data.detector?.sample_fps);
-  setVal('confidence_threshold', data.detector?.confidence_threshold);
-  setVal('confidence_threshold_range', data.detector?.confidence_threshold);
-  setVal('default_days', data.dashboard?.default_days);
-  setVal('log_level', data.logging?.level);
-  document.getElementById('count_direction').checked = !!data.detector?.count_direction;
-
-  const classes = data.detector?.vehicle_classes || [];
-  document.querySelectorAll('#vehicle_classes input[type=checkbox]').forEach(cb => {
-    cb.checked = classes.includes(cb.value);
-  });
-}
-
 function setVal(id, val) {
   const el = document.getElementById(id);
   if (!el || val === undefined || val === null) return;
   el.value = val;
 }
 
-async function saveAndRestart() {
-  await saveConfig();
-  const msg = document.getElementById('msg');
-  if (msg.className !== 'ok') return; // don't restart if save failed
-  showMsg('⏳ Redémarrage en cours… retour au tableau de bord dans 12 secondes.', 'warn');
-  await fetch('/config/api/restart', { method: 'POST' });
-  setTimeout(() => location.href = '/', 12000);
+/* ── Estimation du temps de traitement ── */
+function updateEstimate() {
+  const motionFps   = parseFloat(document.getElementById('motion_sample_fps').value)   || 2;
+  const detectorFps = parseFloat(document.getElementById('detector_sample_fps').value) || 2;
+
+  // Empirical constants — NAS DS218+ / Intel Celeron J3355 + OpenVINO
+  const MOTION_SPF       = 0.20;  // s per motion-sampled frame
+  const DETECT_SPF       = 0.50;  // s per YOLO frame
+  const ACTIVE_FRACTION  = 0.30;  // fraction of video with motion (typical)
+  const VIDEO_MIN        = 30.0;
+
+  const motionMin  = (VIDEO_MIN * 60 * motionFps   * MOTION_SPF) / 60;
+  const detectMin  = (VIDEO_MIN * 60 * ACTIVE_FRACTION * detectorFps * DETECT_SPF) / 60;
+  const totalMin   = Math.round((motionMin + detectMin) * 10) / 10;
+
+  document.getElementById('est-total').textContent  = `~${totalMin} min`;
+  document.getElementById('est-detail').textContent =
+    `Mouvement : ${Math.round(motionMin * 10)/10} min  +  IA : ${Math.round(detectMin * 10)/10} min`;
+
+  const bar  = document.getElementById('est-bar');
+  const hint = document.getElementById('est-hint');
+  const pct  = Math.min(100, totalMin / 60 * 100);
+  bar.style.width = pct + '%';
+
+  if (totalMin < 25) {
+    bar.style.background = '#16a34a';
+    hint.style.color     = '#166534';
+    hint.textContent     = '✅ Traitement en temps réel — pas de backlog';
+  } else if (totalMin < 35) {
+    bar.style.background = '#d97706';
+    hint.style.color     = '#92400e';
+    hint.textContent     = '⚠️ Légèrement plus lent que la production vidéo';
+  } else {
+    bar.style.background = '#dc2626';
+    hint.style.color     = '#991b1b';
+    hint.textContent     = '❌ Trop lent — réduire les FPS pour éviter le backlog';
+  }
+}
+
+async function loadConfig() {
+  const res  = await fetch('/config/api/current');
+  const data = await res.json();
+
+  setVal('filename_datetime_format', data.filename_datetime_format);
+  setVal('timezone', data.timezone);
+
+  setVal('min_file_age_minutes',       data.ingestion?.min_file_age_minutes);
+  setVal('min_file_age_minutes_range', data.ingestion?.min_file_age_minutes);
+  setVal('scan_interval_seconds',      data.ingestion?.scan_interval_seconds);
+  setVal('scan_interval_range',        data.ingestion?.scan_interval_seconds);
+  setVal('max_recent_files',           data.ingestion?.max_recent_files);
+  setVal('max_recent_files_range',     data.ingestion?.max_recent_files);
+
+  setVal('motion_sample_fps',       data.motion_filter?.sample_fps);
+  setVal('motion_sample_fps_range', data.motion_filter?.sample_fps);
+  setVal('motion_threshold',        data.motion_filter?.motion_threshold);
+  setVal('motion_threshold_range',  data.motion_filter?.motion_threshold);
+  setVal('min_motion_area',         data.motion_filter?.min_motion_area);
+  setVal('segment_padding_seconds', data.motion_filter?.segment_padding_seconds);
+  setVal('segment_padding_range',   data.motion_filter?.segment_padding_seconds);
+
+  setVal('detector_sample_fps',       data.detector?.sample_fps);
+  setVal('detector_sample_fps_range', data.detector?.sample_fps);
+  setVal('confidence_threshold',      data.detector?.confidence_threshold);
+  setVal('confidence_threshold_range',data.detector?.confidence_threshold);
+
+  setVal('default_days', data.dashboard?.default_days);
+  setVal('log_level',    data.logging?.level);
+
+  document.getElementById('count_direction').checked = !!data.detector?.count_direction;
+
+  const classes = data.detector?.vehicle_classes || [];
+  document.querySelectorAll('#vehicle_classes input[type=checkbox]').forEach(cb => {
+    cb.checked = classes.includes(cb.value);
+  });
+
+  updateEstimate();
 }
 
 async function saveConfig() {
@@ -262,39 +327,43 @@ async function saveConfig() {
   document.querySelectorAll('#vehicle_classes input[type=checkbox]:checked').forEach(cb => classes.push(cb.value));
 
   const payload = {
-    video_folder:               '/video',
-    filename_datetime_format:   document.getElementById('filename_datetime_format').value,
-    timezone:                   document.getElementById('timezone').value,
-    scan_interval_seconds:      document.getElementById('scan_interval_seconds').value,
-    file_stable_delay_seconds:  document.getElementById('file_stable_delay_seconds').value,
-    max_recent_files:           document.getElementById('max_recent_files').value,
-    motion_sample_fps:          document.getElementById('motion_sample_fps').value,
-    motion_threshold:           document.getElementById('motion_threshold').value,
-    min_motion_area:            document.getElementById('min_motion_area').value,
-    segment_padding_seconds:    document.getElementById('segment_padding_seconds').value,
-    detector_sample_fps:        document.getElementById('detector_sample_fps').value,
-    confidence_threshold:       document.getElementById('confidence_threshold').value,
-    vehicle_classes:            classes,
-    count_direction:            document.getElementById('count_direction').checked,
-    default_days:               document.getElementById('default_days').value,
-    log_level:                  document.getElementById('log_level').value,
+    video_folder:             '/video',
+    filename_datetime_format: document.getElementById('filename_datetime_format').value,
+    timezone:                 document.getElementById('timezone').value,
+    min_file_age_minutes:     document.getElementById('min_file_age_minutes').value,
+    scan_interval_seconds:    document.getElementById('scan_interval_seconds').value,
+    max_recent_files:         document.getElementById('max_recent_files').value,
+    motion_sample_fps:        document.getElementById('motion_sample_fps').value,
+    motion_threshold:         document.getElementById('motion_threshold').value,
+    min_motion_area:          document.getElementById('min_motion_area').value,
+    segment_padding_seconds:  document.getElementById('segment_padding_seconds').value,
+    detector_sample_fps:      document.getElementById('detector_sample_fps').value,
+    confidence_threshold:     document.getElementById('confidence_threshold').value,
+    vehicle_classes:          classes,
+    count_direction:          document.getElementById('count_direction').checked,
+    default_days:             document.getElementById('default_days').value,
+    log_level:                document.getElementById('log_level').value,
   };
 
   const res  = await fetch('/config/api/save', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
   const data = await res.json();
-
-  if (data.ok) {
-    showMsg('✅ Configuration enregistrée.', 'ok');
-  } else {
-    showMsg('❌ ' + data.error, 'err');
-  }
+  if (data.ok) showMsg('✅ Configuration enregistrée.', 'ok');
+  else showMsg('❌ ' + data.error, 'err');
 }
 
+async function saveAndRestart() {
+  await saveConfig();
+  const msg = document.getElementById('msg');
+  if (msg.className !== 'ok') return;
+  showMsg('⏳ Redémarrage en cours… retour au tableau de bord dans 12 secondes.', 'warn');
+  await fetch('/config/api/restart', { method: 'POST' });
+  setTimeout(() => location.href = '/', 12000);
+}
 
 function showMsg(text, type) {
   const el = document.getElementById('msg');
   el.textContent = text;
-  el.className = type;
+  el.className   = type;
 }
 
 loadConfig();
