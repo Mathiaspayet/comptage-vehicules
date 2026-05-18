@@ -75,8 +75,9 @@ def _deep_merge(base: dict, override: dict) -> dict:
 
 
 class Config:
-    def __init__(self, data: dict):
+    def __init__(self, data: dict, config_path: "Path | None" = None):
         self._data = data
+        self._config_path = config_path
 
     def get(self, *keys: str, default: Any = None) -> Any:
         node = self._data
@@ -210,6 +211,27 @@ class Config:
     def default_days(self) -> int:
         return int(self.get("dashboard", "default_days", default=30))
 
+    def reload(self) -> set:
+        """Re-reads the config file and updates _data in place.
+        Returns the set of top-level keys whose values changed."""
+        if self._config_path is None or not self._config_path.exists():
+            return set()
+        try:
+            with open(self._config_path, "r", encoding="utf-8") as f:
+                user_data = yaml.safe_load(f) or {}
+            new_data = _deep_merge(DEFAULTS, user_data)
+            changed = {
+                k for k in set(self._data) | set(new_data)
+                if self._data.get(k) != new_data.get(k)
+            }
+            self._data = new_data
+            if changed:
+                logger.info("Configuration rechargée — sections modifiées : %s", changed)
+            return changed
+        except Exception as e:
+            logger.error("Erreur rechargement config : %s", e)
+            return set()
+
     def detection_fingerprint(self) -> str:
         """MD5 of all parameters that affect detection results.
         If this changes between runs, all files must be re-processed."""
@@ -248,4 +270,4 @@ def load_config(config_path: str | Path | None = None) -> Config:
             config_path,
         )
 
-    return Config(data)
+    return Config(data, config_path=config_path)

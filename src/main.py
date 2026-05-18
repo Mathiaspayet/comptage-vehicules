@@ -82,7 +82,28 @@ def _check_and_reset_if_config_changed(config, db: Database):
 
 def processing_loop(watcher: FileWatcher, motion: MotionFilter, detector: VehicleDetector, db: Database):
     logger.info("Boucle de traitement démarrée.")
+    config = watcher.config
+    _prev_imgsz = config.imgsz
+    _prev_log_level = config.log_level
+
     while not _shutdown.is_set():
+        # Hot-reload config from disk before each scan
+        changed = config.reload()
+        if changed:
+            new_log_level = config.log_level
+            if new_log_level != _prev_log_level:
+                logging.getLogger().setLevel(getattr(logging, new_log_level.upper(), logging.INFO))
+                logger.info("Niveau de log mis à jour : %s", new_log_level)
+                _prev_log_level = new_log_level
+
+            new_imgsz = config.imgsz
+            if new_imgsz != _prev_imgsz:
+                logger.info("imgsz modifié (%d→%d) — le modèle sera rechargé au prochain fichier.", _prev_imgsz, new_imgsz)
+                detector._model = None
+                _prev_imgsz = new_imgsz
+
+            _check_and_reset_if_config_changed(config, db)
+
         try:
             new_files = watcher.scan_new_files()
         except Exception as e:
