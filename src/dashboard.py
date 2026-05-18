@@ -62,13 +62,32 @@ def create_app(config: Config, db: Database) -> Flask:
         day = request.args.get("date", date.today().isoformat())
         vehicle_type = request.args.get("vehicle_type", "all")
         try:
-            hourly = db.get_hourly_stats(day, vehicle_type)
-            summary = db.get_summary(day, vehicle_type)
+            hourly    = db.get_hourly_stats(day, vehicle_type)
+            summary   = db.get_summary(day, vehicle_type)
             breakdown = db.get_vehicle_type_breakdown(day)
+            direction = db.get_direction_stats(day)
         except Exception as e:
             logger.error("Erreur stats horaires : %s", e)
             return jsonify({"error": str(e)}), 500
-        return jsonify({"date": day, "hourly": hourly, "summary": summary, "breakdown": breakdown})
+        return jsonify({"date": day, "hourly": hourly, "summary": summary, "breakdown": breakdown, "direction": direction})
+
+    @app.route("/api/stats/calendar")
+    def api_calendar():
+        import calendar as _cal
+        year  = int(request.args.get("year",  date.today().year))
+        month = int(request.args.get("month", date.today().month))
+        try:
+            days = db.get_calendar_stats(year, month)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        first_weekday = _cal.monthrange(year, month)[0]  # 0 = Monday
+        last_day      = _cal.monthrange(year, month)[1]
+        return jsonify({
+            "year": year, "month": month,
+            "first_weekday": first_weekday,
+            "last_day": last_day,
+            "days": days,
+        })
 
     @app.route("/api/stats/daily")
     def api_daily():

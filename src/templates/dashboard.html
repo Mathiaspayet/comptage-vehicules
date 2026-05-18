@@ -49,6 +49,19 @@
     .pill-ready    { background:#fef3c7; color:#92400e; }
     .pill-soon     { background:#f1f5f9; color:#64748b; }
     .pill-writing  { background:#fee2e2; color:#991b1b; }
+    /* Calendar heatmap */
+    .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; margin-top:.5rem; }
+    .cal-header-cell { text-align:center; font-size:.7rem; font-weight:600; color:#888; padding:.25rem 0; }
+    .cal-day { aspect-ratio:1; border-radius:4px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:.7rem; cursor:default; position:relative; min-height:36px; }
+    .cal-day.has-data { cursor:pointer; }
+    .cal-day.has-data:hover { outline:2px solid #1a3a5c; }
+    .cal-day-num { font-size:.68rem; font-weight:600; line-height:1; }
+    .cal-day-count { font-size:.62rem; color:rgba(0,0,0,.5); margin-top:1px; }
+    .cal-day.today { outline:2px solid #f59e0b; }
+    /* Direction bar */
+    .dir-bar-wrap { display:flex; height:16px; border-radius:8px; overflow:hidden; margin:.5rem 0; }
+    .dir-bar-ltr { background:#2563eb; transition:width .4s; }
+    .dir-bar-rtl { background:#16a34a; transition:width .4s; }
   </style>
 </head>
 <body>
@@ -67,6 +80,7 @@
   <div class="tab-bar">
     <button class="active" onclick="showTab('hourly', this)">Vue horaire</button>
     <button onclick="showTab('daily', this)">Vue quotidienne</button>
+    <button onclick="showTab('calendar', this)">📅 Calendrier</button>
     <button onclick="showTab('files', this)">📁 Fichiers</button>
     <button onclick="showTab('journal', this)">📋 Journal</button>
   </div>
@@ -98,6 +112,18 @@
     <div class="chart-box">
       <h2>Répartition par type</h2>
       <div id="breakdown" class="breakdown"></div>
+    </div>
+    <div id="direction-box" class="chart-box" style="display:none">
+      <h2>Sens de passage</h2>
+      <div class="dir-bar-wrap">
+        <div class="dir-bar-ltr" id="dir-bar-ltr" style="width:50%"></div>
+        <div class="dir-bar-rtl" id="dir-bar-rtl" style="width:50%"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:.82rem;margin-top:.25rem">
+        <span>← <span style="color:#2563eb;font-weight:600" id="dir-ltr-label">0</span></span>
+        <span style="color:#888;font-size:.78rem" id="dir-total-label"></span>
+        <span><span style="color:#16a34a;font-weight:600" id="dir-rtl-label">0</span> →</span>
+      </div>
     </div>
     <div class="chart-box">
       <h2>Tableau détaillé</h2>
@@ -139,6 +165,44 @@
         <thead><tr><th>Date</th><th>Passages</th></tr></thead>
         <tbody></tbody>
       </table>
+    </div>
+  </div>
+
+  <!-- ══════════════ CALENDRIER ══════════════ -->
+  <div id="tab-calendar" style="display:none">
+    <div class="controls" style="align-items:center">
+      <button class="btn-refresh" onclick="calPrev()">‹</button>
+      <span id="cal-title" style="font-weight:600;font-size:1rem;min-width:140px;text-align:center">—</span>
+      <button class="btn-refresh" onclick="calNext()">›</button>
+      <button class="btn-refresh" onclick="calToday()" style="margin-left:.5rem;font-size:.82rem">Aujourd'hui</button>
+    </div>
+    <div class="chart-box">
+      <div id="cal-legend" style="display:flex;align-items:center;gap:.5rem;margin-bottom:.75rem;font-size:.75rem;color:#888">
+        <span>0</span>
+        <div style="display:flex;gap:2px">
+          <div style="width:14px;height:14px;border-radius:2px;background:#f0f4f8"></div>
+          <div style="width:14px;height:14px;border-radius:2px;background:#bdd7ee"></div>
+          <div style="width:14px;height:14px;border-radius:2px;background:#6baed6"></div>
+          <div style="width:14px;height:14px;border-radius:2px;background:#2171b5"></div>
+          <div style="width:14px;height:14px;border-radius:2px;background:#084594"></div>
+        </div>
+        <span id="cal-legend-max">—</span>
+        <span style="margin-left:auto;font-size:.72rem">Cliquer sur un jour pour voir le détail horaire</span>
+      </div>
+      <div class="cal-grid" id="cal-header">
+        <div class="cal-header-cell">Lun</div>
+        <div class="cal-header-cell">Mar</div>
+        <div class="cal-header-cell">Mer</div>
+        <div class="cal-header-cell">Jeu</div>
+        <div class="cal-header-cell">Ven</div>
+        <div class="cal-header-cell">Sam</div>
+        <div class="cal-header-cell">Dim</div>
+      </div>
+      <div class="cal-grid" id="cal-grid"></div>
+    </div>
+    <div class="chart-box" id="cal-month-summary" style="display:none">
+      <h2 id="cal-summary-title">Résumé du mois</h2>
+      <div class="cards" id="cal-summary-cards"></div>
     </div>
   </div>
 
@@ -318,14 +382,15 @@ let filesSortDir = 'desc';
 function showTab(name, btn) {
   document.querySelectorAll('.tab-bar button').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  ['hourly','daily','files','journal'].forEach(t =>
+  ['hourly','daily','calendar','files','journal'].forEach(t =>
     document.getElementById('tab-'+t).style.display = name === t ? '' : 'none'
   );
   clearInterval(journalTimer);
   clearInterval(journalTimer2);
   clearInterval(filesTimer);
 
-  if (name === 'daily')  loadDaily();
+  if (name === 'daily')    loadDaily();
+  if (name === 'calendar') loadCalendar();
   if (name === 'journal') {
     loadJournal(); loadProgress();
     journalTimer  = setInterval(loadProgress, 1000);
@@ -365,6 +430,22 @@ async function loadHourly() {
   document.getElementById('breakdown').innerHTML = breakdown.length
     ? breakdown.map(b=>`<span class="badge">${b.vehicle_type} : ${b.count}</span>`).join('')
     : '<em style="color:#888">Aucun passage enregistré</em>';
+
+  // Direction
+  const dir = data.direction || {};
+  const dirBox = document.getElementById('direction-box');
+  if (dir.total > 0) {
+    dirBox.style.display = '';
+    const ltrPct = Math.round(dir.left_to_right / dir.total * 100);
+    const rtlPct = 100 - ltrPct;
+    document.getElementById('dir-bar-ltr').style.width = ltrPct + '%';
+    document.getElementById('dir-bar-rtl').style.width = rtlPct + '%';
+    document.getElementById('dir-ltr-label').textContent = `${dir.left_to_right} (${ltrPct}%)`;
+    document.getElementById('dir-rtl-label').textContent = `${dir.right_to_left} (${rtlPct}%)`;
+    document.getElementById('dir-total-label').textContent = `${dir.total} avec direction`;
+  } else {
+    dirBox.style.display = 'none';
+  }
 
   const maxCount = Math.max(...hourly.map(h=>h.count), 1);
   document.querySelector('#table-hourly tbody').innerHTML = hourly.map(h => {
@@ -751,6 +832,113 @@ async function cleanLogs() {
 
 function escHtml(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Calendrier heatmap
+───────────────────────────────────────────────────────────── */
+let _calYear  = new Date().getFullYear();
+let _calMonth = new Date().getMonth() + 1;
+
+const MONTH_FR = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+
+function calPrev()  { _calMonth--; if (_calMonth < 1)  { _calMonth = 12; _calYear--; } loadCalendar(); }
+function calNext()  { _calMonth++; if (_calMonth > 12) { _calMonth = 1;  _calYear++; } loadCalendar(); }
+function calToday() { _calYear = new Date().getFullYear(); _calMonth = new Date().getMonth()+1; loadCalendar(); }
+
+async function loadCalendar() {
+  document.getElementById('cal-title').textContent = `${MONTH_FR[_calMonth-1]} ${_calYear}`;
+  let data;
+  try {
+    data = await (await fetch(`/api/stats/calendar?year=${_calYear}&month=${_calMonth}`)).json();
+  } catch(e) { return; }
+  if (data.error) return;
+
+  renderCalendar(data);
+}
+
+function renderCalendar({ year, month, first_weekday, last_day, days }) {
+  const countMap = {};
+  days.forEach(d => { countMap[d.date] = d.count; });
+
+  const maxCount = Math.max(...Object.values(countMap), 1);
+  document.getElementById('cal-legend-max').textContent = maxCount + ' passages';
+
+  const today = new Date().toISOString().slice(0, 10);
+  const grid  = document.getElementById('cal-grid');
+
+  // Color function: 0 → light grey, max → dark blue
+  function dayColor(count) {
+    if (!count) return '#f0f4f8';
+    const t = count / maxCount;
+    if (t < 0.2) return '#bdd7ee';
+    if (t < 0.4) return '#6baed6';
+    if (t < 0.7) return '#2171b5';
+    return '#084594';
+  }
+  function textColor(count) {
+    if (!count) return '#aaa';
+    return count / maxCount >= 0.4 ? '#fff' : '#1a3a5c';
+  }
+
+  let cells = '';
+  // Empty padding cells before first day (first_weekday: 0=Mon)
+  for (let i = 0; i < first_weekday; i++) {
+    cells += '<div class="cal-day" style="background:#f8fafc"></div>';
+  }
+
+  let totalMonth = 0;
+  let daysWithData = 0;
+  let peakDay = null, peakCount = 0;
+
+  for (let d = 1; d <= last_day; d++) {
+    const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const count   = countMap[dateStr] || 0;
+    totalMonth += count;
+    if (count > 0) daysWithData++;
+    if (count > peakCount) { peakCount = count; peakDay = dateStr; }
+
+    const isToday    = dateStr === today;
+    const hasData    = count > 0;
+    const cls        = ['cal-day', hasData ? 'has-data' : '', isToday ? 'today' : ''].filter(Boolean).join(' ');
+    const onclick    = hasData ? `calClickDay('${dateStr}')` : '';
+    const title      = count ? `${dateStr} : ${count} passages` : dateStr;
+    const bg         = dayColor(count);
+    const fg         = textColor(count);
+
+    cells += `<div class="${cls}" style="background:${bg};color:${fg}" title="${title}" onclick="${onclick}">
+      <span class="cal-day-num">${d}</span>
+      ${count ? `<span class="cal-day-count">${count}</span>` : ''}
+    </div>`;
+  }
+
+  grid.innerHTML = cells;
+
+  // Monthly summary cards
+  const summaryBox = document.getElementById('cal-month-summary');
+  if (totalMonth > 0) {
+    summaryBox.style.display = '';
+    document.getElementById('cal-summary-title').textContent = `Résumé — ${MONTH_FR[month-1]} ${year}`;
+    document.getElementById('cal-summary-cards').innerHTML = `
+      <div class="card"><div class="value">${totalMonth}</div><div class="label">Total du mois</div></div>
+      <div class="card"><div class="value">${daysWithData}</div><div class="label">Jours avec trafic</div></div>
+      <div class="card"><div class="value">${totalMonth > 0 ? Math.round(totalMonth/daysWithData) : 0}</div><div class="label">Moy. / jour actif</div></div>
+      <div class="card" style="cursor:pointer" onclick="calClickDay('${peakDay}')" title="Voir le détail">
+        <div class="value">${peakCount}</div>
+        <div class="label">Pic (${peakDay?.slice(8)}/${String(month).padStart(2,'0')})</div>
+      </div>
+    `;
+  } else {
+    summaryBox.style.display = 'none';
+  }
+}
+
+function calClickDay(dateStr) {
+  // Switch to hourly tab and load the selected day
+  document.getElementById('date-picker').value = dateStr;
+  const btn = document.querySelector('.tab-bar button');  // first button = hourly
+  showTab('hourly', btn);
+  loadHourly();
 }
 
 /* ─────────────────────────────────────────────────────────────

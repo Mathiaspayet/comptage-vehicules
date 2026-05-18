@@ -348,6 +348,39 @@ class Database:
                 (key, value),
             )
 
+    def get_calendar_stats(self, year: int, month: int) -> list[dict]:
+        """Returns daily counts for a calendar month."""
+        import calendar as _cal
+        last_day = _cal.monthrange(year, month)[1]
+        date_from = f"{year:04d}-{month:02d}-01"
+        date_to   = f"{year:04d}-{month:02d}-{last_day:02d}"
+        query = """
+            SELECT date(timestamp) AS day, COUNT(*) AS count
+            FROM crossings
+            WHERE date(timestamp) BETWEEN :from AND :to
+            GROUP BY day
+        """
+        with self._connect() as conn:
+            rows = conn.execute(query, {"from": date_from, "to": date_to}).fetchall()
+        return [{"date": r["day"], "count": r["count"]} for r in rows]
+
+    def get_direction_stats(self, date_str: str) -> dict:
+        """Returns direction counts for a given date. Only crossings with direction != NULL."""
+        query = """
+            SELECT direction, COUNT(*) AS count
+            FROM crossings
+            WHERE date(timestamp) = :date AND direction IS NOT NULL
+            GROUP BY direction
+        """
+        with self._connect() as conn:
+            rows = conn.execute(query, {"date": date_str}).fetchall()
+        result = {"left_to_right": 0, "right_to_left": 0}
+        for r in rows:
+            if r["direction"] in result:
+                result[r["direction"]] = r["count"]
+        result["total"] = result["left_to_right"] + result["right_to_left"]
+        return result
+
     def get_processing_status(self) -> dict:
         with self._connect() as conn:
             total = conn.execute("SELECT COUNT(*) AS n FROM processed_files").fetchone()["n"]
