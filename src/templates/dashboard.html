@@ -164,6 +164,7 @@
     <div class="chart-box" style="margin-bottom:.75rem">
       <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.6rem">
         <h2 style="margin:0;flex:1">⏳ En attente de traitement</h2>
+        <button onclick="skipAllPending()" style="font-size:.8rem;padding:.25rem .6rem;border:1px solid #6366f1;border-radius:4px;cursor:pointer;background:#fff;color:#6366f1" title="Ignorer tous les fichiers en attente et repartir de zéro">⏭ Ignorer le backlog</button>
         <button onclick="loadPending()" style="font-size:.8rem;padding:.25rem .6rem;border:1px solid #ccc;border-radius:4px;cursor:pointer;background:#fff">↺</button>
       </div>
       <div id="pending-section" style="font-size:.83rem;color:#888">Chargement…</div>
@@ -223,6 +224,17 @@
           </thead>
           <tbody id="files-tbody"></tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- Maintenance -->
+    <div class="chart-box" style="margin-top:.75rem">
+      <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem">
+        <h2 style="margin:0;flex:1">🧹 Maintenance</h2>
+        <button onclick="loadMaintenance()" style="font-size:.8rem;padding:.25rem .6rem;border:1px solid #ccc;border-radius:4px;cursor:pointer;background:#fff">↺</button>
+      </div>
+      <div id="maintenance-section">
+        <div style="font-size:.83rem;color:#888">Chargement…</div>
       </div>
     </div>
   </div>
@@ -321,6 +333,7 @@ function showTab(name, btn) {
     loadFiles();
     loadPending();
     loadFilesProgress();
+    loadMaintenance();
     filesTimer = setInterval(() => { loadPending(); loadFilesProgress(); }, 15000);
   }
 }
@@ -685,6 +698,56 @@ async function resetAll() {
 /* ─────────────────────────────────────────────────────────────
    Utils
 ───────────────────────────────────────────────────────────── */
+async function skipAllPending() {
+  if (!confirm('Ignorer tous les fichiers en attente ? Ils seront marqués comme traités sans analyse. Seuls les nouveaux fichiers seront analysés à partir de maintenant.')) return;
+  const res  = await fetch('/api/files/skip-all', { method:'POST' });
+  const data = await res.json();
+  if (data.ok) { loadFiles(); loadPending(); alert(`${data.skipped_count} fichier(s) ignoré(s). L'analyse reprendra sur les prochains fichiers.`); }
+  else alert('Erreur : ' + data.error);
+}
+
+async function loadMaintenance() {
+  const el = document.getElementById('maintenance-section');
+  try {
+    const data = await (await fetch('/api/maintenance')).json();
+    const fmt = b => b < 1024*1024 ? `${(b/1024).toFixed(1)} Ko` : `${(b/1024/1024).toFixed(1)} Mo`;
+    el.innerHTML = `
+      <div style="display:flex;flex-wrap:wrap;gap:1rem;margin-bottom:.75rem">
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:.6rem 1rem;font-size:.83rem">
+          <div style="color:#888;font-size:.75rem">Base de données</div>
+          <div style="font-weight:600">${fmt(data.sizes['vehicles.db'] || 0)}</div>
+        </div>
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:.6rem 1rem;font-size:.83rem">
+          <div style="color:#888;font-size:.75rem">Modèles IA</div>
+          <div style="font-weight:600">${fmt(data.sizes['models'] || 0)}</div>
+        </div>
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:.6rem 1rem;font-size:.83rem">
+          <div style="color:#888;font-size:.75rem">Journaux</div>
+          <div style="font-weight:600">${fmt(data.sizes['logs'] || 0)}</div>
+        </div>
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:.6rem 1rem;font-size:.83rem">
+          <div style="color:#888;font-size:.75rem">Total /app/data</div>
+          <div style="font-weight:700;color:#1a3a5c">${fmt(data.total || 0)}</div>
+        </div>
+      </div>
+      <button onclick="cleanLogs()" style="font-size:.8rem;padding:.28rem .65rem;border:1px solid #6b7280;border-radius:4px;background:#fff;color:#6b7280;cursor:pointer">🗑 Purger les journaux archivés (.log.1, .log.2…)</button>
+    `;
+  } catch(e) {
+    el.innerHTML = '<em style="color:#dc2626">Erreur de chargement</em>';
+  }
+}
+
+async function cleanLogs() {
+  if (!confirm('Supprimer les fichiers journaux archivés (*.log.1, *.log.2, *.log.3) ?')) return;
+  const res  = await fetch('/api/maintenance/clean-logs', { method:'POST' });
+  const data = await res.json();
+  if (data.ok) {
+    const freed = data.freed_bytes < 1024*1024 ? `${(data.freed_bytes/1024).toFixed(1)} Ko` : `${(data.freed_bytes/1024/1024).toFixed(1)} Mo`;
+    alert(`${data.deleted} fichier(s) supprimé(s), ${freed} libérés.`);
+    loadMaintenance();
+  } else alert('Erreur : ' + data.error);
+}
+
 function escHtml(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }

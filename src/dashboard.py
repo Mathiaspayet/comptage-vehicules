@@ -174,6 +174,70 @@ def create_app(config: Config, db: Database) -> Flask:
             return jsonify({"error": str(e)}), 500
         return jsonify({"ok": True, "reset_count": count})
 
+    @app.route("/api/files/skip-all", methods=["POST"])
+    def api_files_skip_all():
+        """Mark all pending files on disk as skipped so the processor ignores them."""
+        import time as _time
+        folder = config.video_folder
+        exts = {".mp4", ".avi", ".mkv", ".mov"}
+        now = _time.time()
+
+        all_videos: list[Path] = []
+        try:
+            if folder.exists():
+                for entry in folder.iterdir():
+                    if entry.is_file() and entry.suffix.lower() in exts:
+                        all_videos.append(entry)
+                    elif entry.is_dir():
+                        try:
+                            for sub in entry.iterdir():
+                                if sub.is_file() and sub.suffix.lower() in exts:
+                                    all_videos.append(sub)
+                        except PermissionError:
+                            pass
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+        processed_names = db.get_all_processed_filenames()
+        to_skip = [f.name for f in all_videos if f.name not in processed_names]
+        try:
+            count = db.skip_files(to_skip)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        return jsonify({"ok": True, "skipped_count": count})
+
+    @app.route("/api/maintenance")
+    def api_maintenance():
+        """Returns disk usage of /app/data subfolders."""
+        import shutil
+        data_dir = Path("/app/data")
+        result = {}
+        for sub in ["logs", "models", "vehicles.db"]:
+            p = data_dir / sub
+            if p.exists():
+                if p.is_file():
+                    result[sub] = p.stat().st_size
+                else:
+                    result[sub] = sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
+            else:
+                result[sub] = 0
+        total = sum(result.values())
+        return jsonify({"sizes": result, "total": total})
+
+    @app.route("/api/maintenance/clean-logs", methods=["POST"])
+    def api_maintenance_clean_logs():
+        """Delete rotated log files (.log.1, .log.2, .log.3)."""
+        logs_dir = Path("/app/data/logs")
+        deleted = 0
+        freed = 0
+        if logs_dir.exists():
+            for f in logs_dir.iterdir():
+                if f.is_file() and f.suffix in {".1", ".2", ".3"}:
+                    freed += f.stat().st_size
+                    f.unlink()
+                    deleted += 1
+        return jsonify({"ok": True, "deleted": deleted, "freed_bytes": freed})
+
     @app.route("/api/journal")
     def api_journal():
         log_file = Path("/app/data/logs/comptage.log")
