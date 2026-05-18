@@ -32,6 +32,10 @@ DEFAULTS = {
         "vehicle_classes": ["car", "motorcycle", "bus", "truck"],
         "count_direction": False,
         "model_dir": "/app/data/models",
+        "night_confidence_threshold": 0.18,
+        "night_start_hour": 21,
+        "night_end_hour": 7,
+        "night_enhance": True,
     },
     "counting": {
         "line_p1": [0, 300],
@@ -143,6 +147,22 @@ class Config:
     @property
     def confidence_threshold(self) -> float:
         return float(self.get("detector", "confidence_threshold"))
+
+    @property
+    def night_confidence_threshold(self) -> float:
+        return float(self.get("detector", "night_confidence_threshold"))
+
+    @property
+    def night_start_hour(self) -> int:
+        return int(self.get("detector", "night_start_hour"))
+
+    @property
+    def night_end_hour(self) -> int:
+        return int(self.get("detector", "night_end_hour"))
+
+    @property
+    def night_enhance(self) -> bool:
+        return bool(self.get("detector", "night_enhance"))
 
     @property
     def vehicle_classes(self) -> list:

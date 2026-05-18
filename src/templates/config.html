@@ -170,6 +170,32 @@
       <div class="hint">Augmenter pour moins de faux positifs. Diminuer si des véhicules ne sont pas détectés.</div>
     </div>
     <div class="field">
+      <label>🌙 Mode nuit — seuil de confiance (0.0–1.0)</label>
+      <div class="range-row">
+        <input type="range" id="night_confidence_threshold_range" min="0.05" max="0.5" step="0.01" oninput="sync('night_confidence_threshold', this.value)">
+        <input type="number" id="night_confidence_threshold" min="0.05" max="0.5" step="0.01" oninput="sync('night_confidence_threshold_range', this.value)">
+      </div>
+      <div class="hint">Seuil abaissé automatiquement la nuit. Valeur recommandée : 0.18.</div>
+    </div>
+    <div class="field">
+      <label>🌙 Mode nuit — plage horaire</label>
+      <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
+        <label style="font-size:.85rem;color:#555">De <input type="number" id="night_start_hour" min="0" max="23" style="width:60px;padding:.3rem;border:1px solid #ccc;border-radius:4px;font-size:.9rem"> h</label>
+        <label style="font-size:.85rem;color:#555">À <input type="number" id="night_end_hour" min="0" max="23" style="width:60px;padding:.3rem;border:1px solid #ccc;border-radius:4px;font-size:.9rem"> h</label>
+      </div>
+      <div class="hint">Par défaut : de 21h à 7h.</div>
+    </div>
+    <div class="field">
+      <label>🌙 Mode nuit — rehaussement de contraste (CLAHE)</label>
+      <div class="toggle-row">
+        <label class="toggle">
+          <input type="checkbox" id="night_enhance">
+          <span class="slider"></span>
+        </label>
+        <span style="font-size:.85rem;color:#666">Améliore la détection sur images sombres</span>
+      </div>
+    </div>
+    <div class="field">
       <label>Types de véhicules à compter</label>
       <div class="checkboxes" id="vehicle_classes">
         <label><input type="checkbox" value="car"> Voiture</label>
@@ -308,6 +334,11 @@ async function loadConfig() {
   setVal('detector_sample_fps_range', data.detector?.sample_fps);
   setVal('confidence_threshold',      data.detector?.confidence_threshold);
   setVal('confidence_threshold_range',data.detector?.confidence_threshold);
+  setVal('night_confidence_threshold',      data.detector?.night_confidence_threshold);
+  setVal('night_confidence_threshold_range',data.detector?.night_confidence_threshold);
+  setVal('night_start_hour', data.detector?.night_start_hour);
+  setVal('night_end_hour',   data.detector?.night_end_hour);
+  document.getElementById('night_enhance').checked = !!data.detector?.night_enhance;
 
   setVal('default_days', data.dashboard?.default_days);
   setVal('log_level',    data.logging?.level);
@@ -338,8 +369,12 @@ async function saveConfig() {
     min_motion_area:          document.getElementById('min_motion_area').value,
     segment_padding_seconds:  document.getElementById('segment_padding_seconds').value,
     detector_sample_fps:      document.getElementById('detector_sample_fps').value,
-    confidence_threshold:     document.getElementById('confidence_threshold').value,
-    vehicle_classes:          classes,
+    confidence_threshold:          document.getElementById('confidence_threshold').value,
+    night_confidence_threshold:    document.getElementById('night_confidence_threshold').value,
+    night_start_hour:              parseInt(document.getElementById('night_start_hour').value),
+    night_end_hour:                parseInt(document.getElementById('night_end_hour').value),
+    night_enhance:                 document.getElementById('night_enhance').checked,
+    vehicle_classes:               classes,
     count_direction:          document.getElementById('count_direction').checked,
     default_days:             document.getElementById('default_days').value,
     log_level:                document.getElementById('log_level').value,

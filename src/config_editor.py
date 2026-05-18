@@ -71,6 +71,10 @@ def create_config_blueprint(config: Config) -> Blueprint:
                 "detector": {
                     "sample_fps": float(data.get("detector_sample_fps", 2)),
                     "confidence_threshold": float(data.get("confidence_threshold", 0.35)),
+                    "night_confidence_threshold": float(data.get("night_confidence_threshold", 0.18)),
+                    "night_start_hour": int(data.get("night_start_hour", 21)),
+                    "night_end_hour": int(data.get("night_end_hour", 7)),
+                    "night_enhance": bool(data.get("night_enhance", True)),
                     "vehicle_classes": data.get("vehicle_classes", ["car", "motorcycle", "bus", "truck"]),
                     "count_direction": bool(data.get("count_direction", False)),
                     "model_dir": "/app/data/models",

@@ -197,6 +197,20 @@ class VehicleDetector:
         )
         return crossings
 
+    def _is_night(self, dt: datetime | None) -> bool:
+        if dt is None:
+            return False
+        h = dt.hour
+        start, end = self.config.night_start_hour, self.config.night_end_hour
+        return h >= start or h < end
+
+    def _enhance_frame(self, frame: np.ndarray) -> np.ndarray:
+        lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+        l = clahe.apply(l)
+        return cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
+
     def _analyze_frame(
         self,
         frame: np.ndarray,
@@ -210,11 +224,16 @@ class VehicleDetector:
         track_types: dict,
         track_confs: dict,
     ) -> list[CrossingEvent]:
+        night = self._is_night(video_start_dt)
+        conf = self.config.night_confidence_threshold if night else self.config.confidence_threshold
+        if night and self.config.night_enhance:
+            frame = self._enhance_frame(frame)
+
         results = self._model.track(
             frame,
             persist=True,
             classes=self._active_class_ids,
-            conf=self.config.confidence_threshold,
+            conf=conf,
             verbose=False,
         )
 
