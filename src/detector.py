@@ -50,18 +50,21 @@ class VehicleDetector:
 
     def _load_model(self):
         """Loads the YOLO model, preferring OpenVINO format for Intel CPUs.
-        Re-exports if the cached model was built with a different imgsz."""
+        Re-exports if the cached model was built with a different imgsz or model_name."""
         from ultralytics import YOLO
 
         model_dir = self.config.model_dir
         model_dir.mkdir(parents=True, exist_ok=True)
 
-        ov_path = model_dir / "yolov8n_openvino_model"
-        meta_path = model_dir / "yolov8n_openvino_model" / "_meta.json"
-        pt_path = model_dir / "yolov8n.pt"
+        model_name = self.config.model_name          # e.g. "yolo11n", "yolov8n", "yolov8s"
         imgsz = self.config.imgsz
 
-        # Check if the cached OpenVINO model matches the requested imgsz
+        ov_dir_name = f"{model_name}_openvino_model"
+        ov_path     = model_dir / ov_dir_name
+        meta_path   = ov_path / "_meta.json"
+        pt_path     = model_dir / f"{model_name}.pt"
+
+        # Use cached OpenVINO model if imgsz matches
         if ov_path.exists():
             cached_imgsz = None
             try:
@@ -69,40 +72,39 @@ class VehicleDetector:
             except Exception:
                 pass
             if cached_imgsz == imgsz:
-                logger.info("Chargement du modèle OpenVINO (imgsz=%d) : %s", imgsz, ov_path)
+                logger.info("Chargement du modèle OpenVINO %s (imgsz=%d) : %s", model_name, imgsz, ov_path)
                 self._model = YOLO(str(ov_path))
                 return
             else:
                 logger.info(
-                    "imgsz changé (%s→%d) — re-export du modèle OpenVINO…",
-                    cached_imgsz, imgsz,
+                    "imgsz changé (%s→%d) — re-export du modèle OpenVINO %s…",
+                    cached_imgsz, imgsz, model_name,
                 )
                 shutil.rmtree(ov_path)
 
         if not pt_path.exists():
-            logger.info("Téléchargement du modèle yolov8n.pt…")
-        model_pt = YOLO(str(pt_path) if pt_path.exists() else "yolov8n.pt")
+            logger.info("Téléchargement du modèle %s.pt…", model_name)
+        model_pt = YOLO(str(pt_path) if pt_path.exists() else f"{model_name}.pt")
 
         try:
-            logger.info("Export OpenVINO (imgsz=%d)…", imgsz)
+            logger.info("Export OpenVINO %s (imgsz=%d)…", model_name, imgsz)
             model_pt.export(format="openvino", imgsz=imgsz, half=False)
-            local_ov = Path("yolov8n_openvino_model")
+            local_ov = Path(ov_dir_name)
             if local_ov.exists():
                 shutil.copytree(local_ov, ov_path)
                 shutil.rmtree(local_ov)
-            pt_source = Path("yolov8n.pt")
+            pt_source = Path(f"{model_name}.pt")
             if pt_source.exists() and not pt_path.exists():
                 shutil.copy(pt_source, pt_path)
-            # Save metadata
             meta_path.write_text(json.dumps({"imgsz": imgsz}))
             logger.info("Modèle OpenVINO exporté : %s", ov_path)
             self._model = YOLO(str(ov_path))
         except Exception as e:
             logger.warning("Export OpenVINO échoué (%s), utilisation du modèle .pt", e)
-            pt_source = Path("yolov8n.pt")
+            pt_source = Path(f"{model_name}.pt")
             if pt_source.exists() and not pt_path.exists():
                 shutil.copy(pt_source, pt_path)
-            self._model = YOLO(str(pt_path) if pt_path.exists() else "yolov8n.pt")
+            self._model = YOLO(str(pt_path) if pt_path.exists() else f"{model_name}.pt")
 
     def process_video(
         self,

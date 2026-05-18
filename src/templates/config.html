@@ -166,6 +166,28 @@
       <div class="hint"><strong>4 recommandé</strong> pour les véhicules rapides (moins de 2s sur l'image).</div>
     </div>
     <div class="field">
+      <label>🧠 Modèle de détection</label>
+      <div style="display:flex;flex-direction:column;gap:.45rem;margin-top:.25rem">
+        <label style="display:flex;align-items:baseline;gap:.5rem;font-weight:normal;cursor:pointer">
+          <input type="radio" name="model_name" value="yolo11n" style="margin-top:.15rem">
+          <span><strong>YOLO11n</strong> <span style="color:#16a34a;font-size:.8rem">● recommandé</span> — nano, le plus récent, précision supérieure à v8n pour la même vitesse</span>
+        </label>
+        <label style="display:flex;align-items:baseline;gap:.5rem;font-weight:normal;cursor:pointer">
+          <input type="radio" name="model_name" value="yolov8n" style="margin-top:.15rem">
+          <span><strong>YOLOv8n</strong> — nano, robuste et bien éprouvé</span>
+        </label>
+        <label style="display:flex;align-items:baseline;gap:.5rem;font-weight:normal;cursor:pointer">
+          <input type="radio" name="model_name" value="yolov8s" style="margin-top:.15rem">
+          <span><strong>YOLOv8s</strong> — small, +10–15 % de précision, ~2× plus lent</span>
+        </label>
+        <label style="display:flex;align-items:baseline;gap:.5rem;font-weight:normal;cursor:pointer">
+          <input type="radio" name="model_name" value="yolo11s" style="margin-top:.15rem">
+          <span><strong>YOLO11s</strong> — small nouvelle génération, meilleur rapport précision/vitesse</span>
+        </label>
+      </div>
+      <div class="hint">⚠️ Changer de modèle déclenche un re-export OpenVINO (~2–5 min) et un retraitement de tous les fichiers.</div>
+    </div>
+    <div class="field">
       <label for="imgsz">⚡ Taille d'entrée YOLO (pixels)</label>
       <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
         <label style="display:flex;align-items:center;gap:.4rem;font-weight:normal;cursor:pointer">
@@ -361,6 +383,9 @@ async function loadConfig() {
 
   setVal('detector_sample_fps',       data.detector?.sample_fps);
   setVal('detector_sample_fps_range', data.detector?.sample_fps);
+  // model_name radio
+  const modelName = data.detector?.model_name || 'yolo11n';
+  document.querySelectorAll('input[name=model_name]').forEach(r => { r.checked = r.value === modelName; });
   // imgsz radio
   const imgsz = data.detector?.imgsz || 320;
   document.getElementById('imgsz_320').checked = imgsz !== 640;
@@ -407,6 +432,7 @@ async function saveConfig() {
     min_motion_area:          document.getElementById('min_motion_area').value,
     segment_padding_seconds:  document.getElementById('segment_padding_seconds').value,
     detector_sample_fps:      document.getElementById('detector_sample_fps').value,
+    model_name:                    document.querySelector('input[name=model_name]:checked')?.value || 'yolo11n',
     confidence_threshold:          document.getElementById('confidence_threshold').value,
     imgsz:                         parseInt(document.querySelector('input[name=imgsz]:checked')?.value || '320'),
     roi_crop:                      document.getElementById('roi_crop').checked,
