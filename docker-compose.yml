@@ -37,13 +37,6 @@ services:
       - CONFIG_PATH=/app/data/config.yaml
       - TZ=Europe/Paris  # Fuseau horaire du NAS — à ajuster si besoin
 
-    # Limitation des ressources pour ne pas saturer le NAS
-    deploy:
-      resources:
-        limits:
-          cpus: "1.5"     # Utilise au plus 1,5 cœur sur 2
-          memory: "1G"    # Limite mémoire à 1 Go
-
     logging:
       driver: "json-file"
       options:
