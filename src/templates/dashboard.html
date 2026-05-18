@@ -186,6 +186,7 @@
           <select id="files-filter" onchange="loadFiles()">
             <option value="all">Tous</option>
             <option value="done">Traités</option>
+            <option value="skipped">Ignorés</option>
             <option value="error">Erreurs</option>
           </select>
         </label>
@@ -644,14 +645,13 @@ function renderFiles(files) {
   }
 
   tbody.innerHTML = shown.map(f => {
-    const dur = parseFloat(f.processing_duration_seconds);
-    const isSkipped = f.status === 'done' && f.vehicle_count === 0 && !isNaN(dur) && dur < 5;
+    const isSkipped = f.status === 'skipped';
     const hasVehicles = f.vehicle_count > 0;
 
     const statusBadge = f.status === 'error'
       ? `<span style="color:#dc2626;font-weight:600" title="${escHtml(f.error_message||'')}">✗ erreur</span>`
       : isSkipped
-        ? `<span style="color:#9ca3af" title="Ignoré — backlog trop ancien">⊘ ignoré</span>`
+        ? `<span style="color:#9ca3af" title="Ignoré — backlog sauté">⊘ ignoré</span>`
         : `<span style="color:#16a34a;font-weight:600">✓ traité</span>`;
 
     const rowOpacity = isSkipped ? 'opacity:.55' : '';

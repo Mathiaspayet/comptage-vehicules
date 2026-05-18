@@ -292,14 +292,28 @@ class Database:
             return cur.rowcount
 
     def unmark_all_files(self) -> int:
-        """Remove ALL files from processed_files (and all crossings). Returns count deleted."""
+        """Remove all non-skipped files from processed_files (and their crossings). Returns count deleted."""
         with self._connect() as conn:
-            conn.execute("DELETE FROM crossings")
-            cur = conn.execute("DELETE FROM processed_files")
+            skipped = [
+                r["filename"] for r in conn.execute(
+                    "SELECT filename FROM processed_files WHERE status = 'skipped'"
+                ).fetchall()
+            ]
+            if skipped:
+                placeholders = ",".join("?" * len(skipped))
+                conn.execute(
+                    f"DELETE FROM crossings WHERE source_file NOT IN ({placeholders})", skipped
+                )
+                cur = conn.execute(
+                    f"DELETE FROM processed_files WHERE status != 'skipped'"
+                )
+            else:
+                conn.execute("DELETE FROM crossings")
+                cur = conn.execute("DELETE FROM processed_files")
             return cur.rowcount
 
     def skip_files(self, filenames: list[str]) -> int:
-        """Mark files as skipped (done, 0 vehicles, 0s) so the processor ignores them."""
+        """Mark files as skipped so the processor ignores them even after a config reset."""
         if not filenames:
             return 0
         now = datetime.utcnow().isoformat()
@@ -308,7 +322,7 @@ class Database:
                 """
                 INSERT INTO processed_files
                     (filename, processed_at, status, vehicle_count, processing_duration_seconds)
-                VALUES (?, ?, 'done', 0, 0.0)
+                VALUES (?, ?, 'skipped', 0, 0.0)
                 ON CONFLICT(filename) DO NOTHING
                 """,
                 [(f, now) for f in filenames],
