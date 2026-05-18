@@ -564,11 +564,13 @@ function renderPending({ pending, too_recent, min_age_minutes }) {
       <div style="font-size:.8rem;font-weight:600;color:#94a3b8;margin-bottom:.3rem">
         ⏰ ${nTooRecent} fichier(s) trop récent(s) — attente ${min_age_minutes} min avant traitement
       </div>`;
-    html += too_recent.map(f => `
-      <div class="pending-row" style="color:#94a3b8">
-        <span class="pill pill-soon">${f.age_minutes} min</span>
+    html += too_recent.map(f => {
+      const remaining = Math.max(0, min_age_minutes - f.age_minutes);
+      return `<div class="pending-row" style="color:#94a3b8">
+        <span class="pill pill-soon" title="Âge : ${f.age_minutes.toFixed(1)} min">encore ${remaining.toFixed(0)} min</span>
         <span style="font-family:monospace;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.78rem">${escHtml(f.filename)}</span>
-      </div>`).join('');
+      </div>`;
+    }).join('');
     html += '</div>';
   }
 
