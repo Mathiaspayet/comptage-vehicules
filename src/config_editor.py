@@ -59,8 +59,8 @@ def create_config_blueprint(config: Config) -> Blueprint:
                 "timezone": data.get("timezone", "Europe/Paris").strip(),
                 "ingestion": {
                     "scan_interval_seconds": int(data.get("scan_interval_seconds", 60)),
+                    "file_stable_delay_seconds": int(data.get("file_stable_delay_seconds", 120)),
                     "max_recent_files": int(data.get("max_recent_files", 0)),
-                    "min_file_age_minutes": int(data.get("min_file_age_minutes", 45)),
                 },
                 "motion_filter": {
                     "sample_fps": float(data.get("motion_sample_fps", 2)),

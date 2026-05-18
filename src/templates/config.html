@@ -86,14 +86,14 @@
   <div class="card">
     <h2>⏱ Planification</h2>
     <div class="field">
-      <label for="min_file_age_minutes">Âge minimum d'un fichier avant traitement (minutes)</label>
+      <label for="file_stable_delay_seconds">Délai de stabilité de taille avant traitement (secondes)</label>
       <div class="range-row">
-        <input type="range" id="min_file_age_minutes_range" min="10" max="120" step="5"
-               oninput="sync('min_file_age_minutes', this.value)">
-        <input type="number" id="min_file_age_minutes" min="10" max="120"
-               oninput="sync('min_file_age_minutes_range', this.value)">
+        <input type="range" id="file_stable_delay_range" min="30" max="300" step="10"
+               oninput="sync('file_stable_delay_seconds', this.value)">
+        <input type="number" id="file_stable_delay_seconds" min="30" max="300"
+               oninput="sync('file_stable_delay_range', this.value)">
       </div>
-      <div class="hint">Traite un fichier seulement quand il a au moins X minutes. Évite d'analyser un fichier encore en cours d'écriture par la caméra. <strong>45 min recommandé</strong> pour des segments de 30 min.</div>
+      <div class="hint">Traite un fichier seulement quand sa taille n'a pas changé depuis X secondes. Détecte automatiquement si la caméra est encore en train d'écrire le fichier. <strong>120 s recommandé.</strong></div>
     </div>
     <div class="field">
       <label for="scan_interval_seconds">Intervalle de scan du dossier (secondes)</label>
@@ -338,8 +338,8 @@ async function loadConfig() {
   setVal('filename_datetime_format', data.filename_datetime_format);
   setVal('timezone', data.timezone);
 
-  setVal('min_file_age_minutes',       data.ingestion?.min_file_age_minutes);
-  setVal('min_file_age_minutes_range', data.ingestion?.min_file_age_minutes);
+  setVal('file_stable_delay_seconds', data.ingestion?.file_stable_delay_seconds);
+  setVal('file_stable_delay_range',   data.ingestion?.file_stable_delay_seconds);
   setVal('scan_interval_seconds',      data.ingestion?.scan_interval_seconds);
   setVal('scan_interval_range',        data.ingestion?.scan_interval_seconds);
   setVal('max_recent_files',           data.ingestion?.max_recent_files);
@@ -391,7 +391,7 @@ async function saveConfig() {
     video_folder:             '/video',
     filename_datetime_format: document.getElementById('filename_datetime_format').value,
     timezone:                 document.getElementById('timezone').value,
-    min_file_age_minutes:     document.getElementById('min_file_age_minutes').value,
+    file_stable_delay_seconds: document.getElementById('file_stable_delay_seconds').value,
     scan_interval_seconds:    document.getElementById('scan_interval_seconds').value,
     max_recent_files:         document.getElementById('max_recent_files').value,
     motion_sample_fps:        document.getElementById('motion_sample_fps').value,
