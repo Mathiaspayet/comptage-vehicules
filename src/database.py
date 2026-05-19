@@ -585,12 +585,15 @@ class Database:
         return None
 
     def get_audio_stats_history(self, limit: int = 30) -> list[dict]:
-        """Historique des niveaux audio par fichier (pour le dashboard)."""
+        """Historique des niveaux audio par fichier (pour le dashboard).
+        N'inclut que les fichiers avec une vraie piste audio (p10_db non null)."""
         with self._connect() as conn:
             rows = conn.execute(
                 """
                 SELECT filename, mean_db, median_db, std_db, p10_db, p90_db, created_at
-                FROM audio_stats ORDER BY created_at DESC LIMIT ?
+                FROM audio_stats
+                WHERE p10_db IS NOT NULL
+                ORDER BY created_at DESC LIMIT ?
                 """,
                 (limit,),
             ).fetchall()

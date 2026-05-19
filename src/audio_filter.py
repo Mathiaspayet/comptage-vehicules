@@ -223,10 +223,18 @@ def bootstrap_calibration(audio: "AudioFilter", video_folder: "Path", shutdown_e
     n = audio.db.get_audio_stats_count()
     if n >= needed:
         logger.info("Bootstrap audio terminé — calibration prête (%d fichiers).", n)
+    elif n > 0:
+        logger.warning(
+            "Bootstrap audio terminé — seulement %d/%d fichiers avec audio trouvés "
+            "(%d candidats analysés). "
+            "Réduisez audio_filter.calibration_files à %d dans la config pour débloquer la calibration.",
+            n, needed, analyzed, n,
+        )
     else:
-        logger.info(
-            "Bootstrap audio terminé — %d/%d fichiers calibrés (%d candidats épuisés).",
-            n, needed, len(candidates),
+        logger.warning(
+            "Bootstrap audio terminé — aucun fichier avec piste audio trouvé "
+            "parmi %d candidats. Vérifiez que la caméra enregistre bien l'audio.",
+            analyzed,
         )
 
 

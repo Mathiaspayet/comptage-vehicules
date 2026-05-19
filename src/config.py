@@ -75,7 +75,7 @@ DEFAULTS = {
     "audio_filter": {
         "enabled": True,
         "window_sec": 0.5,          # taille de la fenêtre RMS (secondes)
-        "calibration_files": 20,    # fichiers requis avant d'utiliser le filtre
+        "calibration_files": 10,    # fichiers requis avant d'utiliser le filtre
         "sigma_factor": 2.5,        # seuil = p10_moyen + sigma × std_moyen
         "segment_padding": 2.0,     # secondes ajoutées autour des segments
         "min_energy_db": -55.0,     # seuil absolu minimum (dBFS)

@@ -1094,9 +1094,13 @@ async function loadAudioCalibration() {
   if (!data.history || data.history.length === 0) return;
 
   const hist = data.history.slice().reverse();  // chronologique
+  const _reDT = /(\d{4})(\d{2})(\d{2})[^\d](\d{2})(\d{2})(\d{2})/;
   const labels = hist.map(h => {
-    const d = new Date((h.created_at.includes('Z') ? h.created_at : h.created_at + 'Z'));
-    return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    // Extraire la date depuis le nom de fichier (ex: Interphone-20260519-103000-...)
+    const m = _reDT.exec(h.filename);
+    if (m) return `${m[3]}/${m[2]} ${m[4]}:${m[5]}`;
+    // Fallback : index séquentiel si le format est inconnu
+    return h.filename.slice(0, 16);
   });
 
   const datasets = [
