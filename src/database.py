@@ -347,6 +347,22 @@ class Database:
             rows = conn.execute("SELECT filename FROM processed_files").fetchall()
         return {r["filename"] for r in rows}
 
+    def get_files_missing_audio_stats(self, limit: int) -> list[str]:
+        """Returns filenames of 'done' files that have no audio stats yet."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT pf.filename
+                FROM processed_files pf
+                LEFT JOIN audio_stats ast ON pf.filename = ast.filename
+                WHERE pf.status = 'done' AND ast.filename IS NULL
+                ORDER BY pf.processed_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [r["filename"] for r in rows]
+
     def delete_crossings_for_files(self, filenames: list[str]) -> int:
         """Delete all crossings whose source_file is in the given list. Returns count deleted."""
         if not filenames:

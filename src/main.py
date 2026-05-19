@@ -9,7 +9,7 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
-from .audio_filter import AudioFilter, union_segments
+from .audio_filter import AudioFilter, bootstrap_calibration, union_segments
 from .config import load_config
 from .dashboard import run_dashboard
 from .database import Database
@@ -370,6 +370,14 @@ def main():
     signal.signal(signal.SIGINT, _handle_signal)
 
     threading.Thread(target=_watchdog_loop, daemon=True, name="watchdog").start()
+
+    # Bootstrap calibration audio en arrière-plan sur les fichiers existants
+    threading.Thread(
+        target=bootstrap_calibration,
+        args=(audio, config.video_folder, _shutdown),
+        daemon=True,
+        name="audio-bootstrap",
+    ).start()
 
     # Un seul serveur web (dashboard + calibration)
     dashboard_thread = threading.Thread(

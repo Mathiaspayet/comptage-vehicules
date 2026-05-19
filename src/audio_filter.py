@@ -178,6 +178,52 @@ class AudioFilter:
         return _merge_segments(segments, gap=3.0)
 
 
+def bootstrap_calibration(audio: "AudioFilter", video_folder: "Path", shutdown_event=None) -> None:
+    """Analyse les fichiers déjà traités pour bootstrapper la calibration audio.
+
+    Tourne en thread daemon au démarrage — s'arrête dès que le nombre de
+    fichiers requis est atteint ou qu'il n'y a plus rien à analyser.
+    """
+    import threading
+    needed = audio.config.audio_calibration_files
+    already = audio.db.get_audio_stats_count()
+    if already >= needed:
+        return
+
+    missing = audio.db.get_files_missing_audio_stats(limit=needed - already)
+    if not missing:
+        logger.info("Bootstrap audio : aucun fichier éligible trouvé.")
+        return
+
+    logger.info(
+        "Bootstrap audio : %d fichier(s) à analyser pour atteindre %d/%d.",
+        len(missing), needed, needed,
+    )
+
+    for filename in missing:
+        if shutdown_event and shutdown_event.is_set():
+            break
+        if audio.db.get_audio_stats_count() >= needed:
+            break
+
+        # Chercher le fichier dans le dossier vidéo (y compris sous-dossiers)
+        matches = list(video_folder.rglob(filename))
+        if not matches:
+            logger.debug("Bootstrap audio : %s introuvable sur le disque.", filename)
+            continue
+
+        try:
+            audio.analyze_video(matches[0])
+        except Exception as e:
+            logger.debug("Bootstrap audio — erreur sur %s : %s", filename, e)
+
+    n = audio.db.get_audio_stats_count()
+    if n >= needed:
+        logger.info("Bootstrap audio terminé — calibration prête (%d fichiers).", n)
+    else:
+        logger.info("Bootstrap audio terminé — %d/%d fichiers analysés.", n, needed)
+
+
 def union_segments(a: list[Segment], b: list[Segment]) -> list[Segment]:
     """Union de deux listes de segments (fusion mouvement + audio)."""
     if not b:
