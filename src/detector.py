@@ -112,8 +112,16 @@ class VehicleDetector:
         segments: list[Segment],
         video_start_dt: datetime | None = None,
         on_progress: Optional[Callable[[int, int], None]] = None,
+        start_seg_idx: int = 0,
+        initial_crossings: list | None = None,
+        on_segment_done: Optional[Callable[[int, list], None]] = None,
     ) -> list[CrossingEvent]:
-        """Runs AI detection only on the active segments of a video."""
+        """Runs AI detection only on the active segments of a video.
+
+        When resuming from a checkpoint, pass start_seg_idx to skip already-processed
+        segments. Returns only the NEW CrossingEvent objects found from start_seg_idx
+        onward (the caller is responsible for combining with previously saved crossings).
+        """
         if self._model is None:
             self._load_model()
 
@@ -122,7 +130,11 @@ class VehicleDetector:
             raise IOError(f"Impossible d'ouvrir la vidéo : {video_path}")
 
         try:
-            return self._process(cap, video_path, segments, video_start_dt, on_progress)
+            return self._process(
+                cap, video_path, segments, video_start_dt, on_progress,
+                start_seg_idx=start_seg_idx,
+                on_segment_done=on_segment_done,
+            )
         finally:
             cap.release()
 
@@ -147,14 +159,17 @@ class VehicleDetector:
         segments: list[Segment],
         video_start_dt: datetime | None,
         on_progress: Optional[Callable[[int, int], None]] = None,
+        start_seg_idx: int = 0,
+        on_segment_done: Optional[Callable[[int, list], None]] = None,
     ) -> list[CrossingEvent]:
         fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
         sample_fps = self.config.effective_detector_fps
         step = max(1, int(fps / sample_fps))
 
+        # Only count frames in segments we will actually process (>= start_seg_idx)
         total_active_frames = max(1, sum(
             int((seg.end_sec - seg.start_sec) * fps / step)
-            for seg in segments
+            for seg in segments[start_seg_idx:]
         ))
 
         line_p1 = np.array(self.config.line_p1, dtype=np.float32)
@@ -176,7 +191,10 @@ class VehicleDetector:
         track_sides: dict[int, float] = {}
         track_types: dict[int, str] = {}
         track_confs: dict[int, float] = {}
+        # New crossings found in this run (not including initial_crossings)
         crossings: list[CrossingEvent] = []
+        # Running list of new crossing dicts for the on_segment_done callback
+        new_crossings_dicts: list[dict] = []
 
         source_name = video_path.name
         seg_idx = 0
@@ -188,6 +206,11 @@ class VehicleDetector:
             on_progress(0, total_active_frames)
 
         while seg_idx < len(segments):
+            # Skip segments that were already processed before the checkpoint
+            if seg_idx < start_seg_idx:
+                seg_idx += 1
+                continue
+
             seg = segments[seg_idx]
             current_sec = frame_idx / fps
 
@@ -198,6 +221,9 @@ class VehicleDetector:
                 inside_segment = True
 
             if current_sec > seg.end_sec:
+                # Segment finished — fire the checkpoint callback
+                if on_segment_done is not None:
+                    on_segment_done(seg_idx, list(new_crossings_dicts))
                 seg_idx += 1
                 inside_segment = False
                 continue
@@ -223,6 +249,16 @@ class VehicleDetector:
                     track_confs,
                 )
                 crossings.extend(events)
+                new_crossings_dicts.extend([
+                    {
+                        "timestamp": e.timestamp.isoformat(),
+                        "vehicle_type": e.vehicle_type,
+                        "direction": e.direction,
+                        "confidence": e.confidence,
+                        "source_file": e.source_file,
+                    }
+                    for e in events
+                ])
                 analysed_frames += 1
                 if on_progress:
                     on_progress(analysed_frames, total_active_frames)
@@ -230,6 +266,9 @@ class VehicleDetector:
             frame_idx += 1
             current_sec = frame_idx / fps
             if current_sec > seg.end_sec:
+                # Segment finished — fire the checkpoint callback
+                if on_segment_done is not None:
+                    on_segment_done(seg_idx, list(new_crossings_dicts))
                 seg_idx += 1
                 inside_segment = False
 

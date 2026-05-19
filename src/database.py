@@ -95,6 +95,7 @@ class Database:
             for migration in [
                 "ALTER TABLE processed_files ADD COLUMN processing_duration_seconds REAL",
                 "ALTER TABLE audio_stats ADD COLUMN video_hour INTEGER",
+                "ALTER TABLE processed_files ADD COLUMN checkpoint_json TEXT",
             ]:
                 try:
                     conn.execute(migration)
@@ -370,6 +371,52 @@ class Database:
                 f"DELETE FROM crossings WHERE source_file IN ({placeholders})", filenames
             )
             return cur.rowcount
+
+    # ------------------------------------------------------------------ #
+    # Checkpoint (reprise sur crash)                                       #
+    # ------------------------------------------------------------------ #
+
+    def save_checkpoint(self, filename: str, segments: list, cursor: int, crossings: list) -> None:
+        """Sauvegarde l'état de traitement intermédiaire."""
+        import json
+        data = {
+            "segments": [{"start_sec": s.start_sec, "end_sec": s.end_sec} for s in segments],
+            "cursor": cursor,
+            "crossings": crossings,  # déjà des dicts sérialisables
+        }
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO processed_files (filename, processed_at, status, vehicle_count) "
+                "VALUES (?, '', 'processing', 0)",
+                (filename,),
+            )
+            conn.execute(
+                "UPDATE processed_files SET checkpoint_json = ? WHERE filename = ?",
+                (json.dumps(data), filename),
+            )
+
+    def get_checkpoint(self, filename: str) -> "dict | None":
+        """Retourne le checkpoint si disponible, None sinon."""
+        import json
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT checkpoint_json FROM processed_files WHERE filename = ?",
+                (filename,)
+            ).fetchone()
+        if row and row[0]:
+            try:
+                return json.loads(row[0])
+            except Exception:
+                return None
+        return None
+
+    def clear_checkpoint(self, filename: str) -> None:
+        """Efface le checkpoint une fois le fichier terminé."""
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE processed_files SET checkpoint_json = NULL WHERE filename = ?",
+                (filename,),
+            )
 
     def unmark_files(self, filenames: list[str]) -> int:
         """Remove files from processed_files (and their crossings) so they get re-processed."""

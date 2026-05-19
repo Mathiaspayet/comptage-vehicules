@@ -216,33 +216,62 @@ def _process_file(
     start_time = time.monotonic()
 
     try:
-        # ── Phase 1 : filtre audio (détecteur principal) ────────────
-        progress_tracker.set_phase("audio", frames_total=0)
-        try:
-            segments = audio.analyze_video(video_path)
-        except Exception as e:
-            logger.warning("Filtre audio échoué sur %s : %s — fichier ignoré.", filename, e)
-            db.mark_file_error(filename, f"Filtre audio échoué : {e}")
-            progress_tracker.finish_file()
-            return
+        # ── Vérifier checkpoint ──────────────────────────────────────
+        checkpoint = db.get_checkpoint(filename)
 
-        if not segments:
-            logger.info("%s — aucun segment actif.", filename)
-            db.mark_file_done(filename, vehicle_count=0, duration_seconds=time.monotonic() - start_time)
-            progress_tracker.finish_file()
-            return
+        if checkpoint and checkpoint.get("segments"):
+            from .motion_filter import Segment as _Seg
+            segments = [_Seg(s["start_sec"], s["end_sec"]) for s in checkpoint["segments"]]
+            start_seg_idx = checkpoint.get("cursor", 0)
+            saved_crossings = checkpoint.get("crossings", [])
+            logger.info(
+                "%s — reprise depuis segment %d/%d (%d franchissement(s) déjà trouvés).",
+                filename, start_seg_idx, len(segments), len(saved_crossings),
+            )
+            progress_tracker.set_phase("audio", frames_total=0)  # skip audio
+        else:
+            # ── Phase 1 : filtre audio (détecteur principal) ────────────
+            progress_tracker.set_phase("audio", frames_total=0)
+            try:
+                segments = audio.analyze_video(video_path)
+            except Exception as e:
+                logger.warning("Filtre audio échoué sur %s : %s — fichier ignoré.", filename, e)
+                db.mark_file_error(filename, f"Filtre audio échoué : {e}")
+                db.clear_checkpoint(filename)
+                progress_tracker.finish_file()
+                return
+
+            if not segments:
+                logger.info("%s — aucun segment actif.", filename)
+                db.mark_file_done(filename, vehicle_count=0, duration_seconds=time.monotonic() - start_time)
+                db.clear_checkpoint(filename)
+                progress_tracker.finish_file()
+                return
+
+            # Sauvegarder le checkpoint audio (segments connus, détection pas encore commencée)
+            db.save_checkpoint(filename, segments, 0, [])
+            start_seg_idx = 0
+            saved_crossings: list = []
 
         # ── Phase 2 : détection IA ──────────────────────────────────
+        def on_segment_done(seg_idx: int, new_crossings_dicts: list):
+            all_so_far = saved_crossings + new_crossings_dicts
+            db.save_checkpoint(filename, segments, seg_idx + 1, all_so_far)
+
         def detection_progress(done: int, total: int):
             progress_tracker.set_phase("detection", frames_total=total)
             progress_tracker.update_frame(done)
 
-        events = detector.process_video(
-            video_path, segments, video_start_dt, on_progress=detection_progress
+        new_events = detector.process_video(
+            video_path, segments, video_start_dt,
+            on_progress=detection_progress,
+            start_seg_idx=start_seg_idx,
+            on_segment_done=on_segment_done,
         )
 
-        if events:
-            crossings = [
+        # Insérer uniquement les NOUVEAUX franchissements (segments non encore en base)
+        if new_events:
+            new_crossings = [
                 {
                     "timestamp": e.timestamp.isoformat(),
                     "vehicle_type": e.vehicle_type,
@@ -250,17 +279,20 @@ def _process_file(
                     "confidence": e.confidence,
                     "source_file": e.source_file,
                 }
-                for e in events
+                for e in new_events
             ]
-            db.insert_crossings_batch(crossings)
+            db.insert_crossings_batch(new_crossings)
 
-        db.mark_file_done(filename, vehicle_count=len(events), duration_seconds=time.monotonic() - start_time)
+        total_count = len(saved_crossings) + len(new_events)
+        db.mark_file_done(filename, vehicle_count=total_count, duration_seconds=time.monotonic() - start_time)
+        db.clear_checkpoint(filename)
         progress_tracker.finish_file()
-        logger.info("%s — %d véhicule(s) compté(s).", filename, len(events))
+        logger.info("%s — %d véhicule(s) compté(s).", filename, total_count)
 
     except Exception as e:
         logger.exception("Erreur lors du traitement de %s : %s", filename, e)
         db.mark_file_error(filename, str(e))
+        db.clear_checkpoint(filename)
         progress_tracker.finish_file()
     finally:
         _processing_start = None
