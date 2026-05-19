@@ -269,21 +269,22 @@ def _process_file(
             on_segment_done=on_segment_done,
         )
 
-        # Insérer uniquement les NOUVEAUX franchissements (segments non encore en base)
-        if new_events:
-            new_crossings = [
-                {
-                    "timestamp": e.timestamp.isoformat(),
-                    "vehicle_type": e.vehicle_type,
-                    "direction": e.direction,
-                    "confidence": e.confidence,
-                    "source_file": e.source_file,
-                }
-                for e in new_events
-            ]
-            db.insert_crossings_batch(new_crossings)
+        # Remplacer les crossings existants pour ce fichier, puis insérer les nouveaux
+        db.delete_crossings_for_files([filename])
+        all_crossings = saved_crossings + [
+            {
+                "timestamp": e.timestamp.isoformat(),
+                "vehicle_type": e.vehicle_type,
+                "direction": e.direction,
+                "confidence": e.confidence,
+                "source_file": e.source_file,
+            }
+            for e in new_events
+        ]
+        if all_crossings:
+            db.insert_crossings_batch(all_crossings)
 
-        total_count = len(saved_crossings) + len(new_events)
+        total_count = len(all_crossings)
         db.mark_file_done(filename, vehicle_count=total_count, duration_seconds=time.monotonic() - start_time)
         db.clear_checkpoint(filename)
         progress_tracker.finish_file()

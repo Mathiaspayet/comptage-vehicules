@@ -431,24 +431,10 @@ class Database:
             return cur.rowcount
 
     def unmark_all_files(self) -> int:
-        """Remove all non-skipped files from processed_files (and their crossings). Returns count deleted."""
+        """Remove all non-skipped files from processed_files so they get re-queued.
+        Crossings are preserved and will be replaced lazily when each file is re-processed."""
         with self._connect() as conn:
-            skipped = [
-                r["filename"] for r in conn.execute(
-                    "SELECT filename FROM processed_files WHERE status = 'skipped'"
-                ).fetchall()
-            ]
-            if skipped:
-                placeholders = ",".join("?" * len(skipped))
-                conn.execute(
-                    f"DELETE FROM crossings WHERE source_file NOT IN ({placeholders})", skipped
-                )
-                cur = conn.execute(
-                    f"DELETE FROM processed_files WHERE status != 'skipped'"
-                )
-            else:
-                conn.execute("DELETE FROM crossings")
-                cur = conn.execute("DELETE FROM processed_files")
+            cur = conn.execute("DELETE FROM processed_files WHERE status != 'skipped'")
             return cur.rowcount
 
     def skip_files(self, filenames: list[str]) -> int:
