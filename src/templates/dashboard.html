@@ -83,6 +83,7 @@
     <button onclick="showTab('calendar', this)">📅 Calendrier</button>
     <button onclick="showTab('files', this)">📁 Fichiers</button>
     <button onclick="showTab('journal', this)">📋 Journal</button>
+    <button onclick="showTab('audio', this)">🔊 Audio</button>
   </div>
 
   <!-- ══════════════ HORAIRE ══════════════ -->
@@ -329,6 +330,24 @@
     </div>
   </div>
 
+  <!-- ══════════════ AUDIO ══════════════ -->
+  <div id="tab-audio" style="display:none">
+    <div class="chart-box">
+      <h2>Calibration audio <span id="audio-badge" style="font-size:.75rem;padding:.15rem .5rem;border-radius:10px;margin-left:.5rem;vertical-align:middle"></span></h2>
+      <div id="audio-status" style="font-size:.85rem;color:#666;margin-bottom:1rem">Chargement…</div>
+
+      <!-- Métriques -->
+      <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.5rem" id="audio-cards"></div>
+
+      <!-- Graphique niveaux sonores -->
+      <h3 style="font-size:.9rem;font-weight:600;margin-bottom:.5rem">Niveaux sonores — derniers fichiers analysés</h3>
+      <p style="font-size:.78rem;color:#888;margin-bottom:.75rem">p10 = bruit de fond · médiane · p90 = pics · ligne rouge = seuil de détection</p>
+      <div style="overflow-x:auto">
+        <canvas id="audio-chart" height="180" style="min-width:600px;width:100%"></canvas>
+      </div>
+    </div>
+  </div>
+
   <!-- ══════════════ JOURNAL ══════════════ -->
   <div id="tab-journal" style="display:none">
     <div class="chart-box" style="margin-bottom:1rem">
@@ -406,7 +425,7 @@ let filesSortDir = 'desc';
 function showTab(name, btn) {
   document.querySelectorAll('.tab-bar button').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  ['hourly','daily','calendar','files','journal'].forEach(t =>
+  ['hourly','daily','calendar','files','journal','audio'].forEach(t =>
     document.getElementById('tab-'+t).style.display = name === t ? '' : 'none'
   );
   clearInterval(journalTimer);
@@ -427,6 +446,7 @@ function showTab(name, btn) {
     loadMaintenance();
     filesTimer = setInterval(() => { loadPending(); loadFilesProgress(); }, 15000);
   }
+  if (name === 'audio') loadAudioCalibration();
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -1023,6 +1043,93 @@ loadHourly();
 loadVersion();
 checkStatus();
 setInterval(checkStatus, 60000);
+
+/* ─────────────── Audio calibration ─────────────── */
+let audioChartInst = null;
+
+async function loadAudioCalibration() {
+  const data = await (await fetch('/api/audio/calibration')).json();
+
+  // Badge statut
+  const badge = document.getElementById('audio-badge');
+  if (!data.enabled) {
+    badge.textContent = 'désactivé';
+    badge.style.cssText = 'background:#f3f4f6;color:#6b7280';
+  } else if (data.calibrated) {
+    badge.textContent = '✓ calibré';
+    badge.style.cssText = 'background:#d1fae5;color:#065f46';
+  } else {
+    badge.textContent = `calibration ${data.files_analyzed}/${data.files_needed}`;
+    badge.style.cssText = 'background:#fef3c7;color:#92400e';
+  }
+
+  // Texte statut
+  const statusEl = document.getElementById('audio-status');
+  if (!data.enabled) {
+    statusEl.textContent = 'Le filtre audio est désactivé dans la configuration (audio_filter.enabled: false).';
+  } else if (!data.calibrated) {
+    const pct = Math.round(100 * data.files_analyzed / data.files_needed);
+    statusEl.innerHTML = `Calibration en cours : <strong>${data.files_analyzed}/${data.files_needed} fichiers</strong> analysés (${pct}%). `
+      + `Le filtre sera actif dès que ${data.files_needed} fichiers auront été traités.`;
+  } else {
+    statusEl.innerHTML = `Filtre actif — seuil de détection : <strong>${data.threshold_db} dBFS</strong> `
+      + `(bruit de fond ${data.background_db} dBFS + ${data.sigma_factor}σ × ${data.noise_std_db} dB)`;
+  }
+
+  // Cartes métriques
+  const cards = document.getElementById('audio-cards');
+  const metric = (label, val, unit='') => `
+    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:.75rem 1.2rem;min-width:120px;text-align:center">
+      <div style="font-size:1.3rem;font-weight:700;color:#1f2937">${val !== null ? val + unit : '—'}</div>
+      <div style="font-size:.75rem;color:#6b7280;margin-top:.15rem">${label}</div>
+    </div>`;
+  cards.innerHTML =
+    metric('Fichiers analysés', data.files_analyzed) +
+    metric('Bruit de fond', data.background_db, ' dB') +
+    metric('Variabilité (σ)', data.noise_std_db, ' dB') +
+    metric('Seuil détection', data.threshold_db, ' dB') +
+    metric('Facteur σ', data.sigma_factor);
+
+  // Graphique
+  if (!data.history || data.history.length === 0) return;
+
+  const hist = data.history.slice().reverse();  // chronologique
+  const labels = hist.map(h => {
+    const d = new Date((h.created_at.includes('Z') ? h.created_at : h.created_at + 'Z'));
+    return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  });
+
+  const datasets = [
+    { label: 'p10 (fond)', data: hist.map(h => h.p10_db.toFixed(1)),
+      borderColor:'#93c5fd', backgroundColor:'rgba(147,197,253,.15)', tension:.3, pointRadius:3 },
+    { label: 'Médiane', data: hist.map(h => h.median_db.toFixed(1)),
+      borderColor:'#6366f1', backgroundColor:'rgba(99,102,241,.1)', tension:.3, pointRadius:3 },
+    { label: 'p90 (pics)', data: hist.map(h => h.p90_db.toFixed(1)),
+      borderColor:'#f97316', backgroundColor:'rgba(249,115,22,.1)', tension:.3, pointRadius:3 },
+  ];
+
+  if (data.threshold_db !== null) {
+    datasets.push({
+      label: 'Seuil', data: hist.map(() => data.threshold_db),
+      borderColor:'#ef4444', borderDash:[6,3], pointRadius:0, tension:0,
+    });
+  }
+
+  const ctx = document.getElementById('audio-chart').getContext('2d');
+  if (audioChartInst) audioChartInst.destroy();
+  audioChartInst = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'top' } },
+      scales: {
+        x: { ticks: { maxTicksLimit: 12, maxRotation: 45 } },
+        y: { title: { display: true, text: 'dBFS' } },
+      },
+    },
+  });
+}
 </script>
 </body>
 </html>

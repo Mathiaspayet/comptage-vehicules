@@ -72,6 +72,14 @@ DEFAULTS = {
     "data": {
         "retention_days": 0,  # 0 = keep forever
     },
+    "audio_filter": {
+        "enabled": True,
+        "window_sec": 0.5,          # taille de la fenêtre RMS (secondes)
+        "calibration_files": 20,    # fichiers requis avant d'utiliser le filtre
+        "sigma_factor": 2.5,        # seuil = p10_moyen + sigma × std_moyen
+        "segment_padding": 2.0,     # secondes ajoutées autour des segments
+        "min_energy_db": -55.0,     # seuil absolu minimum (dBFS)
+    },
 }
 
 
@@ -266,6 +274,30 @@ class Config:
         if t > 0 and self._backlog_size > t:
             return max(1.0, base * self.backlog_fps_factor)
         return base
+
+    @property
+    def audio_enabled(self) -> bool:
+        return bool(self.get("audio_filter", "enabled", default=True))
+
+    @property
+    def audio_window_sec(self) -> float:
+        return float(self.get("audio_filter", "window_sec", default=0.5))
+
+    @property
+    def audio_calibration_files(self) -> int:
+        return int(self.get("audio_filter", "calibration_files", default=20))
+
+    @property
+    def audio_sigma_factor(self) -> float:
+        return float(self.get("audio_filter", "sigma_factor", default=2.5))
+
+    @property
+    def audio_segment_padding(self) -> float:
+        return float(self.get("audio_filter", "segment_padding", default=2.0))
+
+    @property
+    def audio_min_energy_db(self) -> float:
+        return float(self.get("audio_filter", "min_energy_db", default=-55.0))
 
     def motion_fingerprint(self) -> str:
         """MD5 of parameters that affect only motion detection (not AI inference)."""

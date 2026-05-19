@@ -144,6 +144,30 @@ def create_app(config: Config, db: Database) -> Flask:
             return jsonify({"error": str(e)}), 500
         return jsonify({"dates": dates})
 
+    @app.route("/api/audio/calibration")
+    def api_audio_calibration():
+        n = db.get_audio_stats_count()
+        min_files = config.audio_calibration_files
+        agg = db.get_audio_calibration_aggregate()
+        history = db.get_audio_stats_history(limit=50)
+
+        threshold = None
+        if agg and n >= min_files:
+            t = agg["avg_p10_db"] + config.audio_sigma_factor * agg["avg_std_db"]
+            threshold = round(max(t, config.audio_min_energy_db), 1)
+
+        return jsonify({
+            "enabled":        config.audio_enabled,
+            "calibrated":     threshold is not None,
+            "files_analyzed": n,
+            "files_needed":   min_files,
+            "background_db":  round(agg["avg_p10_db"], 1) if agg else None,
+            "noise_std_db":   round(agg["avg_std_db"], 1) if agg else None,
+            "threshold_db":   threshold,
+            "sigma_factor":   config.audio_sigma_factor,
+            "history":        history,
+        })
+
     @app.route("/api/status")
     def api_status():
         try:

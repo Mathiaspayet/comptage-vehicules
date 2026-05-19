@@ -9,6 +9,7 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
+from .audio_filter import AudioFilter, union_segments
 from .config import load_config
 from .dashboard import run_dashboard
 from .database import Database
@@ -130,7 +131,7 @@ def _check_and_reset_if_config_changed(config, db: Database):
         logger.info("Empreinte de config inchangée — pas de réinitialisation.")
 
 
-def processing_loop(watcher: FileWatcher, motion: MotionFilter, detector: VehicleDetector, db: Database):
+def processing_loop(watcher: FileWatcher, motion: MotionFilter, audio: AudioFilter, detector: VehicleDetector, db: Database):
     logger.info("Boucle de traitement démarrée.")
     config = watcher.config
     _prev_imgsz = config.imgsz
@@ -200,7 +201,7 @@ def processing_loop(watcher: FileWatcher, motion: MotionFilter, detector: Vehicl
                     if _shutdown.is_set():
                         break
                     _process_file(
-                        video_path, watcher, motion, detector, db,
+                        video_path, watcher, motion, audio, detector, db,
                         queue_done + i, queue_total,
                         motion_fp=motion_fp,
                         prefetch_future=prefetch.get(video_path.name),
@@ -219,6 +220,7 @@ def _process_file(
     video_path: Path,
     watcher: FileWatcher,
     motion: MotionFilter,
+    audio: AudioFilter,
     detector: VehicleDetector,
     db: Database,
     queue_done: int,
@@ -288,6 +290,16 @@ def _process_file(
                 db.set_motion_cache(filename, motion_fp,
                                     [{"start_sec": s.start_sec, "end_sec": s.end_sec} for s in segments])
 
+        # ── Phase 1b : filtre audio ────────────────────────────────────
+        try:
+            progress_tracker.set_phase("audio", frames_total=0)
+            audio_segments = audio.analyze_video(video_path)
+            if audio_segments:
+                segments = union_segments(segments, audio_segments)
+                logger.info("%s — %d segment(s) après fusion mouvement+audio.", filename, len(segments))
+        except Exception as e:
+            logger.warning("Filtre audio échoué sur %s : %s", filename, e)
+
         if not segments:
             logger.info("%s — aucun segment actif.", filename)
             db.mark_file_done(filename, vehicle_count=0, duration_seconds=time.monotonic() - start_time)
@@ -351,6 +363,7 @@ def main():
     _check_and_reset_if_config_changed(config, db)
     watcher = FileWatcher(config, db)
     motion = MotionFilter(config)
+    audio = AudioFilter(config, db)
     detector = VehicleDetector(config)
 
     signal.signal(signal.SIGTERM, _handle_signal)
@@ -365,7 +378,7 @@ def main():
     dashboard_thread.start()
 
     try:
-        processing_loop(watcher, motion, detector, db)
+        processing_loop(watcher, motion, audio, detector, db)
     except KeyboardInterrupt:
         _shutdown.set()
 

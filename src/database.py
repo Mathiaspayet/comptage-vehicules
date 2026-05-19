@@ -40,6 +40,16 @@ CREATE TABLE IF NOT EXISTS motion_cache (
     cached_at    TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS audio_stats (
+    filename   TEXT PRIMARY KEY,
+    mean_db    REAL NOT NULL,
+    median_db  REAL NOT NULL,
+    std_db     REAL NOT NULL,
+    p10_db     REAL NOT NULL,
+    p90_db     REAL NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_crossings_timestamp ON crossings(timestamp);
 CREATE INDEX IF NOT EXISTS idx_crossings_type      ON crossings(vehicle_type);
 CREATE INDEX IF NOT EXISTS idx_crossings_source    ON crossings(source_file);
@@ -507,3 +517,64 @@ class Database:
             "errors": errors,
             "last_file": dict(last) if last else None,
         }
+
+    # ------------------------------------------------------------------ #
+    # Audio stats                                                          #
+    # ------------------------------------------------------------------ #
+
+    def add_audio_stats(
+        self, filename: str,
+        mean_db: float, median_db: float, std_db: float,
+        p10_db: float, p90_db: float,
+    ):
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO audio_stats (filename, mean_db, median_db, std_db, p10_db, p90_db)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(filename) DO UPDATE SET
+                    mean_db=excluded.mean_db, median_db=excluded.median_db,
+                    std_db=excluded.std_db, p10_db=excluded.p10_db,
+                    p90_db=excluded.p90_db, created_at=excluded.created_at
+                """,
+                (filename, mean_db, median_db, std_db, p10_db, p90_db),
+            )
+
+    def get_audio_stats_count(self) -> int:
+        with self._connect() as conn:
+            return conn.execute("SELECT COUNT(*) FROM audio_stats").fetchone()[0]
+
+    def get_audio_calibration_aggregate(self, last_n: int = 50) -> "dict | None":
+        """Agrégats sur les N derniers fichiers pour calculer le seuil."""
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                    COUNT(*)      AS count,
+                    AVG(p10_db)   AS avg_p10_db,
+                    AVG(std_db)   AS avg_std_db,
+                    AVG(median_db) AS avg_median_db,
+                    MIN(p10_db)   AS min_p10_db,
+                    MAX(p90_db)   AS max_p90_db
+                FROM (
+                    SELECT p10_db, std_db, median_db, p90_db
+                    FROM audio_stats ORDER BY created_at DESC LIMIT ?
+                )
+                """,
+                (last_n,),
+            ).fetchone()
+        if row and row["count"]:
+            return dict(row)
+        return None
+
+    def get_audio_stats_history(self, limit: int = 30) -> list[dict]:
+        """Historique des niveaux audio par fichier (pour le dashboard)."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT filename, mean_db, median_db, std_db, p10_db, p90_db, created_at
+                FROM audio_stats ORDER BY created_at DESC LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
