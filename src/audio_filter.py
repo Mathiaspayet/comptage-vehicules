@@ -117,9 +117,9 @@ class AudioFilter:
 
     def calibration_info(self) -> dict:
         """Informations de calibration pour le dashboard."""
-        night_only = self.config.audio_night_calibration()
-        ns = self.config.audio_night_start_hour()
-        ne = self.config.audio_night_end_hour()
+        night_only = self.config.audio_night_calibration
+        ns = self.config.audio_night_start_hour
+        ne = self.config.audio_night_end_hour
         min_files = self.config.audio_calibration_files
 
         n_night = self.db.get_audio_stats_count(night_only=True, night_start=ns, night_end=ne)
@@ -193,9 +193,9 @@ class AudioFilter:
         Fallback sur tous les fichiers si insuffisamment de fichiers de nuit.
         """
         needed = self.config.audio_calibration_files
-        night_only = self.config.audio_night_calibration()
-        ns = self.config.audio_night_start_hour()
-        ne = self.config.audio_night_end_hour()
+        night_only = self.config.audio_night_calibration
+        ns = self.config.audio_night_start_hour
+        ne = self.config.audio_night_end_hour
 
         if night_only:
             n_night = self.db.get_audio_stats_count(night_only=True, night_start=ns, night_end=ne)
@@ -256,9 +256,9 @@ def bootstrap_calibration(audio: "AudioFilter", video_folder: "Path", shutdown_e
     Tourne en thread daemon au démarrage.
     """
     needed = audio.config.audio_calibration_files
-    night_only = audio.config.audio_night_calibration()
-    ns = audio.config.audio_night_start_hour()
-    ne = audio.config.audio_night_end_hour()
+    night_only = audio.config.audio_night_calibration
+    ns = audio.config.audio_night_start_hour
+    ne = audio.config.audio_night_end_hour
 
     # Déjà calibré ?
     if night_only:
