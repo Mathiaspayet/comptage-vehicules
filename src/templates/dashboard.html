@@ -559,7 +559,7 @@ async function loadProgress() {
   }
   if (data.last_file) {
     document.getElementById('last-file').textContent =
-      `Dernier traité : ${data.last_file.filename} (${data.last_file.processed_at?.slice(0,19).replace('T',' ')})`;
+      `Dernier traité : ${data.last_file.filename} (${fmtDateShort(data.last_file.processed_at)})`;
   }
 }
 
@@ -733,9 +733,14 @@ function fmtDuration(sec) {
 
 function fmtDateShort(iso) {
   if (!iso) return '—';
-  const [date, time] = iso.slice(0, 16).split('T');
-  const [, m, d]    = date.split('-');
-  return `${d}/${m} ${time}`;
+  // DB stores UTC without 'Z' — append it so the browser converts to local time
+  const d = new Date(iso.includes('Z') ? iso : iso + 'Z');
+  if (isNaN(d.getTime())) return iso.slice(0, 16).replace('T', ' ');
+  const day = String(d.getDate()).padStart(2, '0');
+  const mon = String(d.getMonth() + 1).padStart(2, '0');
+  const h   = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${day}/${mon} ${h}:${min}`;
 }
 
 function renderFiles(files) {
