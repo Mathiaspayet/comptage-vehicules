@@ -42,11 +42,12 @@ CREATE TABLE IF NOT EXISTS motion_cache (
 
 CREATE TABLE IF NOT EXISTS audio_stats (
     filename   TEXT PRIMARY KEY,
-    mean_db    REAL NOT NULL,
-    median_db  REAL NOT NULL,
-    std_db     REAL NOT NULL,
-    p10_db     REAL NOT NULL,
-    p90_db     REAL NOT NULL,
+    mean_db    REAL,
+    median_db  REAL,
+    std_db     REAL,
+    p10_db     REAL,
+    p90_db     REAL,
+    video_hour INTEGER,          -- heure locale de la vidéo (0-23), pour calibration nuit
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -536,50 +537,68 @@ class Database:
         self, filename: str,
         mean_db: "float | None", median_db: "float | None", std_db: "float | None",
         p10_db: "float | None", p90_db: "float | None",
+        video_hour: "int | None" = None,
     ):
         """Stocke les stats audio. Appeler avec des valeurs None pour marquer
         "analysé mais sans piste audio", afin d'éviter les nouvelles tentatives."""
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO audio_stats (filename, mean_db, median_db, std_db, p10_db, p90_db)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO audio_stats
+                    (filename, mean_db, median_db, std_db, p10_db, p90_db, video_hour)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(filename) DO UPDATE SET
                     mean_db=excluded.mean_db, median_db=excluded.median_db,
                     std_db=excluded.std_db, p10_db=excluded.p10_db,
-                    p90_db=excluded.p90_db, created_at=excluded.created_at
+                    p90_db=excluded.p90_db, video_hour=excluded.video_hour,
+                    created_at=excluded.created_at
                 """,
-                (filename, mean_db, median_db, std_db, p10_db, p90_db),
+                (filename, mean_db, median_db, std_db, p10_db, p90_db, video_hour),
             )
 
-    def get_audio_stats_count(self) -> int:
-        """Compte uniquement les fichiers avec une vraie piste audio (p10_db non null)."""
+    def get_audio_stats_count(self, night_only: bool = False,
+                              night_start: int = 22, night_end: int = 6) -> int:
+        """Compte les fichiers avec audio réel (p10_db non null).
+        night_only=True : compte uniquement les fichiers heure nuit."""
+        if night_only:
+            with self._connect() as conn:
+                return conn.execute(
+                    """SELECT COUNT(*) FROM audio_stats
+                       WHERE p10_db IS NOT NULL AND video_hour IS NOT NULL
+                         AND (video_hour >= ? OR video_hour < ?)""",
+                    (night_start, night_end),
+                ).fetchone()[0]
         with self._connect() as conn:
             return conn.execute(
                 "SELECT COUNT(*) FROM audio_stats WHERE p10_db IS NOT NULL"
             ).fetchone()[0]
 
-    def get_audio_calibration_aggregate(self, last_n: int = 50) -> "dict | None":
-        """Agrégats sur les N derniers fichiers avec audio pour calculer le seuil."""
+    def get_audio_calibration_aggregate(self, last_n: int = 50,
+                                        night_only: bool = False,
+                                        night_start: int = 22,
+                                        night_end: int = 6) -> "dict | None":
+        """Agrégats sur les N derniers fichiers avec audio pour calculer le seuil.
+        night_only=True : n'utilise que les fichiers enregistrés de nuit."""
+        night_filter = (
+            "AND (video_hour >= :ns OR video_hour < :ne)" if night_only else ""
+        )
+        query = f"""
+            SELECT
+                COUNT(*)       AS count,
+                AVG(p10_db)    AS avg_p10_db,
+                AVG(std_db)    AS avg_std_db,
+                AVG(median_db) AS avg_median_db,
+                MIN(p10_db)    AS min_p10_db,
+                MAX(p90_db)    AS max_p90_db
+            FROM (
+                SELECT p10_db, std_db, median_db, p90_db
+                FROM audio_stats
+                WHERE p10_db IS NOT NULL {night_filter}
+                ORDER BY created_at DESC LIMIT :n
+            )
+        """
         with self._connect() as conn:
-            row = conn.execute(
-                """
-                SELECT
-                    COUNT(*)      AS count,
-                    AVG(p10_db)   AS avg_p10_db,
-                    AVG(std_db)   AS avg_std_db,
-                    AVG(median_db) AS avg_median_db,
-                    MIN(p10_db)   AS min_p10_db,
-                    MAX(p90_db)   AS max_p90_db
-                FROM (
-                    SELECT p10_db, std_db, median_db, p90_db
-                    FROM audio_stats
-                    WHERE p10_db IS NOT NULL
-                    ORDER BY created_at DESC LIMIT ?
-                )
-                """,
-                (last_n,),
-            ).fetchone()
+            row = conn.execute(query, {"n": last_n, "ns": night_start, "ne": night_end}).fetchone()
         if row and row["count"]:
             return dict(row)
         return None

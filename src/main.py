@@ -6,16 +6,14 @@ import signal
 import sys
 import threading
 import time
-from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
-from .audio_filter import AudioFilter, bootstrap_calibration, union_segments
+from .audio_filter import AudioFilter, bootstrap_calibration
 from .config import load_config
 from .dashboard import run_dashboard
 from .database import Database
 from .detector import VehicleDetector
 from .ingestion import FileWatcher
-from .motion_filter import MotionFilter, Segment
 from .progress import tracker as progress_tracker
 
 
@@ -32,10 +30,6 @@ def _check_video(path: Path) -> str | None:
         return "Le fichier vidéo est vide ou ne contient aucune image lisible"
     return None
 
-
-def _run_motion_silent(path: Path, motion: MotionFilter) -> list[Segment]:
-    """Run motion filter without progress tracking (used for background prefetch)."""
-    return motion.analyze_video(path)
 
 
 def setup_logging(level: str, log_dir: Path, max_mb: int, backup_count: int):
@@ -131,87 +125,68 @@ def _check_and_reset_if_config_changed(config, db: Database):
         logger.info("Empreinte de config inchangée — pas de réinitialisation.")
 
 
-def processing_loop(watcher: FileWatcher, motion: MotionFilter, audio: AudioFilter, detector: VehicleDetector, db: Database):
-    logger.info("Boucle de traitement démarrée.")
+def processing_loop(watcher: FileWatcher, audio: AudioFilter, detector: VehicleDetector, db: Database):
+    logger.info("Boucle de traitement démarrée (pipeline audio-only).")
     config = watcher.config
     _prev_imgsz = config.imgsz
     _prev_model_name = config.model_name
     _prev_log_level = config.log_level
 
-    # Single background thread for motion prefetch (runs in parallel with AI detection)
-    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="motion-prefetch") as prefetch_pool:
-        while not _shutdown.is_set():
-            # Hot-reload config from disk before each scan
-            changed = config.reload()
-            if changed:
-                new_log_level = config.log_level
-                if new_log_level != _prev_log_level:
-                    logging.getLogger().setLevel(getattr(logging, new_log_level.upper(), logging.INFO))
-                    logger.info("Niveau de log mis à jour : %s", new_log_level)
-                    _prev_log_level = new_log_level
+    while not _shutdown.is_set():
+        # Hot-reload config from disk before each scan
+        changed = config.reload()
+        if changed:
+            new_log_level = config.log_level
+            if new_log_level != _prev_log_level:
+                logging.getLogger().setLevel(getattr(logging, new_log_level.upper(), logging.INFO))
+                logger.info("Niveau de log mis à jour : %s", new_log_level)
+                _prev_log_level = new_log_level
 
-                new_imgsz = config.imgsz
-                new_model_name = config.model_name
-                if new_imgsz != _prev_imgsz or new_model_name != _prev_model_name:
-                    logger.info(
-                        "Modèle/imgsz modifié (%s imgsz=%d → %s imgsz=%d) — rechargement au prochain fichier.",
-                        _prev_model_name, _prev_imgsz, new_model_name, new_imgsz,
-                    )
-                    detector._model = None
-                    _prev_imgsz = new_imgsz
-                    _prev_model_name = new_model_name
-
-                _check_and_reset_if_config_changed(config, db)
-
-            try:
-                new_files = watcher.scan_new_files()
-            except Exception as e:
-                logger.error("Erreur lors du scan des fichiers : %s", e)
-                _shutdown.wait(timeout=30)
-                continue
-
-            # Adaptive fps: inform config of current backlog size
-            config._backlog_size = len(new_files)
-            if len(new_files) > config.backlog_throttle_threshold > 0:
+            new_imgsz = config.imgsz
+            new_model_name = config.model_name
+            if new_imgsz != _prev_imgsz or new_model_name != _prev_model_name:
                 logger.info(
-                    "Backlog important (%d fichiers) — FPS réduit : motion=%.1f détection=%.1f",
-                    len(new_files), config.effective_motion_fps, config.effective_detector_fps,
+                    "Modèle/imgsz modifié (%s imgsz=%d → %s imgsz=%d) — rechargement au prochain fichier.",
+                    _prev_model_name, _prev_imgsz, new_model_name, new_imgsz,
+                )
+                detector._model = None
+                _prev_imgsz = new_imgsz
+                _prev_model_name = new_model_name
+
+            _check_and_reset_if_config_changed(config, db)
+
+        try:
+            new_files = watcher.scan_new_files()
+        except Exception as e:
+            logger.error("Erreur lors du scan des fichiers : %s", e)
+            _shutdown.wait(timeout=30)
+            continue
+
+        config._backlog_size = len(new_files)
+        if len(new_files) > config.backlog_throttle_threshold > 0:
+            logger.info(
+                "Backlog important (%d fichiers) — FPS détection réduit : %.1f",
+                len(new_files), config.effective_detector_fps,
+            )
+
+        status = db.get_processing_status()
+        queue_done = status.get("done", 0) + status.get("errors", 0)
+        queue_total = queue_done + len(new_files)
+
+        if new_files:
+            for i, video_path in enumerate(new_files):
+                if _shutdown.is_set():
+                    break
+                _process_file(
+                    video_path, watcher, audio, detector, db,
+                    queue_done + i, queue_total,
                 )
 
-            # Update queue size in progress tracker
-            status = db.get_processing_status()
-            queue_done = status.get("done", 0) + status.get("errors", 0)
-            queue_total = queue_done + len(new_files)
+        if not new_files:
+            config._backlog_size = 0
+            progress_tracker.set_idle()
 
-            if new_files:
-                motion_fp = config.motion_fingerprint()
-
-                # Pre-submit motion filter for files not yet in cache (pipeline)
-                prefetch: dict[str, Future] = {}
-                if config.prefetch_motion:
-                    for vp in new_files:
-                        if db.get_motion_cache(vp.name, motion_fp) is None:
-                            prefetch[vp.name] = prefetch_pool.submit(
-                                _run_motion_silent, vp, motion
-                            )
-                    if prefetch:
-                        logger.debug("Pré-calcul mouvement lancé pour %d fichier(s).", len(prefetch))
-
-                for i, video_path in enumerate(new_files):
-                    if _shutdown.is_set():
-                        break
-                    _process_file(
-                        video_path, watcher, motion, audio, detector, db,
-                        queue_done + i, queue_total,
-                        motion_fp=motion_fp,
-                        prefetch_future=prefetch.get(video_path.name),
-                    )
-
-            if not new_files:
-                config._backlog_size = 0
-                progress_tracker.set_idle()
-
-            _shutdown.wait(timeout=watcher.config.scan_interval)
+        _shutdown.wait(timeout=watcher.config.scan_interval)
 
     logger.info("Boucle de traitement terminée.")
 
@@ -219,14 +194,11 @@ def processing_loop(watcher: FileWatcher, motion: MotionFilter, audio: AudioFilt
 def _process_file(
     video_path: Path,
     watcher: FileWatcher,
-    motion: MotionFilter,
     audio: AudioFilter,
     detector: VehicleDetector,
     db: Database,
     queue_done: int,
     queue_total: int,
-    motion_fp: str | None = None,
-    prefetch_future: "Future | None" = None,
 ):
     global _processing_start
     filename = video_path.name
@@ -245,60 +217,15 @@ def _process_file(
     start_time = time.monotonic()
 
     try:
-        # ── Phase 1 : filtre mouvement ──────────────────────────────
-        cached_data = db.get_motion_cache(filename, motion_fp) if motion_fp else None
-
-        if cached_data is not None:
-            segments = [Segment(start_sec=d["start_sec"], end_sec=d["end_sec"]) for d in cached_data]
-            logger.debug("%s — %d segment(s) depuis le cache de mouvement.", filename, len(segments))
-            progress_tracker.set_phase("motion", frames_total=0)
-        elif prefetch_future is not None:
-            # Motion already running in background — wait for result (with timeout)
-            progress_tracker.set_phase("motion", frames_total=0)
-            try:
-                segments = prefetch_future.result(timeout=_MOTION_TIMEOUT_SEC)
-            except TimeoutError:
-                logger.error(
-                    "Timeout filtre mouvement sur %s (>%ds) — fichier marqué en erreur.",
-                    filename, _MOTION_TIMEOUT_SEC,
-                )
-                db.mark_file_error(filename, f"Filtre de mouvement bloqué (timeout >{_MOTION_TIMEOUT_SEC}s)")
-                progress_tracker.finish_file()
-                return
-            if motion_fp:
-                db.set_motion_cache(filename, motion_fp,
-                                    [{"start_sec": s.start_sec, "end_sec": s.end_sec} for s in segments])
-        else:
-            # Fallback: run synchronously in a thread so we can apply a timeout
-            def motion_progress(done: int, total: int):
-                progress_tracker.set_phase("motion", frames_total=total)
-                progress_tracker.update_frame(done)
-
-            with ThreadPoolExecutor(max_workers=1, thread_name_prefix="motion-sync") as _ex:
-                _fut = _ex.submit(motion.analyze_video, video_path, motion_progress)
-                try:
-                    segments = _fut.result(timeout=_MOTION_TIMEOUT_SEC)
-                except TimeoutError:
-                    logger.error(
-                        "Timeout filtre mouvement sur %s (>%ds) — fichier marqué en erreur.",
-                        filename, _MOTION_TIMEOUT_SEC,
-                    )
-                    db.mark_file_error(filename, f"Filtre de mouvement bloqué (timeout >{_MOTION_TIMEOUT_SEC}s)")
-                    progress_tracker.finish_file()
-                    return
-            if motion_fp:
-                db.set_motion_cache(filename, motion_fp,
-                                    [{"start_sec": s.start_sec, "end_sec": s.end_sec} for s in segments])
-
-        # ── Phase 1b : filtre audio ────────────────────────────────────
+        # ── Phase 1 : filtre audio (détecteur principal) ────────────
+        progress_tracker.set_phase("audio", frames_total=0)
         try:
-            progress_tracker.set_phase("audio", frames_total=0)
-            audio_segments = audio.analyze_video(video_path)
-            if audio_segments:
-                segments = union_segments(segments, audio_segments)
-                logger.info("%s — %d segment(s) après fusion mouvement+audio.", filename, len(segments))
+            segments = audio.analyze_video(video_path)
         except Exception as e:
-            logger.warning("Filtre audio échoué sur %s : %s", filename, e)
+            logger.warning("Filtre audio échoué sur %s : %s — fichier ignoré.", filename, e)
+            db.mark_file_error(filename, f"Filtre audio échoué : {e}")
+            progress_tracker.finish_file()
+            return
 
         if not segments:
             logger.info("%s — aucun segment actif.", filename)
@@ -362,7 +289,6 @@ def main():
     _auto_purge(config, db)
     _check_and_reset_if_config_changed(config, db)
     watcher = FileWatcher(config, db)
-    motion = MotionFilter(config)
     audio = AudioFilter(config, db)
     detector = VehicleDetector(config)
 
@@ -386,7 +312,7 @@ def main():
     dashboard_thread.start()
 
     try:
-        processing_loop(watcher, motion, audio, detector, db)
+        processing_loop(watcher, audio, detector, db)
     except KeyboardInterrupt:
         _shutdown.set()
 
