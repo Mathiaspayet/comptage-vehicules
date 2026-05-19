@@ -79,6 +79,9 @@ DEFAULTS = {
         "sigma_factor": 2.5,        # seuil = p10_moyen + sigma × std_moyen
         "segment_padding": 2.0,     # secondes ajoutées autour des segments
         "min_energy_db": -55.0,     # seuil absolu minimum (dBFS)
+        "night_calibration": True,  # utiliser les fichiers de nuit comme référence
+        "night_start_hour": 22,     # début plage nuit (heure locale)
+        "night_end_hour": 6,        # fin plage nuit (heure locale)
     },
 }
 
@@ -299,6 +302,15 @@ class Config:
     def audio_min_energy_db(self) -> float:
         return float(self.get("audio_filter", "min_energy_db", default=-55.0))
 
+    def audio_night_calibration(self) -> bool:
+        return bool(self.get("audio_filter", "night_calibration", default=True))
+
+    def audio_night_start_hour(self) -> int:
+        return int(self.get("audio_filter", "night_start_hour", default=22))
+
+    def audio_night_end_hour(self) -> int:
+        return int(self.get("audio_filter", "night_end_hour", default=6))
+
     def motion_fingerprint(self) -> str:
         """MD5 of parameters that affect only motion detection (not AI inference)."""
         relevant = {
@@ -345,8 +357,10 @@ class Config:
             "confidence_threshold": self.confidence_threshold,
             "vehicle_classes": sorted(self.vehicle_classes),
             "count_direction": self.count_direction,
-            "motion_threshold": self.motion_threshold,
-            "min_motion_area": self.min_motion_area,
+            # Audio is now the primary segment detector (motion removed)
+            "audio_enabled": self.audio_enabled,
+            "audio_sigma_factor": self.audio_sigma_factor,
+            "audio_min_energy_db": self.audio_min_energy_db,
         }
         blob = json.dumps(relevant, sort_keys=True)
         return hashlib.md5(blob.encode()).hexdigest()

@@ -148,8 +148,7 @@ def create_config_blueprint(config: Config) -> Blueprint:
         audio_enabled = bool(merged.get("audio_filter", {}).get("enabled", True))
 
         # ── Empirical constants — NAS DS218+ / Intel Celeron J3355 / OpenVINO ──
-        # Motion: ffmpeg -skip_frame nointra (I-frames only) → flat cost ~75s
-        MOTION_FLAT_SEC = 75.0
+        # Pipeline audio-only : le filtre mouvement a été supprimé du chemin critique.
         # Audio: ffmpeg PCM 16kHz pipe + numpy RMS → flat cost ~8s
         AUDIO_FLAT_SEC = 8.0
         # YOLO11n + OpenVINO baseline at imgsz=640, no roi_crop: ~1.0s/frame
@@ -163,17 +162,15 @@ def create_config_blueprint(config: Config) -> Blueprint:
         roi_factor = 2.0 if roi_crop else 1.0
         detect_sec_per_frame = DETECT_SEC_PER_FRAME_640 / (imgsz_factor * roi_factor)
 
-        motion_time_sec = MOTION_FLAT_SEC
         audio_time_sec = AUDIO_FLAT_SEC if audio_enabled else 0.0
         detect_frames = VIDEO_MINUTES * 60 * ACTIVE_FRACTION * detector_fps
         detect_time_sec = detect_frames * detect_sec_per_frame
 
-        total_min = round((motion_time_sec + audio_time_sec + detect_time_sec) / 60, 1)
+        total_min = round((audio_time_sec + detect_time_sec) / 60, 1)
 
         return jsonify({
             "video_minutes": VIDEO_MINUTES,
             "estimated_minutes": total_min,
-            "motion_contribution_min": round(motion_time_sec / 60, 1),
             "audio_contribution_min": round(audio_time_sec / 60, 1),
             "detect_contribution_min": round(detect_time_sec / 60, 1),
             "detector_fps": detector_fps,
