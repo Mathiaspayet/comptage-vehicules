@@ -3,6 +3,7 @@ import json
 import logging
 import math
 import shutil
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -205,6 +206,9 @@ class VehicleDetector:
         if on_progress:
             on_progress(0, total_active_frames)
 
+        _seg_start_wall: float | None = None
+        _seg_frames = 0
+
         while seg_idx < len(segments):
             # Skip segments that were already processed before the checkpoint
             if seg_idx < start_seg_idx:
@@ -215,17 +219,31 @@ class VehicleDetector:
             current_sec = frame_idx / fps
 
             if current_sec < seg.start_sec:
+                if _seg_start_wall is None:
+                    _seg_start_wall = time.monotonic()
+                    _seg_frames = 0
                 cap.set(cv2.CAP_PROP_POS_MSEC, seg.start_sec * 1000)
                 frame_idx = int(seg.start_sec * fps)
                 current_sec = seg.start_sec
                 inside_segment = True
 
             if current_sec > seg.end_sec:
-                # Segment finished — fire the checkpoint callback
+                # Segment finished — log timing and fire the checkpoint callback
+                if _seg_start_wall is not None and _seg_frames > 0:
+                    elapsed = time.monotonic() - _seg_start_wall
+                    spf = elapsed / _seg_frames
+                    logger.info(
+                        "Segment %d/%d [%.0f→%.0f s] : %d frames en %.1f s (%.3f s/frame)",
+                        seg_idx + 1, len(segments),
+                        seg.start_sec, seg.end_sec,
+                        _seg_frames, elapsed, spf,
+                    )
                 if on_segment_done is not None:
                     on_segment_done(seg_idx, list(new_crossings_dicts))
                 seg_idx += 1
                 inside_segment = False
+                _seg_start_wall = None
+                _seg_frames = 0
                 continue
 
             ret, frame = cap.read()
@@ -260,6 +278,7 @@ class VehicleDetector:
                     for e in events
                 ])
                 analysed_frames += 1
+                _seg_frames += 1
                 if on_progress:
                     on_progress(analysed_frames, total_active_frames)
 
@@ -272,8 +291,11 @@ class VehicleDetector:
                 seg_idx += 1
                 inside_segment = False
 
+        total_wall = time.monotonic() - (_seg_start_wall or time.monotonic())
         logger.info(
-            "%s → %d franchissement(s) détecté(s)", video_path.name, len(crossings)
+            "%s → %d franchissement(s) | %d frames analysées | %d/%d segments",
+            video_path.name, len(crossings), analysed_frames,
+            len(segments) - start_seg_idx, len(segments),
         )
         return crossings
 

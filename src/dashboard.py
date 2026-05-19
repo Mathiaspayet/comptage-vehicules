@@ -419,18 +419,24 @@ def create_app(config: Config, db: Database) -> Flask:
 
     @app.route("/api/journal")
     def api_journal():
-        log_file = Path("/app/data/logs/comptage.log")
-        lines = []
+        n = min(int(request.args.get("n", 500)), 5000)
+        log_dir = Path("/app/data/logs")
+        log_file = log_dir / "comptage.log"
+        all_lines: list[str] = []
         try:
+            # Read rotated logs first (oldest → newest): .log.3, .log.2, .log.1
+            for i in (3, 2, 1):
+                rotated = log_dir / f"comptage.log.{i}"
+                if rotated.exists():
+                    with open(rotated, "r", encoding="utf-8", errors="replace") as f:
+                        all_lines.extend(f.read().splitlines())
             with open(log_file, "r", encoding="utf-8", errors="replace") as f:
-                # Read last 200 lines efficiently
-                all_lines = f.readlines()
-                lines = [l.rstrip() for l in all_lines[-200:]]
+                all_lines.extend(f.read().splitlines())
         except FileNotFoundError:
-            lines = ["(fichier journal non encore créé)"]
+            all_lines = ["(fichier journal non encore créé)"]
         except Exception as e:
-            lines = [f"Erreur lecture journal : {e}"]
-        return jsonify({"lines": lines})
+            all_lines = [f"Erreur lecture journal : {e}"]
+        return jsonify({"lines": all_lines[-n:]})
 
     @app.route("/api/progress")
     def api_progress():
