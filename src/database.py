@@ -91,13 +91,15 @@ class Database:
     def _init_schema(self):
         with self._connect() as conn:
             conn.executescript(SCHEMA)
-            # Migration: add processing_duration_seconds if it doesn't exist yet
-            try:
-                conn.execute(
-                    "ALTER TABLE processed_files ADD COLUMN processing_duration_seconds REAL"
-                )
-            except sqlite3.OperationalError:
-                pass  # column already exists
+            # Migrations — ALTER TABLE ignore les colonnes déjà existantes
+            for migration in [
+                "ALTER TABLE processed_files ADD COLUMN processing_duration_seconds REAL",
+                "ALTER TABLE audio_stats ADD COLUMN video_hour INTEGER",
+            ]:
+                try:
+                    conn.execute(migration)
+                except sqlite3.OperationalError:
+                    pass  # colonne déjà présente
         logger.debug("Schéma base de données initialisé : %s", self.db_path)
 
     # ------------------------------------------------------------------ #

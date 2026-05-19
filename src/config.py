@@ -302,12 +302,15 @@ class Config:
     def audio_min_energy_db(self) -> float:
         return float(self.get("audio_filter", "min_energy_db", default=-55.0))
 
+    @property
     def audio_night_calibration(self) -> bool:
         return bool(self.get("audio_filter", "night_calibration", default=True))
 
+    @property
     def audio_night_start_hour(self) -> int:
         return int(self.get("audio_filter", "night_start_hour", default=22))
 
+    @property
     def audio_night_end_hour(self) -> int:
         return int(self.get("audio_filter", "night_end_hour", default=6))
 
