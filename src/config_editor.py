@@ -69,7 +69,7 @@ def create_config_blueprint(config: Config) -> Blueprint:
                     "segment_padding_seconds": float(data.get("segment_padding_seconds", 1.0)),
                 },
                 "detector": {
-                    "sample_fps": float(data.get("detector_sample_fps", 4)),
+                    "sample_fps": float(data.get("detector_sample_fps", 2)),
                     "model_name": data.get("model_name", "yolo11n"),
                     "imgsz": int(data.get("imgsz", 320)),
                     "confidence_threshold": float(data.get("confidence_threshold", 0.35)),

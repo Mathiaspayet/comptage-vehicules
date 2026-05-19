@@ -26,7 +26,7 @@ DEFAULTS = {
         "segment_padding_seconds": 1.0,
     },
     "detector": {
-        "sample_fps": 4,
+        "sample_fps": 2,
         "imgsz": 320,
         "model_name": "yolo11n",
         "confidence_threshold": 0.35,
