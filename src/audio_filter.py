@@ -184,29 +184,29 @@ def bootstrap_calibration(audio: "AudioFilter", video_folder: "Path", shutdown_e
     Tourne en thread daemon au démarrage — s'arrête dès que le nombre de
     fichiers requis est atteint ou qu'il n'y a plus rien à analyser.
     """
-    import threading
     needed = audio.config.audio_calibration_files
-    already = audio.db.get_audio_stats_count()
-    if already >= needed:
+    if audio.db.get_audio_stats_count() >= needed:
         return
 
-    missing = audio.db.get_files_missing_audio_stats(limit=needed - already)
-    if not missing:
+    # Récupère beaucoup plus de candidats que nécessaire pour absorber
+    # les fichiers sans piste audio ou absents du disque
+    candidates = audio.db.get_files_missing_audio_stats(limit=max(needed * 10, 200))
+    if not candidates:
         logger.info("Bootstrap audio : aucun fichier éligible trouvé.")
         return
 
     logger.info(
-        "Bootstrap audio : %d fichier(s) à analyser pour atteindre %d/%d.",
-        len(missing), needed, needed,
+        "Bootstrap audio : %d candidat(s) trouvé(s), objectif %d fichiers calibrés.",
+        len(candidates), needed,
     )
 
-    for filename in missing:
+    analyzed = 0
+    for filename in candidates:
         if shutdown_event and shutdown_event.is_set():
             break
         if audio.db.get_audio_stats_count() >= needed:
             break
 
-        # Chercher le fichier dans le dossier vidéo (y compris sous-dossiers)
         matches = list(video_folder.rglob(filename))
         if not matches:
             logger.debug("Bootstrap audio : %s introuvable sur le disque.", filename)
@@ -214,6 +214,7 @@ def bootstrap_calibration(audio: "AudioFilter", video_folder: "Path", shutdown_e
 
         try:
             audio.analyze_video(matches[0])
+            analyzed += 1
         except Exception as e:
             logger.debug("Bootstrap audio — erreur sur %s : %s", filename, e)
 
@@ -221,7 +222,10 @@ def bootstrap_calibration(audio: "AudioFilter", video_folder: "Path", shutdown_e
     if n >= needed:
         logger.info("Bootstrap audio terminé — calibration prête (%d fichiers).", n)
     else:
-        logger.info("Bootstrap audio terminé — %d/%d fichiers analysés.", n, needed)
+        logger.info(
+            "Bootstrap audio terminé — %d/%d fichiers calibrés (%d candidats épuisés).",
+            n, needed, len(candidates),
+        )
 
 
 def union_segments(a: list[Segment], b: list[Segment]) -> list[Segment]:
