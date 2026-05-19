@@ -148,19 +148,17 @@ def create_config_blueprint(config: Config) -> Blueprint:
         audio_enabled = bool(merged.get("audio_filter", {}).get("enabled", True))
 
         # ── Empirical constants — NAS DS218+ / Intel Celeron J3355 / OpenVINO ──
-        # Pipeline audio-only : le filtre mouvement a été supprimé du chemin critique.
-        # Audio: ffmpeg PCM 16kHz pipe + numpy RMS → flat cost ~8s
+        # Measured: 1816s timeout on a 30-min file with 72% audio activity at 4fps
+        # → ~2600 frames → ~0.7s/frame (imgsz=320 + roi_crop)
         AUDIO_FLAT_SEC = 8.0
-        # YOLO11n + OpenVINO baseline at imgsz=640, no roi_crop: ~1.0s/frame
-        DETECT_SEC_PER_FRAME_640 = 1.0
-        # Typical fraction of video time with active motion segments
-        ACTIVE_FRACTION = 0.35
+        DETECT_SEC_PER_FRAME = 0.7   # measured on Celeron J3355, imgsz=320, roi_crop
+        # imgsz=640 without roi_crop is ~5.6× slower empirically
+        ACTIVE_FRACTION = 0.60       # conservative: real files average 50-70%
         VIDEO_MINUTES = 30.0
 
-        # imgsz=320 ≈ 4× faster than 640; roi_crop ≈ 2× faster (halves pixel area)
-        imgsz_factor = 4.0 if imgsz <= 320 else 1.0
-        roi_factor = 2.0 if roi_crop else 1.0
-        detect_sec_per_frame = DETECT_SEC_PER_FRAME_640 / (imgsz_factor * roi_factor)
+        imgsz_factor = 1.0 if imgsz <= 320 else 1.0 / 5.6
+        roi_factor = 1.0 if roi_crop else 1.0 / 1.8
+        detect_sec_per_frame = DETECT_SEC_PER_FRAME / (imgsz_factor * roi_factor)
 
         audio_time_sec = AUDIO_FLAT_SEC if audio_enabled else 0.0
         detect_frames = VIDEO_MINUTES * 60 * ACTIVE_FRACTION * detector_fps
