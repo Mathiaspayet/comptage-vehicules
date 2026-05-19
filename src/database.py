@@ -65,19 +65,13 @@ class Database:
         self._init_schema()
 
     def _tz_mod(self) -> str:
-        """SQLite datetime modifier that converts UTC timestamps to local time.
-        Computed at query time so DST transitions are handled correctly."""
-        if self._timezone in ("UTC", ""):
-            return "+0 hours"
-        try:
-            from zoneinfo import ZoneInfo
-            tz = ZoneInfo(self._timezone)
-            offset_sec = datetime.now(tz).utcoffset().total_seconds()
-            hours = offset_sec / 3600
-            sign = "+" if hours >= 0 else ""
-            return f"{sign}{hours:g} hours"
-        except Exception:
-            return "+0 hours"
+        """SQLite datetime modifier for crossing timestamps.
+
+        Crossing timestamps are stored as naive LOCAL time (extracted from video
+        filenames which encode the camera's local clock). No offset is needed —
+        returning '+0 hours' lets SQLite date/hour functions operate correctly.
+        """
+        return "+0 hours"
 
     @contextmanager
     def _connect(self) -> Generator[sqlite3.Connection, None, None]:
@@ -540,9 +534,11 @@ class Database:
 
     def add_audio_stats(
         self, filename: str,
-        mean_db: float, median_db: float, std_db: float,
-        p10_db: float, p90_db: float,
+        mean_db: "float | None", median_db: "float | None", std_db: "float | None",
+        p10_db: "float | None", p90_db: "float | None",
     ):
+        """Stocke les stats audio. Appeler avec des valeurs None pour marquer
+        "analysé mais sans piste audio", afin d'éviter les nouvelles tentatives."""
         with self._connect() as conn:
             conn.execute(
                 """
@@ -557,11 +553,14 @@ class Database:
             )
 
     def get_audio_stats_count(self) -> int:
+        """Compte uniquement les fichiers avec une vraie piste audio (p10_db non null)."""
         with self._connect() as conn:
-            return conn.execute("SELECT COUNT(*) FROM audio_stats").fetchone()[0]
+            return conn.execute(
+                "SELECT COUNT(*) FROM audio_stats WHERE p10_db IS NOT NULL"
+            ).fetchone()[0]
 
     def get_audio_calibration_aggregate(self, last_n: int = 50) -> "dict | None":
-        """Agrégats sur les N derniers fichiers pour calculer le seuil."""
+        """Agrégats sur les N derniers fichiers avec audio pour calculer le seuil."""
         with self._connect() as conn:
             row = conn.execute(
                 """
@@ -574,7 +573,9 @@ class Database:
                     MAX(p90_db)   AS max_p90_db
                 FROM (
                     SELECT p10_db, std_db, median_db, p90_db
-                    FROM audio_stats ORDER BY created_at DESC LIMIT ?
+                    FROM audio_stats
+                    WHERE p10_db IS NOT NULL
+                    ORDER BY created_at DESC LIMIT ?
                 )
                 """,
                 (last_n,),

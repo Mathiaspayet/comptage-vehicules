@@ -142,37 +142,42 @@ def create_config_blueprint(config: Config) -> Blueprint:
         raw = _load_raw()
         merged = _deep_merge(DEFAULTS, raw)
 
-        motion_fps = float(merged.get("motion_filter", {}).get("sample_fps", 2))
         detector_fps = float(merged.get("detector", {}).get("sample_fps", 4))
         imgsz = int(merged.get("detector", {}).get("imgsz", 320))
         roi_crop = bool(merged.get("detector", {}).get("roi_crop", True))
+        audio_enabled = bool(merged.get("audio_filter", {}).get("enabled", True))
 
-        # Empirical constants for NAS DS218+ / Intel Celeron J3355 with OpenVINO
-        MOTION_SEC_PER_FRAME = 0.20   # seconds per sampled frame (motion OpenCV)
-        DETECT_SEC_PER_FRAME_640 = 0.50   # seconds per YOLO frame at imgsz=640
-        ACTIVE_FRACTION = 0.30        # typical fraction of video with motion
+        # ── Empirical constants — NAS DS218+ / Intel Celeron J3355 / OpenVINO ──
+        # Motion: ffmpeg -skip_frame nointra (I-frames only) → flat cost ~75s
+        MOTION_FLAT_SEC = 75.0
+        # Audio: ffmpeg PCM 16kHz pipe + numpy RMS → flat cost ~8s
+        AUDIO_FLAT_SEC = 8.0
+        # YOLO11n + OpenVINO baseline at imgsz=640, no roi_crop: ~1.0s/frame
+        DETECT_SEC_PER_FRAME_640 = 1.0
+        # Typical fraction of video time with active motion segments
+        ACTIVE_FRACTION = 0.35
         VIDEO_MINUTES = 30.0
 
-        # imgsz=320 is ~4x faster; roi_crop reduces pixels by ~60% → ~2x faster
+        # imgsz=320 ≈ 4× faster than 640; roi_crop ≈ 2× faster (halves pixel area)
         imgsz_factor = 4.0 if imgsz <= 320 else 1.0
         roi_factor = 2.0 if roi_crop else 1.0
         detect_sec_per_frame = DETECT_SEC_PER_FRAME_640 / (imgsz_factor * roi_factor)
 
-        motion_frames = VIDEO_MINUTES * 60 * motion_fps
-        motion_time_sec = motion_frames * MOTION_SEC_PER_FRAME
-
+        motion_time_sec = MOTION_FLAT_SEC
+        audio_time_sec = AUDIO_FLAT_SEC if audio_enabled else 0.0
         detect_frames = VIDEO_MINUTES * 60 * ACTIVE_FRACTION * detector_fps
         detect_time_sec = detect_frames * detect_sec_per_frame
 
-        total_min = round((motion_time_sec + detect_time_sec) / 60, 1)
+        total_min = round((motion_time_sec + audio_time_sec + detect_time_sec) / 60, 1)
 
         return jsonify({
             "video_minutes": VIDEO_MINUTES,
             "estimated_minutes": total_min,
             "motion_contribution_min": round(motion_time_sec / 60, 1),
+            "audio_contribution_min": round(audio_time_sec / 60, 1),
             "detect_contribution_min": round(detect_time_sec / 60, 1),
-            "motion_fps": motion_fps,
             "detector_fps": detector_fps,
+            "active_fraction": ACTIVE_FRACTION,
         })
 
     return bp

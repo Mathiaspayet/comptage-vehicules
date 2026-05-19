@@ -43,6 +43,8 @@ class AudioFilter:
         samples = self._extract_audio(video_path)
         if samples is None or len(samples) < _SAMPLE_RATE:
             logger.debug("%s — pas de piste audio utilisable.", video_path.name)
+            # Marque "sans audio" pour que le bootstrap ne réessaie pas ce fichier
+            self.db.add_audio_stats(video_path.name, None, None, None, None, None)
             return []
 
         duration_sec = len(samples) / _SAMPLE_RATE

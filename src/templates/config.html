@@ -321,41 +321,38 @@ function setVal(id, val) {
 }
 
 /* ── Estimation du temps de traitement ── */
-function updateEstimate() {
-  const motionFps   = parseFloat(document.getElementById('motion_sample_fps').value)   || 2;
-  const detectorFps = parseFloat(document.getElementById('detector_sample_fps').value) || 2;
+async function updateEstimate() {
+  try {
+    const res  = await fetch('/config/api/estimate');
+    const data = await res.json();
+    const totalMin  = data.estimated_minutes;
+    const motionMin = data.motion_contribution_min;
+    const audioMin  = data.audio_contribution_min ?? 0;
+    const detectMin = data.detect_contribution_min;
 
-  // Empirical constants — NAS DS218+ / Intel Celeron J3355 + OpenVINO
-  const MOTION_SPF       = 0.20;  // s per motion-sampled frame
-  const DETECT_SPF       = 0.50;  // s per YOLO frame
-  const ACTIVE_FRACTION  = 0.30;  // fraction of video with motion (typical)
-  const VIDEO_MIN        = 30.0;
+    document.getElementById('est-total').textContent = `~${totalMin} min`;
+    document.getElementById('est-detail').textContent =
+      `Mouvement : ${motionMin} min  +  Audio : ${audioMin} min  +  IA : ${detectMin} min`;
 
-  const motionMin  = (VIDEO_MIN * 60 * motionFps   * MOTION_SPF) / 60;
-  const detectMin  = (VIDEO_MIN * 60 * ACTIVE_FRACTION * detectorFps * DETECT_SPF) / 60;
-  const totalMin   = Math.round((motionMin + detectMin) * 10) / 10;
+    const bar  = document.getElementById('est-bar');
+    const hint = document.getElementById('est-hint');
+    bar.style.width = Math.min(100, totalMin / 60 * 100) + '%';
 
-  document.getElementById('est-total').textContent  = `~${totalMin} min`;
-  document.getElementById('est-detail').textContent =
-    `Mouvement : ${Math.round(motionMin * 10)/10} min  +  IA : ${Math.round(detectMin * 10)/10} min`;
-
-  const bar  = document.getElementById('est-bar');
-  const hint = document.getElementById('est-hint');
-  const pct  = Math.min(100, totalMin / 60 * 100);
-  bar.style.width = pct + '%';
-
-  if (totalMin < 25) {
-    bar.style.background = '#16a34a';
-    hint.style.color     = '#166534';
-    hint.textContent     = '✅ Traitement en temps réel — pas de backlog';
-  } else if (totalMin < 35) {
-    bar.style.background = '#d97706';
-    hint.style.color     = '#92400e';
-    hint.textContent     = '⚠️ Légèrement plus lent que la production vidéo';
-  } else {
-    bar.style.background = '#dc2626';
-    hint.style.color     = '#991b1b';
-    hint.textContent     = '❌ Trop lent — réduire les FPS pour éviter le backlog';
+    if (totalMin < 25) {
+      bar.style.background = '#16a34a';
+      hint.style.color     = '#166534';
+      hint.textContent     = '✅ Traitement en temps réel — pas de backlog';
+    } else if (totalMin < 35) {
+      bar.style.background = '#d97706';
+      hint.style.color     = '#92400e';
+      hint.textContent     = '⚠️ Légèrement plus lent que la production vidéo';
+    } else {
+      bar.style.background = '#dc2626';
+      hint.style.color     = '#991b1b';
+      hint.textContent     = '❌ Trop lent — réduire les FPS pour éviter le backlog';
+    }
+  } catch (e) {
+    document.getElementById('est-total').textContent = '—';
   }
 }
 
