@@ -109,21 +109,27 @@ def test_delete_old_crossings(tmp_db):
 
 
 def test_timezone_aware_hourly(tmp_path):
-    """A crossing at 23:00 UTC should appear in the next day for UTC+2."""
+    """Crossing timestamps are stored as naive local time — no UTC offset applied.
+
+    A crossing stored as '2026-01-15T23:30:00' (local time) must appear
+    in Jan 15 stats at hour 23, not shifted to Jan 16.
+    """
     from src.database import Database
     db = Database(tmp_path / "tz_test.db", timezone="Europe/Paris")
-    # Insert a crossing at 23:30 UTC on 2026-01-15 (UTC+1 in January → 00:30 Jan 16)
+    # Insert a crossing at 23:30 local time on 2026-01-15
     db.insert_crossings_batch([{
         "timestamp": "2026-01-15T23:30:00",
         "vehicle_type": "car", "direction": None,
         "confidence": 0.9, "source_file": "v.mp4",
     }])
-    # UTC date 2026-01-15 should have 0 hits (crossing is at 00:30 Jan 16 local time)
+    # Local date 2026-01-15 should have 1 hit (timestamp is already local)
     stats_15 = db.get_hourly_stats("2026-01-15")
-    assert sum(h["count"] for h in stats_15) == 0
-    # UTC+1 date 2026-01-16 should have 1 hit
+    assert sum(h["count"] for h in stats_15) == 1
+    # Hour 23 bucket should contain the crossing
+    assert stats_15[23]["count"] == 1
+    # Jan 16 should have 0 hits
     stats_16 = db.get_hourly_stats("2026-01-16")
-    assert sum(h["count"] for h in stats_16) == 1
+    assert sum(h["count"] for h in stats_16) == 0
 
 
 def test_crossings_export_filters(tmp_db):
