@@ -267,7 +267,15 @@ def _process_file(
             on_progress=detection_progress,
             start_seg_idx=start_seg_idx,
             on_segment_done=on_segment_done,
+            shutdown_event=_shutdown,
         )
+
+        if _shutdown.is_set():
+            # Arrêt demandé en cours de détection — le checkpoint est déjà sauvegardé
+            # segment par segment. On ne marque pas le fichier comme terminé.
+            logger.info("%s — traitement interrompu, reprise au prochain démarrage.", filename)
+            progress_tracker.finish_file()
+            return
 
         # Remplacer les crossings existants pour ce fichier, puis insérer les nouveaux
         db.delete_crossings_for_files([filename])

@@ -116,6 +116,7 @@ class VehicleDetector:
         start_seg_idx: int = 0,
         initial_crossings: list | None = None,
         on_segment_done: Optional[Callable[[int, list], None]] = None,
+        shutdown_event=None,
     ) -> list[CrossingEvent]:
         """Runs AI detection only on the active segments of a video.
 
@@ -135,6 +136,7 @@ class VehicleDetector:
                 cap, video_path, segments, video_start_dt, on_progress,
                 start_seg_idx=start_seg_idx,
                 on_segment_done=on_segment_done,
+                shutdown_event=shutdown_event,
             )
         finally:
             cap.release()
@@ -162,6 +164,7 @@ class VehicleDetector:
         on_progress: Optional[Callable[[int, int], None]] = None,
         start_seg_idx: int = 0,
         on_segment_done: Optional[Callable[[int, list], None]] = None,
+        shutdown_event=None,
     ) -> list[CrossingEvent]:
         fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
         sample_fps = self.config.effective_detector_fps
@@ -214,6 +217,10 @@ class VehicleDetector:
             if seg_idx < start_seg_idx:
                 seg_idx += 1
                 continue
+
+            if shutdown_event is not None and shutdown_event.is_set():
+                logger.info("Arrêt demandé — interruption après le segment %d/%d.", seg_idx, len(segments))
+                break
 
             seg = segments[seg_idx]
             current_sec = frame_idx / fps
