@@ -29,11 +29,11 @@ DEFAULTS = {
         "sample_fps": 2,
         "imgsz": 320,
         "model_name": "yolo11n",
-        "confidence_threshold": 0.35,
+        "confidence_threshold": 0.25,       # abaissé 0.35→0.25 : moins de ratés YOLO
         "vehicle_classes": ["car", "motorcycle", "bus", "truck"],
         "count_direction": False,
         "model_dir": "/app/data/models",
-        "night_confidence_threshold": 0.18,
+        "night_confidence_threshold": 0.12, # abaissé 0.18→0.12 : nuit très permissif
         "night_enhance": True,
         "roi_crop": True,
     },
@@ -74,23 +74,23 @@ DEFAULTS = {
     },
     "audio_filter": {
         "enabled": True,
-        "window_sec": 0.5,          # taille de la fenêtre RMS (secondes)
-        "calibration_files": 10,    # fichiers requis avant d'utiliser le filtre
-        "sigma_factor": 2.5,        # seuil = p10_moyen + sigma × std_moyen
-        "segment_padding": 2.0,     # secondes ajoutées autour des segments
-        "min_energy_db": -55.0,     # seuil absolu minimum (dBFS) — jour
-        "night_min_energy_db": -65.0,  # seuil absolu minimum la nuit (plus permissif)
-        "night_calibration": True,  # utiliser les fichiers de nuit comme référence
-        "night_start_hour": 22,     # début plage nuit (heure locale)
-        "night_end_hour": 6,        # fin plage nuit (heure locale)
+        "window_sec": 0.5,              # taille de la fenêtre RMS (secondes)
+        "calibration_files": 10,        # fichiers requis avant d'utiliser le filtre
+        "sigma_factor": 2.0,            # abaissé 2.5→2.0 : plus de segments audio détectés
+        "segment_padding": 2.5,         # augmenté 2.0→2.5 s : plus de contexte autour du bruit
+        "min_energy_db": -60.0,         # abaissé -55→-60 : voitures lentes/électriques
+        "night_min_energy_db": -70.0,   # abaissé -65→-70 : nuit très permissive
+        "night_calibration": True,      # utiliser les fichiers de nuit comme référence
+        "night_start_hour": 22,         # début plage nuit (heure locale)
+        "night_end_hour": 6,            # fin plage nuit (heure locale)
     },
     "night_detection": {
         "enabled": True,
-        "brightness_threshold": 50,    # luminosité médiane < seuil → mode nuit (phares)
-        "twilight_threshold": 100,     # luminosité entre night et twilight → les deux détecteurs
+        "brightness_threshold": 40,    # abaissé 50→40 : nuit franche seulement
+        "twilight_threshold": 160,     # élargi 100→160 : presque tout en mode double-détecteur
         "sample_fps": 5,               # échantillonnage luminosité (peu coûteux)
-        "flash_sigma": 3.0,            # pic = baseline + sigma × std
-        "min_flash_sep_sec": 1.5,      # fusionne les pics plus proches que ça
+        "flash_sigma": 2.5,            # abaissé 3.0→2.5 : plus de phares détectés
+        "min_flash_sep_sec": 1.0,      # réduit 1.5→1.0 s : deux véhicules proches = 2 comptages
         "merge_window_sec": 4.0,       # fenêtre de fusion doublon crépuscule (secondes)
     },
 }
