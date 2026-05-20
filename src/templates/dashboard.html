@@ -819,34 +819,49 @@ function renderFiles(files) {
     const countColor = hasVehicles ? '#1a3a5c' : '#aaa';
     const countWeight = hasVehicles ? '700' : '400';
 
-    // Badge méthode de détection
+    // Mode + comptage détaillé
     const MODE_CFG = {
       day:        { icon: '☀️',  label: 'Jour',       color: '#92400e', bg: '#fef3c7' },
       night:      { icon: '🌙',  label: 'Nuit',       color: '#1e3a5f', bg: '#dbeafe' },
       twilight:   { icon: '🌅',  label: 'Crépuscule', color: '#4c1d95', bg: '#ede9fe' },
       audio_only: { icon: '🔇',  label: 'Silencieux', color: '#6b7280', bg: '#f3f4f6' },
     };
-    let modeBadge = '';
+
+    let modeCell = '—';
+    let countCell = `<span style="font-weight:${countWeight};color:${countColor}">${f.vehicle_count ?? 0}</span>`;
+
     if (f.detection_mode) {
       const cfg = MODE_CFG[f.detection_mode] || { icon: '❓', label: f.detection_mode, color: '#6b7280', bg: '#f3f4f6' };
-      let detail = '';
+      const badge = `<span style="padding:.1rem .4rem;border-radius:10px;font-size:.72rem;font-weight:600;background:${cfg.bg};color:${cfg.color}">${cfg.icon} ${cfg.label}</span>`;
+
       if (f.detection_mode === 'twilight' && f.vehicles_yolo != null && f.vehicles_night != null) {
-        detail = ` title="YOLO: ${f.vehicles_yolo} · phares: ${f.vehicles_night} · fusionnés: ${f.vehicle_count}"`;
-      } else if (f.detection_mode === 'day' && f.vehicles_yolo != null) {
-        detail = ` title="YOLO: ${f.vehicles_yolo}"`;
-      } else if (f.detection_mode === 'night' && f.vehicles_night != null) {
-        detail = ` title="Phares: ${f.vehicles_night}"`;
+        // Crépuscule : affiche YOLO + phares = total (union)
+        modeCell = badge;
+        countCell = `<span style="font-family:monospace;font-size:.78rem;white-space:nowrap">
+          <span title="YOLO" style="color:#d97706">🤖${f.vehicles_yolo}</span>
+          <span style="color:#aaa"> + </span>
+          <span title="Phares" style="color:#2563eb">🌙${f.vehicles_night}</span>
+          <span style="color:#aaa"> = </span>
+          <span style="font-weight:700;color:#1a3a5c">${f.vehicle_count}</span>
+        </span>`;
+      } else if (f.detection_mode === 'day') {
+        modeCell = badge;
+        countCell = `<span style="font-weight:${countWeight};color:${countColor}" title="YOLO">${f.vehicle_count ?? 0}</span>`;
+      } else if (f.detection_mode === 'night') {
+        modeCell = badge;
+        countCell = `<span style="font-weight:${countWeight};color:${countColor}" title="Phares">${f.vehicle_count ?? 0}</span>`;
+      } else {
+        modeCell = badge;
       }
-      modeBadge = `<span${detail} style="display:inline-block;padding:.1rem .45rem;border-radius:10px;font-size:.72rem;font-weight:600;background:${cfg.bg};color:${cfg.color};cursor:${detail ? 'help' : 'default'}">${cfg.icon} ${cfg.label}</span>`;
     }
 
     return `<tr style="${rowOpacity}">
       <td><input type="checkbox" class="file-cb" value="${escHtml(f.filename)}"></td>
-      <td style="font-family:monospace;font-size:.75rem;word-break:break-all;max-width:260px">${escHtml(f.filename)}</td>
+      <td style="font-family:monospace;font-size:.75rem;word-break:break-all;max-width:240px">${escHtml(f.filename)}</td>
       <td style="white-space:nowrap;font-size:.8rem">${fmtDateShort(f.processed_at)}</td>
       <td style="white-space:nowrap;font-size:.8rem;text-align:right;font-family:monospace">${fmtDuration(f.processing_duration_seconds)}</td>
-      <td style="text-align:center;font-weight:${countWeight};color:${countColor}">${f.vehicle_count ?? 0}</td>
-      <td style="white-space:nowrap">${modeBadge}</td>
+      <td style="text-align:center">${countCell}</td>
+      <td style="white-space:nowrap">${modeCell}</td>
       <td>${statusBadge}</td>
     </tr>`;
   }).join('');
