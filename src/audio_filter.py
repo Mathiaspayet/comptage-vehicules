@@ -97,7 +97,8 @@ class AudioFilter:
             stats["median_db"], stats["p10_db"], stats["p90_db"], stats["std_db"],
         )
 
-        threshold = self._get_threshold()
+        is_night = _is_night_hour(video_hour, self.config.audio_night_start_hour, self.config.audio_night_end_hour)
+        threshold = self._get_threshold(is_night=is_night)
         if threshold is None:
             n = self.db.get_audio_stats_count()
             logger.info(
@@ -186,16 +187,19 @@ class AudioFilter:
             energy[i] = 20.0 * np.log10(max(rms, 1e-10))
         return energy
 
-    def _get_threshold(self) -> "float | None":
+    def _get_threshold(self, is_night: bool = False) -> "float | None":
         """Calcule le seuil de détection.
 
         Préfère les fichiers de nuit pour la calibration (meilleur baseline).
         Fallback sur tous les fichiers si insuffisamment de fichiers de nuit.
+        La nuit, applique un plancher plus permissif pour capter les véhicules
+        qui roulent doucement (moteur plus silencieux, moins de trafic).
         """
         needed = self.config.audio_calibration_files
         night_only = self.config.audio_night_calibration
         ns = self.config.audio_night_start_hour
         ne = self.config.audio_night_end_hour
+        floor = self.config.audio_night_min_energy_db if is_night else self.config.audio_min_energy_db
 
         if night_only:
             n_night = self.db.get_audio_stats_count(night_only=True, night_start=ns, night_end=ne)
@@ -208,7 +212,7 @@ class AudioFilter:
                         agg["avg_p10_db"]
                         + self.config.audio_sigma_factor * agg["avg_std_db"]
                     )
-                    return max(threshold, self.config.audio_min_energy_db)
+                    return max(threshold, floor)
 
         # Fallback : tous les fichiers
         if self.db.get_audio_stats_count() < needed:
@@ -220,7 +224,7 @@ class AudioFilter:
             agg["avg_p10_db"]
             + self.config.audio_sigma_factor * agg["avg_std_db"]
         )
-        return max(threshold, self.config.audio_min_energy_db)
+        return max(threshold, floor)
 
     def _detect_segments(
         self, energy_db: np.ndarray, threshold: float, duration_sec: float

@@ -78,7 +78,8 @@ DEFAULTS = {
         "calibration_files": 10,    # fichiers requis avant d'utiliser le filtre
         "sigma_factor": 2.5,        # seuil = p10_moyen + sigma × std_moyen
         "segment_padding": 2.0,     # secondes ajoutées autour des segments
-        "min_energy_db": -55.0,     # seuil absolu minimum (dBFS)
+        "min_energy_db": -55.0,     # seuil absolu minimum (dBFS) — jour
+        "night_min_energy_db": -65.0,  # seuil absolu minimum la nuit (plus permissif)
         "night_calibration": True,  # utiliser les fichiers de nuit comme référence
         "night_start_hour": 22,     # début plage nuit (heure locale)
         "night_end_hour": 6,        # fin plage nuit (heure locale)
@@ -301,6 +302,10 @@ class Config:
     @property
     def audio_min_energy_db(self) -> float:
         return float(self.get("audio_filter", "min_energy_db", default=-55.0))
+
+    @property
+    def audio_night_min_energy_db(self) -> float:
+        return float(self.get("audio_filter", "night_min_energy_db", default=-65.0))
 
     @property
     def audio_night_calibration(self) -> bool:

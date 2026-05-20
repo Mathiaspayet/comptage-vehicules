@@ -330,10 +330,16 @@ class VehicleDetector:
         return h < sunrise or h >= sunset
 
     def _enhance_frame(self, frame: np.ndarray) -> np.ndarray:
+        # Gamma correction : brightens dark pixels (γ<1 = brighter)
+        gamma = 0.5
+        lut = np.array([((i / 255.0) ** gamma) * 255 for i in range(256)], dtype=np.uint8)
+        frame = lut[frame]
+        # CLAHE on L channel for local contrast
         lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
         l, a, b = cv2.split(lab)
-        clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
-        l = clahe.apply(l)
+        if not hasattr(self, "_clahe"):
+            self._clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
+        l = self._clahe.apply(l)
         return cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
 
     def _analyze_frame(
