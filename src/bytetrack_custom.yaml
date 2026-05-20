@@ -1,0 +1,9 @@
+# ByteTrack custom — optimisé pour file lente (queue leu leu)
+# match_thresh bas = moins de fusions de tracks entre véhicules proches
+# track_buffer réduit = tracks fantômes qui persistent moins longtemps
+tracker_type: bytetrack
+track_high_thresh: 0.5
+track_low_thresh: 0.1
+new_track_thresh: 0.6
+track_buffer: 15
+match_thresh: 0.65

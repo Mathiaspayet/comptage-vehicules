@@ -15,6 +15,8 @@ import numpy as np
 from .config import Config
 from .motion_filter import Segment
 
+_TRACKER_CFG = Path(__file__).parent / "bytetrack_custom.yaml"
+
 logger = logging.getLogger(__name__)
 
 # COCO class IDs relevant to vehicles
@@ -363,6 +365,7 @@ class VehicleDetector:
         results = self._model.track(
             frame,
             persist=True,
+            tracker=str(_TRACKER_CFG),
             classes=self._active_class_ids,
             conf=conf,
             imgsz=self.config.imgsz,
