@@ -122,16 +122,16 @@ class NightDetector:
                     logger.info("Arrêt demandé — interruption nuit après segment %d/%d.", seg_idx, total_segments)
                     break
 
-                times, brightness = self._segment_profile(cap, seg, fps, step, crop)
-                flashes = self._detect_flashes(times, brightness, baseline, threshold)
+                times, brightness, centroids_x = self._segment_profile(cap, seg, fps, step, crop)
+                flashes = self._detect_flashes(times, brightness, centroids_x, baseline, threshold)
 
-                for peak_t, peak_b in flashes:
+                for peak_t, peak_b, direction in flashes:
                     conf = min(1.0, (peak_b - baseline) / max(threshold - baseline, 1.0) * 0.5 + 0.4)
                     ts = (video_start_dt + timedelta(seconds=peak_t)) if video_start_dt else datetime.utcnow()
                     ev = CrossingEvent(
                         timestamp=ts,
                         vehicle_type="car",
-                        direction=None,
+                        direction=direction if self.config.count_direction else None,
                         confidence=round(conf, 2),
                         source_file=source_name,
                     )
@@ -178,39 +178,63 @@ class NightDetector:
         return baseline, bg_std
 
     def _segment_profile(self, cap, seg: Segment, fps: float, step: int, crop):
-        """Retourne (times, brightness) échantillonnés dans le segment."""
+        """Retourne (times, brightness, centroids_x) échantillonnés dans le segment.
+        centroids_x = position horizontale (px, repère plein cadre) des phares,
+        ou NaN si pas de pixel brillant identifiable."""
         start_f = int(seg.start_sec * fps)
         end_f = int(seg.end_sec * fps)
         cap.set(cv2.CAP_PROP_POS_FRAMES, start_f)
         times: list[float] = []
         brightness: list[float] = []
+        centroids_x: list[float] = []
         f = start_f
         while f <= end_f:
             ret, frame = cap.read()
             if not ret:
                 break
             if (f - start_f) % step == 0:
+                b, cx = self._roi_brightness(frame, crop)
                 times.append(f / fps)
-                brightness.append(self._roi_brightness(frame, crop))
+                brightness.append(b)
+                centroids_x.append(cx)
             f += 1
-        return times, brightness
+        return times, brightness, centroids_x
 
     @staticmethod
-    def _roi_brightness(frame: np.ndarray, crop) -> float:
-        """90e percentile de luminosité dans le ROI (capte les phares, pas le fond)."""
+    def _roi_brightness(frame: np.ndarray, crop) -> "tuple[float, float]":
+        """Retourne (90e percentile de luminosité, centre horizontal des phares).
+        Le centroïde x est en repère plein cadre (offset ROI ajouté)."""
+        x_off = 0
         if crop:
             x0, y0, x1, y1 = crop
             frame = frame[y0:y1, x0:x1]
+            x_off = x0
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        return float(np.percentile(gray, 90))
+        p90 = float(np.percentile(gray, 90))
+        # Centroïde horizontal des pixels les plus brillants (phares)
+        bright_thresh = float(np.percentile(gray, 99))
+        ys, xs = np.where(gray >= bright_thresh)
+        cx = float(np.mean(xs)) + x_off if xs.size else float("nan")
+        return p90, cx
 
-    def _detect_flashes(self, times, brightness, baseline, threshold):
+    def _detect_flashes(self, times, brightness, centroids_x, baseline, threshold):
         """Détecte les régions au-dessus du seuil. Chaque région = 1 véhicule.
-        Retourne [(peak_time, peak_brightness), ...]."""
+        La direction vient du déplacement horizontal des phares pendant le flash.
+        Retourne [(peak_time, peak_brightness, direction), ...]."""
         if not brightness:
             return []
         min_sep = self.config.night_min_flash_sep_sec
-        flashes: list[tuple[float, float]] = []
+        flashes: list[tuple[float, float, "str | None"]] = []
+
+        def _direction(lo: int, hi: int) -> "str | None":
+            """Sens depuis le déplacement net du centroïde des phares sur [lo, hi]."""
+            xs = [centroids_x[k] for k in range(lo, hi) if not np.isnan(centroids_x[k])]
+            if len(xs) < 2:
+                return None
+            delta = xs[-1] - xs[0]
+            if abs(delta) < 5:   # déplacement négligeable → indéterminé
+                return None
+            return "left_to_right" if delta > 0 else "right_to_left"
 
         in_flash = False
         start_idx = 0
@@ -222,18 +246,18 @@ class NightDetector:
                 in_flash = False
                 region = brightness[start_idx:i]
                 pk = start_idx + int(np.argmax(region))
-                flashes.append((times[pk], brightness[pk]))
+                flashes.append((times[pk], brightness[pk], _direction(start_idx, i)))
         if in_flash:
             region = brightness[start_idx:]
             pk = start_idx + int(np.argmax(region))
-            flashes.append((times[pk], brightness[pk]))
+            flashes.append((times[pk], brightness[pk], _direction(start_idx, len(brightness))))
 
         # Fusionne les pics trop proches (même véhicule)
-        merged: list[tuple[float, float]] = []
-        for t, b in flashes:
+        merged: list[tuple[float, float, "str | None"]] = []
+        for t, b, d in flashes:
             if merged and t - merged[-1][0] < min_sep:
                 if b > merged[-1][1]:
-                    merged[-1] = (t, b)
+                    merged[-1] = (t, b, d)
             else:
-                merged.append((t, b))
+                merged.append((t, b, d))
         return merged
