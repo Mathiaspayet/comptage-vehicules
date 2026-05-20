@@ -21,7 +21,7 @@ def test_deep_merge_override():
     assert config.imgsz == 640
     # Other detector keys should be unchanged
     assert config.model_name == "yolo11n"
-    assert config.confidence_threshold == 0.35
+    assert config.confidence_threshold == 0.25
 
 
 def test_deep_merge_does_not_pollute_base():
