@@ -98,31 +98,25 @@ def _auto_purge(config, db: Database):
         logger.info("Rétention des données : %d franchissement(s) de plus de %d jours supprimé(s).", count, days)
 
 
-def _check_and_reset_if_config_changed(config, db: Database):
-    """Compare the stored detection fingerprint with the current one.
-    If they differ, wipe processed_files + crossings so everything is re-processed."""
+def _track_detection_fingerprint(config, db: Database):
+    """Track the detection fingerprint for informational purposes only.
+
+    A config change NEVER wipes the history automatically: the new parameters
+    apply to future files only. To re-process old files, the user selects them
+    explicitly in the dashboard ("Remettre en attente")."""
     current_fp = config.detection_fingerprint()
     stored_fp = db.get_state("detection_fingerprint")
+    db.set_state("detection_fingerprint", current_fp)
 
     if stored_fp is None:
-        # First run — just store the fingerprint, don't reset
-        db.set_state("detection_fingerprint", current_fp)
         logger.info("Empreinte de config enregistrée : %s", current_fp)
-        return
-
-    if stored_fp != current_fp:
-        logger.warning(
-            "Paramètres de détection modifiés (ancienne empreinte=%s, nouvelle=%s) — "
-            "suppression de l'historique pour retraiter tous les fichiers.",
+    elif stored_fp != current_fp:
+        logger.info(
+            "Paramètres de détection modifiés (ancienne=%s, nouvelle=%s) — "
+            "appliqués aux nouveaux fichiers uniquement. "
+            "Pour retraiter d'anciens fichiers, utilisez « Remettre en attente » dans le tableau de bord.",
             stored_fp, current_fp,
         )
-        progress_tracker.set_resetting("Paramètres modifiés — réinitialisation en cours…")
-        count = db.unmark_all_files()
-        db.set_state("detection_fingerprint", current_fp)
-        progress_tracker.clear_resetting()
-        logger.info("Réinitialisation terminée — %d fichier(s) marqués à retraiter.", count)
-    else:
-        logger.info("Empreinte de config inchangée — pas de réinitialisation.")
 
 
 def processing_loop(watcher: FileWatcher, audio: AudioFilter, detector: VehicleDetector,
@@ -154,7 +148,7 @@ def processing_loop(watcher: FileWatcher, audio: AudioFilter, detector: VehicleD
                 _prev_imgsz = new_imgsz
                 _prev_model_name = new_model_name
 
-            _check_and_reset_if_config_changed(config, db)
+            _track_detection_fingerprint(config, db)
 
         try:
             new_files = watcher.scan_new_files()
@@ -340,7 +334,7 @@ def main():
 
     db = Database(config.db_path, timezone=config.timezone)
     _auto_purge(config, db)
-    _check_and_reset_if_config_changed(config, db)
+    _track_detection_fingerprint(config, db)
     watcher = FileWatcher(config, db)
     audio = AudioFilter(config, db)
     detector = VehicleDetector(config)

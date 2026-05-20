@@ -382,8 +382,12 @@ class Config:
             return set()
 
     def detection_fingerprint(self) -> str:
-        """MD5 of all parameters that affect detection results.
-        If this changes between runs, all files must be re-processed."""
+        """MD5 of the main detection parameters — informational only.
+
+        A change here is logged but NEVER triggers an automatic re-processing
+        of the history. New parameters apply to future files only; re-processing
+        old files is a manual action ("Remettre en attente" in the dashboard).
+        """
         relevant = {
             "line_p1": list(self.line_p1),
             "line_p2": list(self.line_p2),
@@ -392,14 +396,9 @@ class Config:
             "confidence_threshold": self.confidence_threshold,
             "vehicle_classes": sorted(self.vehicle_classes),
             "count_direction": self.count_direction,
-            # Audio is now the primary segment detector (motion removed)
             "audio_enabled": self.audio_enabled,
             "audio_sigma_factor": self.audio_sigma_factor,
             "audio_min_energy_db": self.audio_min_energy_db,
-            # Night detection (headlight flashes instead of YOLO)
-            "night_detection_enabled": self.night_detection_enabled,
-            "night_brightness_threshold": self.night_brightness_threshold,
-            "night_flash_sigma": self.night_flash_sigma,
         }
         blob = json.dumps(relevant, sort_keys=True)
         return hashlib.md5(blob.encode()).hexdigest()
