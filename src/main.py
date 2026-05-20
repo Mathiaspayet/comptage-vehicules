@@ -12,7 +12,7 @@ from .audio_filter import AudioFilter, bootstrap_calibration
 from .config import load_config
 from .dashboard import run_dashboard
 from .database import Database
-from .detector import VehicleDetector
+from .detector import CrossingEvent, VehicleDetector
 from .ingestion import FileWatcher
 from .night_detector import NightDetector, measure_scene_brightness
 from .progress import tracker as progress_tracker
@@ -96,6 +96,52 @@ def _auto_purge(config, db: Database):
     count = db.delete_old_crossings(days)
     if count:
         logger.info("Rétention des données : %d franchissement(s) de plus de %d jours supprimé(s).", count, days)
+
+
+def _merge_crossing_events(
+    events_yolo: list,
+    events_night: list,
+    merge_window_sec: float = 4.0,
+) -> list:
+    """Fusionne les événements de deux détecteurs en éliminant les doublons temporels.
+
+    Si un événement YOLO et un événement nuit (phares) sont séparés de moins de
+    merge_window_sec, c'est le même véhicule détecté par les deux méthodes.
+    On garde celui avec la meilleure confiance. Les événements uniques à un seul
+    détecteur sont conservés tels quels.
+    """
+    if not events_yolo and not events_night:
+        return []
+
+    tagged: list[tuple] = (
+        [(e, "yolo") for e in events_yolo]
+        + [(e, "night") for e in events_night]
+    )
+    tagged.sort(key=lambda x: x[0].timestamp)
+
+    merged: list = []
+    skip: set[int] = set()
+
+    for i, (ev_i, src_i) in enumerate(tagged):
+        if i in skip:
+            continue
+        best = ev_i
+        for j in range(i + 1, len(tagged)):
+            if j in skip:
+                continue
+            ev_j, src_j = tagged[j]
+            dt = (ev_j.timestamp - ev_i.timestamp).total_seconds()
+            if dt > merge_window_sec:
+                break
+            if src_j != src_i:
+                # Même véhicule détecté par les deux méthodes — garder la meilleure
+                if ev_j.confidence > best.confidence:
+                    best = ev_j
+                skip.add(j)
+                break  # un seul doublon par événement
+        merged.append(best)
+
+    return merged
 
 
 def _track_detection_fingerprint(config, db: Database):
@@ -259,23 +305,73 @@ def _process_file(
             progress_tracker.set_phase("detection", frames_total=total)
             progress_tracker.update_frame(done)
 
-        use_night = False
+        # ── Choix du mode : nuit / crépuscule / jour ─────────────────
+        mode = "day"
+        brightness = 128.0
         if night.config.night_detection_enabled:
             brightness = measure_scene_brightness(video_path)
-            use_night = brightness < night.config.night_brightness_threshold
-            logger.info(
-                "%s — luminosité médiane=%.1f → mode %s",
-                filename, brightness, "NUIT (phares)" if use_night else "JOUR (YOLO)",
-            )
+            if brightness < night.config.night_brightness_threshold:
+                mode = "night"
+            elif brightness < night.config.night_twilight_threshold:
+                mode = "twilight"
 
-        engine = night if use_night else detector
-        new_events = engine.process_video(
-            video_path, segments, video_start_dt,
-            on_progress=detection_progress,
-            start_seg_idx=start_seg_idx,
-            on_segment_done=on_segment_done,
-            shutdown_event=_shutdown,
+        MODE_LABELS = {
+            "day": "JOUR (YOLO)",
+            "twilight": "CRÉPUSCULE (YOLO + phares)",
+            "night": "NUIT (phares)",
+        }
+        logger.info(
+            "%s — luminosité médiane=%.1f → mode %s",
+            filename, brightness, MODE_LABELS[mode],
         )
+
+        if mode == "twilight":
+            # En mode crépuscule on relance les deux détecteurs depuis 0 — le checkpoint
+            # d'un run précédent (potentiellement dans un autre mode) ne s'applique pas.
+            saved_crossings = []
+            db.clear_checkpoint(filename)
+
+        if mode == "night":
+            new_events = night.process_video(
+                video_path, segments, video_start_dt,
+                on_progress=detection_progress,
+                start_seg_idx=start_seg_idx,
+                on_segment_done=on_segment_done,
+                shutdown_event=_shutdown,
+            )
+        elif mode == "day":
+            new_events = detector.process_video(
+                video_path, segments, video_start_dt,
+                on_progress=detection_progress,
+                start_seg_idx=start_seg_idx,
+                on_segment_done=on_segment_done,
+                shutdown_event=_shutdown,
+            )
+        else:
+            # Mode crépuscule : les deux détecteurs, pas de checkpoint partiel
+            # (on attend la fin complète des deux avant de sauvegarder)
+            events_yolo = detector.process_video(
+                video_path, segments, video_start_dt,
+                on_progress=detection_progress,
+                shutdown_event=_shutdown,
+            )
+            if _shutdown.is_set():
+                logger.info("%s — traitement interrompu (YOLO crépuscule).", filename)
+                progress_tracker.finish_file()
+                return
+            events_night = night.process_video(
+                video_path, segments, video_start_dt,
+                on_progress=detection_progress,
+                shutdown_event=_shutdown,
+            )
+            new_events = _merge_crossing_events(
+                events_yolo, events_night,
+                merge_window_sec=night.config.night_merge_window_sec,
+            )
+            logger.info(
+                "%s — crépuscule : YOLO=%d phares=%d après fusion=%d",
+                filename, len(events_yolo), len(events_night), len(new_events),
+            )
 
         if _shutdown.is_set():
             # Arrêt demandé en cours de détection — le checkpoint est déjà sauvegardé

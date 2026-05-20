@@ -87,9 +87,11 @@ DEFAULTS = {
     "night_detection": {
         "enabled": True,
         "brightness_threshold": 50,    # luminosité médiane < seuil → mode nuit (phares)
+        "twilight_threshold": 100,     # luminosité entre night et twilight → les deux détecteurs
         "sample_fps": 5,               # échantillonnage luminosité (peu coûteux)
         "flash_sigma": 3.0,            # pic = baseline + sigma × std
         "min_flash_sep_sec": 1.5,      # fusionne les pics plus proches que ça
+        "merge_window_sec": 4.0,       # fenêtre de fusion doublon crépuscule (secondes)
     },
 }
 
@@ -343,8 +345,16 @@ class Config:
         return float(self.get("night_detection", "flash_sigma", default=3.0))
 
     @property
+    def night_twilight_threshold(self) -> float:
+        return float(self.get("night_detection", "twilight_threshold", default=100))
+
+    @property
     def night_min_flash_sep_sec(self) -> float:
         return float(self.get("night_detection", "min_flash_sep_sec", default=1.5))
+
+    @property
+    def night_merge_window_sec(self) -> float:
+        return float(self.get("night_detection", "merge_window_sec", default=4.0))
 
     def motion_fingerprint(self) -> str:
         """MD5 of parameters that affect only motion detection (not AI inference)."""
