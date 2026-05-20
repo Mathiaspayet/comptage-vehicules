@@ -285,6 +285,7 @@
               <th class="sortable" data-sort="vehicle_count" onclick="setSort('vehicle_count')" style="text-align:center">
                 🚗 <span class="sort-arrow" data-arrow="vehicle_count"></span>
               </th>
+              <th>Mode</th>
               <th>Statut</th>
             </tr>
           </thead>
@@ -800,7 +801,7 @@ function renderFiles(files) {
   document.getElementById('files-info').textContent = `${shown.length} fichier(s)`;
 
   if (!shown.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="color:#999;padding:.75rem;text-align:center">Aucun fichier.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="color:#999;padding:.75rem;text-align:center">Aucun fichier.</td></tr>';
     return;
   }
 
@@ -818,12 +819,34 @@ function renderFiles(files) {
     const countColor = hasVehicles ? '#1a3a5c' : '#aaa';
     const countWeight = hasVehicles ? '700' : '400';
 
+    // Badge méthode de détection
+    const MODE_CFG = {
+      day:        { icon: '☀️',  label: 'Jour',       color: '#92400e', bg: '#fef3c7' },
+      night:      { icon: '🌙',  label: 'Nuit',       color: '#1e3a5f', bg: '#dbeafe' },
+      twilight:   { icon: '🌅',  label: 'Crépuscule', color: '#4c1d95', bg: '#ede9fe' },
+      audio_only: { icon: '🔇',  label: 'Silencieux', color: '#6b7280', bg: '#f3f4f6' },
+    };
+    let modeBadge = '';
+    if (f.detection_mode) {
+      const cfg = MODE_CFG[f.detection_mode] || { icon: '❓', label: f.detection_mode, color: '#6b7280', bg: '#f3f4f6' };
+      let detail = '';
+      if (f.detection_mode === 'twilight' && f.vehicles_yolo != null && f.vehicles_night != null) {
+        detail = ` title="YOLO: ${f.vehicles_yolo} · phares: ${f.vehicles_night} · fusionnés: ${f.vehicle_count}"`;
+      } else if (f.detection_mode === 'day' && f.vehicles_yolo != null) {
+        detail = ` title="YOLO: ${f.vehicles_yolo}"`;
+      } else if (f.detection_mode === 'night' && f.vehicles_night != null) {
+        detail = ` title="Phares: ${f.vehicles_night}"`;
+      }
+      modeBadge = `<span${detail} style="display:inline-block;padding:.1rem .45rem;border-radius:10px;font-size:.72rem;font-weight:600;background:${cfg.bg};color:${cfg.color};cursor:${detail ? 'help' : 'default'}">${cfg.icon} ${cfg.label}</span>`;
+    }
+
     return `<tr style="${rowOpacity}">
       <td><input type="checkbox" class="file-cb" value="${escHtml(f.filename)}"></td>
-      <td style="font-family:monospace;font-size:.75rem;word-break:break-all;max-width:280px">${escHtml(f.filename)}</td>
+      <td style="font-family:monospace;font-size:.75rem;word-break:break-all;max-width:260px">${escHtml(f.filename)}</td>
       <td style="white-space:nowrap;font-size:.8rem">${fmtDateShort(f.processed_at)}</td>
       <td style="white-space:nowrap;font-size:.8rem;text-align:right;font-family:monospace">${fmtDuration(f.processing_duration_seconds)}</td>
       <td style="text-align:center;font-weight:${countWeight};color:${countColor}">${f.vehicle_count ?? 0}</td>
+      <td style="white-space:nowrap">${modeBadge}</td>
       <td>${statusBadge}</td>
     </tr>`;
   }).join('');

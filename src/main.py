@@ -286,7 +286,8 @@ def _process_file(
 
             if not segments:
                 logger.info("%s — aucun segment actif.", filename)
-                db.mark_file_done(filename, vehicle_count=0, duration_seconds=time.monotonic() - start_time)
+                db.mark_file_done(filename, vehicle_count=0, duration_seconds=time.monotonic() - start_time,
+                                  detection_mode="audio_only")
                 db.clear_checkpoint(filename)
                 progress_tracker.finish_file()
                 return
@@ -331,6 +332,9 @@ def _process_file(
             saved_crossings = []
             db.clear_checkpoint(filename)
 
+        det_yolo: int | None = None   # nb véhicules détectés par YOLO
+        det_night: int | None = None  # nb véhicules détectés par phares
+
         if mode == "night":
             new_events = night.process_video(
                 video_path, segments, video_start_dt,
@@ -339,6 +343,7 @@ def _process_file(
                 on_segment_done=on_segment_done,
                 shutdown_event=_shutdown,
             )
+            det_night = len(saved_crossings) + len(new_events)
         elif mode == "day":
             new_events = detector.process_video(
                 video_path, segments, video_start_dt,
@@ -347,6 +352,7 @@ def _process_file(
                 on_segment_done=on_segment_done,
                 shutdown_event=_shutdown,
             )
+            det_yolo = len(saved_crossings) + len(new_events)
         else:
             # Mode crépuscule : les deux détecteurs, pas de checkpoint partiel
             # (on attend la fin complète des deux avant de sauvegarder)
@@ -368,9 +374,11 @@ def _process_file(
                 events_yolo, events_night,
                 merge_window_sec=night.config.night_merge_window_sec,
             )
+            det_yolo = len(events_yolo)
+            det_night = len(events_night)
             logger.info(
                 "%s — crépuscule : YOLO=%d phares=%d après fusion=%d",
-                filename, len(events_yolo), len(events_night), len(new_events),
+                filename, det_yolo, det_night, len(new_events),
             )
 
         if _shutdown.is_set():
@@ -396,10 +404,17 @@ def _process_file(
             db.insert_crossings_batch(all_crossings)
 
         total_count = len(all_crossings)
-        db.mark_file_done(filename, vehicle_count=total_count, duration_seconds=time.monotonic() - start_time)
+        db.mark_file_done(
+            filename,
+            vehicle_count=total_count,
+            duration_seconds=time.monotonic() - start_time,
+            detection_mode=mode,
+            vehicles_yolo=det_yolo,
+            vehicles_night=det_night,
+        )
         db.clear_checkpoint(filename)
         progress_tracker.finish_file()
-        logger.info("%s — %d véhicule(s) compté(s).", filename, total_count)
+        logger.info("%s — %d véhicule(s) compté(s) [mode=%s].", filename, total_count, mode)
 
     except Exception as e:
         logger.exception("Erreur lors du traitement de %s : %s", filename, e)

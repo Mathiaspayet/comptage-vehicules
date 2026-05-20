@@ -96,6 +96,9 @@ class Database:
                 "ALTER TABLE processed_files ADD COLUMN processing_duration_seconds REAL",
                 "ALTER TABLE audio_stats ADD COLUMN video_hour INTEGER",
                 "ALTER TABLE processed_files ADD COLUMN checkpoint_json TEXT",
+                "ALTER TABLE processed_files ADD COLUMN detection_mode TEXT",
+                "ALTER TABLE processed_files ADD COLUMN vehicles_yolo INTEGER",
+                "ALTER TABLE processed_files ADD COLUMN vehicles_night INTEGER",
             ]:
                 try:
                     conn.execute(migration)
@@ -115,21 +118,35 @@ class Database:
             ).fetchone()
             return row is not None
 
-    def mark_file_done(self, filename: str, vehicle_count: int, duration_seconds: float | None = None):
+    def mark_file_done(
+        self,
+        filename: str,
+        vehicle_count: int,
+        duration_seconds: float | None = None,
+        detection_mode: str | None = None,
+        vehicles_yolo: int | None = None,
+        vehicles_night: int | None = None,
+    ):
         now = datetime.utcnow().isoformat()
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO processed_files (filename, processed_at, status, vehicle_count, processing_duration_seconds)
-                VALUES (?, ?, 'done', ?, ?)
+                INSERT INTO processed_files
+                    (filename, processed_at, status, vehicle_count, processing_duration_seconds,
+                     detection_mode, vehicles_yolo, vehicles_night)
+                VALUES (?, ?, 'done', ?, ?, ?, ?, ?)
                 ON CONFLICT(filename) DO UPDATE SET
                     processed_at = excluded.processed_at,
                     status = 'done',
                     vehicle_count = excluded.vehicle_count,
                     error_message = NULL,
-                    processing_duration_seconds = excluded.processing_duration_seconds
+                    processing_duration_seconds = excluded.processing_duration_seconds,
+                    detection_mode = excluded.detection_mode,
+                    vehicles_yolo = excluded.vehicles_yolo,
+                    vehicles_night = excluded.vehicles_night
                 """,
-                (filename, now, vehicle_count, duration_seconds),
+                (filename, now, vehicle_count, duration_seconds,
+                 detection_mode, vehicles_yolo, vehicles_night),
             )
 
     def mark_file_error(self, filename: str, error_message: str):
@@ -329,7 +346,8 @@ class Database:
         order = f"{sort_by} {'DESC' if sort_dir.lower() == 'desc' else 'ASC'}"
 
         query = f"""
-            SELECT filename, processed_at, status, vehicle_count, error_message, processing_duration_seconds
+            SELECT filename, processed_at, status, vehicle_count, error_message,
+                   processing_duration_seconds, detection_mode, vehicles_yolo, vehicles_night
             FROM processed_files
             {where}
             ORDER BY {order}
