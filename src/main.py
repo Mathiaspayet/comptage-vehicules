@@ -62,7 +62,7 @@ logger = logging.getLogger(__name__)
 
 _shutdown = threading.Event()
 _processing_start: "float | None" = None
-_PROCESSING_TIMEOUT_SEC = 1800  # watchdog global : 30 min max par fichier
+_PROCESSING_TIMEOUT_SEC = 7200  # watchdog global : 2h max par fichier
 
 
 def _handle_signal(signum, frame):
