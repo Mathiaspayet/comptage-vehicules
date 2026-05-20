@@ -89,9 +89,9 @@
   <!-- ══════════════ HORAIRE ══════════════ -->
   <div id="tab-hourly">
     <div class="controls">
-      <label>Date : <input type="date" id="date-picker" value="{{ today }}"></label>
+      <label>Date : <input type="date" id="date-picker" value="{{ today }}" onchange="loadHourly()"></label>
       <label>Véhicule :
-        <select id="type-picker">
+        <select id="type-picker" onchange="loadHourly()">
           <option value="all">Tous</option>
           <option value="car">Voiture</option>
           <option value="truck">Camion</option>
@@ -99,7 +99,6 @@
           <option value="motorcycle">Moto</option>
         </select>
       </label>
-      <button class="btn-refresh" onclick="loadHourly()">Actualiser</button>
     </div>
     <div class="cards">
       <div class="card"><div class="value" id="card-total">—</div><div class="label">Total du jour</div></div>
@@ -411,6 +410,16 @@
     </div>
   </div>
 
+  <div id="crossing-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center">
+    <div style="background:#fff;border-radius:8px;padding:1.5rem;max-width:560px;width:90%;max-height:80vh;display:flex;flex-direction:column;gap:.75rem">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h3 id="modal-title" style="margin:0;font-size:1rem"></h3>
+        <button onclick="closeModal()" style="border:none;background:none;font-size:1.2rem;cursor:pointer">✕</button>
+      </div>
+      <div id="modal-body" style="overflow-y:auto;flex:1;font-size:.82rem"></div>
+    </div>
+  </div>
+
 </main>
 
 <script>
@@ -474,8 +483,21 @@ async function loadHourly() {
   chartHourly = new Chart(document.getElementById('chart-hourly'), {
     type: 'bar',
     data: { labels: hourly.map(h=>`${h.hour}h`), datasets:[{ label:'Passages', data:hourly.map(h=>h.count), backgroundColor:'#2563eb99', borderColor:'#2563eb', borderWidth:1 }] },
-    options: { responsive:true, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true,ticks:{precision:0}}} }
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+      onClick: (evt, elements) => {
+        if (!elements.length) return;
+        const idx  = elements[0].index;
+        const label = chartHourly.data.labels[idx]; // e.g. "7h"
+        const hour = parseInt(label, 10);
+        const day  = document.getElementById('date-picker')?.value || new Date().toISOString().slice(0,10);
+        showCrossingsDetail(day, hour);
+      },
+    }
   });
+  chartHourly.canvas.style.cursor = 'pointer';
 
   document.getElementById('breakdown').innerHTML = breakdown.length
     ? breakdown.map(b=>`<span class="badge">${b.vehicle_type} : ${b.count}</span>`).join('')
@@ -934,6 +956,55 @@ function exportFiles() {
 
 function escHtml(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Modal — détail des franchissements par créneau horaire
+───────────────────────────────────────────────────────────── */
+function closeModal() {
+  document.getElementById('crossing-modal').style.display = 'none';
+}
+document.getElementById('crossing-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+async function showCrossingsDetail(day, hour) {
+  const url = hour !== undefined ? `/api/crossings?day=${day}&hour=${hour}` : `/api/crossings?day=${day}`;
+  const data = await (await fetch(url)).json();
+  const crossings = data.crossings || [];
+
+  const title = hour !== undefined
+    ? `Véhicules — ${day} ${String(hour).padStart(2,'0')}h`
+    : `Véhicules — ${day}`;
+  document.getElementById('modal-title').textContent = title;
+
+  const typeIcon = { car: '🚗', truck: '🚛', bus: '🚌', motorcycle: '🏍️' };
+  const dirLabel = { left_to_right: '→', right_to_left: '←' };
+
+  if (!crossings.length) {
+    document.getElementById('modal-body').innerHTML = '<p style="color:#888;text-align:center">Aucun véhicule enregistré.</p>';
+  } else {
+    document.getElementById('modal-body').innerHTML = `
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr style="border-bottom:2px solid #e5e7eb;text-align:left">
+          <th style="padding:.3rem .5rem">Heure</th>
+          <th style="padding:.3rem .5rem">Type</th>
+          <th style="padding:.3rem .5rem">Dir.</th>
+          <th style="padding:.3rem .5rem">Confiance</th>
+        </tr></thead>
+        <tbody>${crossings.map(c => `
+          <tr style="border-bottom:1px solid #f3f4f6">
+            <td style="padding:.3rem .5rem;font-family:monospace">${c.timestamp.slice(11,19)}</td>
+            <td style="padding:.3rem .5rem">${typeIcon[c.vehicle_type] || ''} ${c.vehicle_type}</td>
+            <td style="padding:.3rem .5rem">${dirLabel[c.direction] || c.direction || '—'}</td>
+            <td style="padding:.3rem .5rem">${(c.confidence*100).toFixed(0)}%</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      <p style="color:#888;font-size:.75rem;margin-top:.5rem;text-align:right">${crossings.length} véhicule(s)</p>
+    `;
+  }
+  document.getElementById('crossing-modal').style.display = 'flex';
 }
 
 /* ─────────────────────────────────────────────────────────────

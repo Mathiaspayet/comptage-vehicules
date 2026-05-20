@@ -527,6 +527,25 @@ class Database:
             rows = conn.execute(query, {"from": date_from, "to": date_to, "tzmod": tzmod}).fetchall()
         return [{"date": r["day"], "count": r["count"]} for r in rows]
 
+    def get_crossings_detail(self, day: str, hour: int | None = None) -> list[dict]:
+        """Returns individual crossings for a day (and optionally an hour)."""
+        with self._connect() as conn:
+            if hour is not None:
+                rows = conn.execute(
+                    "SELECT timestamp, vehicle_type, direction, confidence, source_file "
+                    "FROM crossings "
+                    "WHERE date(timestamp) = ? AND cast(strftime('%H', timestamp) as integer) = ? "
+                    "ORDER BY timestamp",
+                    (day, hour)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT timestamp, vehicle_type, direction, confidence, source_file "
+                    "FROM crossings WHERE date(timestamp) = ? ORDER BY timestamp",
+                    (day,)
+                ).fetchall()
+        return [dict(r) for r in rows]
+
     def get_direction_stats(self, date_str: str) -> dict:
         """Returns direction counts for a given date (local time). Only non-NULL directions."""
         tzmod = self._tz_mod()

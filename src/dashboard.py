@@ -93,6 +93,16 @@ def create_app(config: Config, db: Database) -> Flask:
     def api_version():
         return jsonify(_read_version())
 
+    @app.route("/api/crossings")
+    def api_crossings():
+        """Returns crossings for a given day+hour (or full day if no hour)."""
+        day = request.args.get("day")   # format YYYY-MM-DD
+        hour = request.args.get("hour", type=int)  # 0-23, optional
+        if not day:
+            return jsonify({"error": "day requis"}), 400
+        crossings = db.get_crossings_detail(day=day, hour=hour)
+        return jsonify({"crossings": crossings})
+
     @app.route("/api/stats/hourly")
     def api_hourly():
         day = request.args.get("date", date.today().isoformat())
