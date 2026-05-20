@@ -110,7 +110,8 @@ class Database:
     def is_file_processed(self, filename: str) -> bool:
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT id FROM processed_files WHERE filename = ?", (filename,)
+                "SELECT id FROM processed_files WHERE filename = ? AND status IN ('done', 'error', 'skipped')",
+                (filename,),
             ).fetchone()
             return row is not None
 
