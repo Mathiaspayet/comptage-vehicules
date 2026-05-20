@@ -14,6 +14,7 @@ from .dashboard import run_dashboard
 from .database import Database
 from .detector import VehicleDetector
 from .ingestion import FileWatcher
+from .night_detector import NightDetector, measure_scene_brightness
 from .progress import tracker as progress_tracker
 
 
@@ -124,7 +125,8 @@ def _check_and_reset_if_config_changed(config, db: Database):
         logger.info("Empreinte de config inchangée — pas de réinitialisation.")
 
 
-def processing_loop(watcher: FileWatcher, audio: AudioFilter, detector: VehicleDetector, db: Database):
+def processing_loop(watcher: FileWatcher, audio: AudioFilter, detector: VehicleDetector,
+                    night: NightDetector, db: Database):
     logger.info("Boucle de traitement démarrée (pipeline audio-only).")
     config = watcher.config
     _prev_imgsz = config.imgsz
@@ -177,7 +179,7 @@ def processing_loop(watcher: FileWatcher, audio: AudioFilter, detector: VehicleD
                 if _shutdown.is_set():
                     break
                 _process_file(
-                    video_path, watcher, audio, detector, db,
+                    video_path, watcher, audio, detector, night, db,
                     queue_done + i, queue_total,
                 )
 
@@ -195,6 +197,7 @@ def _process_file(
     watcher: FileWatcher,
     audio: AudioFilter,
     detector: VehicleDetector,
+    night: NightDetector,
     db: Database,
     queue_done: int,
     queue_total: int,
@@ -253,7 +256,7 @@ def _process_file(
             start_seg_idx = 0
             saved_crossings: list = []
 
-        # ── Phase 2 : détection IA ──────────────────────────────────
+        # ── Phase 2 : détection — YOLO (jour) ou phares (nuit) ──────
         def on_segment_done(seg_idx: int, new_crossings_dicts: list):
             all_so_far = saved_crossings + new_crossings_dicts
             db.save_checkpoint(filename, segments, seg_idx + 1, all_so_far)
@@ -262,7 +265,17 @@ def _process_file(
             progress_tracker.set_phase("detection", frames_total=total)
             progress_tracker.update_frame(done)
 
-        new_events = detector.process_video(
+        use_night = False
+        if night.config.night_detection_enabled:
+            brightness = measure_scene_brightness(video_path)
+            use_night = brightness < night.config.night_brightness_threshold
+            logger.info(
+                "%s — luminosité médiane=%.1f → mode %s",
+                filename, brightness, "NUIT (phares)" if use_night else "JOUR (YOLO)",
+            )
+
+        engine = night if use_night else detector
+        new_events = engine.process_video(
             video_path, segments, video_start_dt,
             on_progress=detection_progress,
             start_seg_idx=start_seg_idx,
@@ -331,6 +344,7 @@ def main():
     watcher = FileWatcher(config, db)
     audio = AudioFilter(config, db)
     detector = VehicleDetector(config)
+    night = NightDetector(config)
 
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
@@ -352,7 +366,7 @@ def main():
     dashboard_thread.start()
 
     try:
-        processing_loop(watcher, audio, detector, db)
+        processing_loop(watcher, audio, detector, night, db)
     except KeyboardInterrupt:
         _shutdown.set()
 

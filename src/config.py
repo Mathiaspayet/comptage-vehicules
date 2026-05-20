@@ -84,6 +84,13 @@ DEFAULTS = {
         "night_start_hour": 22,     # début plage nuit (heure locale)
         "night_end_hour": 6,        # fin plage nuit (heure locale)
     },
+    "night_detection": {
+        "enabled": True,
+        "brightness_threshold": 50,    # luminosité médiane < seuil → mode nuit (phares)
+        "sample_fps": 5,               # échantillonnage luminosité (peu coûteux)
+        "flash_sigma": 3.0,            # pic = baseline + sigma × std
+        "min_flash_sep_sec": 1.5,      # fusionne les pics plus proches que ça
+    },
 }
 
 
@@ -319,6 +326,26 @@ class Config:
     def audio_night_end_hour(self) -> int:
         return int(self.get("audio_filter", "night_end_hour", default=6))
 
+    @property
+    def night_detection_enabled(self) -> bool:
+        return bool(self.get("night_detection", "enabled", default=True))
+
+    @property
+    def night_brightness_threshold(self) -> float:
+        return float(self.get("night_detection", "brightness_threshold", default=50))
+
+    @property
+    def night_sample_fps(self) -> float:
+        return float(self.get("night_detection", "sample_fps", default=5))
+
+    @property
+    def night_flash_sigma(self) -> float:
+        return float(self.get("night_detection", "flash_sigma", default=3.0))
+
+    @property
+    def night_min_flash_sep_sec(self) -> float:
+        return float(self.get("night_detection", "min_flash_sep_sec", default=1.5))
+
     def motion_fingerprint(self) -> str:
         """MD5 of parameters that affect only motion detection (not AI inference)."""
         relevant = {
@@ -369,6 +396,10 @@ class Config:
             "audio_enabled": self.audio_enabled,
             "audio_sigma_factor": self.audio_sigma_factor,
             "audio_min_energy_db": self.audio_min_energy_db,
+            # Night detection (headlight flashes instead of YOLO)
+            "night_detection_enabled": self.night_detection_enabled,
+            "night_brightness_threshold": self.night_brightness_threshold,
+            "night_flash_sigma": self.night_flash_sigma,
         }
         blob = json.dumps(relevant, sort_keys=True)
         return hashlib.md5(blob.encode()).hexdigest()
