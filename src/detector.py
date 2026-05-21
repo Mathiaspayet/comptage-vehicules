@@ -331,18 +331,23 @@ class VehicleDetector:
         h = dt.hour + dt.minute / 60
         return h < sunrise or h >= sunset
 
-    def _enhance_frame(self, frame: np.ndarray) -> np.ndarray:
-        # Gamma correction : brightens dark pixels (γ<1 = brighter)
-        gamma = 0.5
-        lut = np.array([((i / 255.0) ** gamma) * 255 for i in range(256)], dtype=np.uint8)
-        frame = lut[frame]
-        # CLAHE on L channel for local contrast
+    def _enhance_frame(self, frame: np.ndarray, night: bool = False) -> np.ndarray:
+        # CLAHE on L channel — normalise le contraste local, aide sur les scènes
+        # en contre-jour (matin/soir avec soleil rasant) et la nuit.
         lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
         l, a, b = cv2.split(lab)
         if not hasattr(self, "_clahe"):
-            self._clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
-        l = self._clahe.apply(l)
-        return cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
+            self._clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        if not hasattr(self, "_clahe_night"):
+            self._clahe_night = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
+        l = (self._clahe_night if night else self._clahe).apply(l)
+        frame = cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
+        if night:
+            # Correction gamma : remonte les pixels sombres pour la nuit
+            gamma = 0.5
+            lut = np.array([((i / 255.0) ** gamma) * 255 for i in range(256)], dtype=np.uint8)
+            frame = lut[frame]
+        return frame
 
     def _analyze_frame(
         self,
@@ -359,8 +364,10 @@ class VehicleDetector:
     ) -> list[CrossingEvent]:
         night = self._is_night(video_start_dt)
         conf = self.config.night_confidence_threshold if night else self.config.confidence_threshold
-        if night and self.config.night_enhance:
-            frame = self._enhance_frame(frame)
+        # CLAHE appliqué sur toutes les frames (contre-jour, nuit, luminosité inégale).
+        # La correction gamma supplémentaire est réservée à la nuit (night_enhance).
+        if self.config.night_enhance:
+            frame = self._enhance_frame(frame, night=night)
 
         results = self._model.track(
             frame,
