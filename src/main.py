@@ -433,17 +433,32 @@ def _process_file(
             db.insert_crossings_batch(all_crossings)
 
         total_count = len(all_crossings)
+
+        # ── Fallback audio : si le détecteur visuel n'a rien trouvé mais que
+        # l'audio a détecté N segments actifs, chaque segment = au minimum 1 véhicule.
+        # Couvre les cas où la vidéo est inexploitable (contre-jour, ombre, nuit noire)
+        # mais le son du moteur est clairement présent.
+        audio_fallback = False
+        if total_count == 0 and segments:
+            total_count = len(segments)
+            audio_fallback = True
+            logger.info(
+                "%s — détecteur visuel : 0 véhicule(s) — fallback audio : %d segment(s) → %d véhicule(s)",
+                filename, len(segments), total_count,
+            )
+
         db.mark_file_done(
             filename,
             vehicle_count=total_count,
             duration_seconds=time.monotonic() - start_time,
-            detection_mode=mode,
+            detection_mode="audio_fallback" if audio_fallback else mode,
             vehicles_yolo=det_yolo,
             vehicles_night=det_night,
         )
         db.clear_checkpoint(filename)
         progress_tracker.finish_file()
-        logger.info("%s — %d véhicule(s) compté(s) [mode=%s].", filename, total_count, mode)
+        logger.info("%s — %d véhicule(s) compté(s) [mode=%s].", filename, total_count,
+                    "audio_fallback" if audio_fallback else mode)
 
         # ── Mise à jour du streak adaptatif (seulement si les deux détecteurs ont tourné)
         if brightness_mode == "twilight" and mode == "twilight":

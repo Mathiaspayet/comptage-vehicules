@@ -847,10 +847,11 @@ function renderFiles(files) {
 
     // Mode + comptage détaillé
     const MODE_CFG = {
-      day:        { icon: '☀️',  label: 'Jour',       color: '#92400e', bg: '#fef3c7' },
-      night:      { icon: '🌙',  label: 'Nuit',       color: '#1e3a5f', bg: '#dbeafe' },
-      twilight:   { icon: '🌅',  label: 'Crépuscule', color: '#4c1d95', bg: '#ede9fe' },
-      audio_only: { icon: '🔇',  label: 'Silencieux', color: '#6b7280', bg: '#f3f4f6' },
+      day:           { icon: '☀️',  label: 'Jour',          color: '#92400e', bg: '#fef3c7' },
+      night:         { icon: '🌙',  label: 'Nuit',          color: '#1e3a5f', bg: '#dbeafe' },
+      twilight:      { icon: '🌅',  label: 'Crépuscule',    color: '#4c1d95', bg: '#ede9fe' },
+      audio_only:    { icon: '🔇',  label: 'Silencieux',    color: '#6b7280', bg: '#f3f4f6' },
+      audio_fallback:{ icon: '🔊',  label: 'Audio (visuel raté)', color: '#065f46', bg: '#d1fae5' },
     };
 
     let modeCell = '—';
