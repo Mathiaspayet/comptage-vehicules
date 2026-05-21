@@ -32,7 +32,7 @@ def _read_version() -> dict:
         return {"sha": "dev", "built_at": "—"}
 
 
-def create_app(config: Config, db: Database) -> Flask:
+def create_app(config: Config, db: Database, audio=None) -> Flask:
     template_dir = Path(__file__).parent / "templates"
     app = Flask(__name__, template_folder=str(template_dir))
     app.config["JSON_SORT_KEYS"] = False
@@ -156,16 +156,20 @@ def create_app(config: Config, db: Database) -> Flask:
 
     @app.route("/api/audio/calibration")
     def api_audio_calibration():
+        if audio is not None:
+            info = audio.calibration_info()
+            history = db.get_audio_stats_history(limit=60)
+            info["history"] = history
+            return jsonify(info)
+        # Fallback ancien comportement si audio non passé
         n = db.get_audio_stats_count()
         min_files = config.audio_calibration_files
         agg = db.get_audio_calibration_aggregate()
-        history = db.get_audio_stats_history(limit=50)
-
+        history = db.get_audio_stats_history(limit=60)
         threshold = None
         if agg and n >= min_files:
             t = agg["avg_p10_db"] + config.audio_sigma_factor * agg["avg_std_db"]
             threshold = round(max(t, config.audio_min_energy_db), 1)
-
         return jsonify({
             "enabled":        config.audio_enabled,
             "calibrated":     threshold is not None,
@@ -177,6 +181,25 @@ def create_app(config: Config, db: Database) -> Flask:
             "sigma_factor":   config.audio_sigma_factor,
             "history":        history,
         })
+
+    @app.route("/api/audio/threshold", methods=["GET"])
+    def api_audio_threshold_get():
+        val = db.get_state("audio_threshold_override")
+        return jsonify({"override": float(val) if val else None})
+
+    @app.route("/api/audio/threshold", methods=["POST"])
+    def api_audio_threshold_set():
+        data = request.get_json() or {}
+        val = data.get("threshold")
+        if val is None:
+            db.set_state("audio_threshold_override", "")
+            return jsonify({"ok": True, "override": None})
+        try:
+            threshold = float(val)
+        except (TypeError, ValueError):
+            return jsonify({"error": "Valeur invalide"}), 400
+        db.set_state("audio_threshold_override", str(threshold))
+        return jsonify({"ok": True, "override": threshold})
 
     @app.route("/api/status")
     def api_status():
@@ -478,8 +501,8 @@ def create_app(config: Config, db: Database) -> Flask:
     return app
 
 
-def run_dashboard(config: Config, db: Database):
-    app = create_app(config, db)
+def run_dashboard(config: Config, db: Database, audio=None):
+    app = create_app(config, db, audio=audio)
     port = config.dashboard_port
     logger.info("Tableau de bord + calibration démarrés sur http://0.0.0.0:%d", port)
     app.run(host="0.0.0.0", port=port, use_reloader=False, threaded=True)

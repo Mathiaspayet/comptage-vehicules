@@ -83,6 +83,8 @@ DEFAULTS = {
         "night_calibration": True,      # utiliser les fichiers de nuit comme référence
         "night_start_hour": 22,         # début plage nuit (heure locale)
         "night_end_hour": 6,            # fin plage nuit (heure locale)
+        "calibration_hour_start": 2,    # début fenêtre calibration silence (heure locale)
+        "calibration_hour_end": 5,      # fin fenêtre calibration silence (exclusive)
     },
     "night_detection": {
         "enabled": True,
@@ -327,6 +329,14 @@ class Config:
     @property
     def audio_night_end_hour(self) -> int:
         return int(self.get("audio_filter", "night_end_hour", default=6))
+
+    @property
+    def audio_calibration_hour_start(self) -> int:
+        return int(self.get("audio_filter", "calibration_hour_start", default=2))
+
+    @property
+    def audio_calibration_hour_end(self) -> int:
+        return int(self.get("audio_filter", "calibration_hour_end", default=5))
 
     @property
     def night_detection_enabled(self) -> bool:

@@ -466,7 +466,7 @@ def main():
 
     # Un seul serveur web (dashboard + calibration)
     dashboard_thread = threading.Thread(
-        target=run_dashboard, args=(config, db), daemon=True, name="dashboard"
+        target=run_dashboard, args=(config, db, audio), daemon=True, name="dashboard"
     )
     dashboard_thread.start()
 

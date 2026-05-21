@@ -118,31 +118,38 @@ class AudioFilter:
 
     def calibration_info(self) -> dict:
         """Informations de calibration pour le dashboard."""
-        night_only = self.config.audio_night_calibration
-        ns = self.config.audio_night_start_hour
-        ne = self.config.audio_night_end_hour
+        cs = self.config.audio_calibration_hour_start
+        ce = self.config.audio_calibration_hour_end
         min_files = self.config.audio_calibration_files
 
-        n_night = self.db.get_audio_stats_count(night_only=True, night_start=ns, night_end=ne)
+        n_calib = self.db.get_audio_stats_count(night_only=True, night_start=cs, night_end=ce)
         n_all   = self.db.get_audio_stats_count()
-        using_night = night_only and n_night >= min_files
+        using_calib = n_calib >= min_files
 
         agg = self.db.get_audio_calibration_aggregate(
-            night_only=using_night, night_start=ns, night_end=ne
+            night_only=using_calib, night_start=cs, night_end=ce
         )
-        threshold = self._get_threshold()
+        threshold_override_raw = self.db.get_state("audio_threshold_override")
+        threshold_override = float(threshold_override_raw) if threshold_override_raw else None
+
+        # Threshold calculé (sans override)
+        threshold_calc = self._get_threshold_calc(using_calib, cs, ce)
+        # Threshold effectif (avec éventuel override)
+        threshold = threshold_override if threshold_override is not None else threshold_calc
+
         return {
-            "enabled":          self.config.audio_enabled,
-            "calibrated":       threshold is not None,
-            "files_analyzed":   n_night if using_night else n_all,
-            "files_needed":     min_files,
-            "night_calibration": night_only,
-            "night_files":      n_night,
-            "using_night":      using_night,
-            "background_db":    round(agg["avg_p10_db"], 1) if agg else None,
-            "noise_std_db":     round(agg["avg_std_db"], 1) if agg else None,
-            "threshold_db":     round(threshold, 1) if threshold is not None else None,
-            "sigma_factor":     self.config.audio_sigma_factor,
+            "enabled":           self.config.audio_enabled,
+            "calibrated":        threshold is not None,
+            "files_analyzed":    n_calib if using_calib else n_all,
+            "files_needed":      min_files,
+            "calib_hour_start":  cs,
+            "calib_hour_end":    ce,
+            "background_db":     round(agg["avg_p10_db"], 1) if agg else None,
+            "noise_std_db":      round(agg["avg_std_db"], 1) if agg else None,
+            "threshold_db":      round(threshold, 1) if threshold is not None else None,
+            "threshold_db_calc": round(threshold_calc, 1) if threshold_calc is not None else None,
+            "threshold_override": threshold_override,
+            "sigma_factor":      self.config.audio_sigma_factor,
         }
 
     # ------------------------------------------------------------------ #
@@ -188,31 +195,52 @@ class AudioFilter:
         return energy
 
     def _get_threshold(self, is_night: bool = False) -> "float | None":
-        """Calcule le seuil de détection.
+        """Calcule le seuil de détection effectif (avec éventuel override manuel)."""
+        # Vérifier un seuil manuel dans la DB
+        override = self.db.get_state("audio_threshold_override")
+        floor = self.config.audio_night_min_energy_db if is_night else self.config.audio_min_energy_db
+        if override:
+            try:
+                return max(float(override), floor)
+            except (ValueError, TypeError):
+                pass
 
-        Préfère les fichiers de nuit pour la calibration (meilleur baseline).
-        Fallback sur tous les fichiers si insuffisamment de fichiers de nuit.
-        La nuit, applique un plancher plus permissif pour capter les véhicules
-        qui roulent doucement (moteur plus silencieux, moins de trafic).
+        return self._get_threshold_calc(None, None, None, is_night=is_night)
+
+    def _get_threshold_calc(
+        self,
+        using_calib: "bool | None" = None,
+        cs: "int | None" = None,
+        ce: "int | None" = None,
+        is_night: bool = False,
+    ) -> "float | None":
+        """Calcule le seuil de détection à partir des stats de calibration (sans override).
+
+        Utilise les fichiers de la fenêtre 2h-5h (calibration_hour_start/end) en priorité.
+        Fallback sur tous les fichiers si pas assez de fichiers dans la fenêtre.
         """
         needed = self.config.audio_calibration_files
-        night_only = self.config.audio_night_calibration
-        ns = self.config.audio_night_start_hour
-        ne = self.config.audio_night_end_hour
         floor = self.config.audio_night_min_energy_db if is_night else self.config.audio_min_energy_db
 
-        if night_only:
-            n_night = self.db.get_audio_stats_count(night_only=True, night_start=ns, night_end=ne)
-            if n_night >= needed:
-                agg = self.db.get_audio_calibration_aggregate(
-                    night_only=True, night_start=ns, night_end=ne
+        if cs is None:
+            cs = self.config.audio_calibration_hour_start
+        if ce is None:
+            ce = self.config.audio_calibration_hour_end
+
+        if using_calib is None:
+            n_calib = self.db.get_audio_stats_count(night_only=True, night_start=cs, night_end=ce)
+            using_calib = n_calib >= needed
+
+        if using_calib:
+            agg = self.db.get_audio_calibration_aggregate(
+                night_only=True, night_start=cs, night_end=ce
+            )
+            if agg and agg.get("avg_p10_db") is not None:
+                threshold = (
+                    agg["avg_p10_db"]
+                    + self.config.audio_sigma_factor * agg["avg_std_db"]
                 )
-                if agg and agg.get("avg_p10_db") is not None:
-                    threshold = (
-                        agg["avg_p10_db"]
-                        + self.config.audio_sigma_factor * agg["avg_std_db"]
-                    )
-                    return max(threshold, floor)
+                return max(threshold, floor)
 
         # Fallback : tous les fichiers
         if self.db.get_audio_stats_count() < needed:
@@ -255,56 +283,46 @@ class AudioFilter:
 def bootstrap_calibration(audio: "AudioFilter", video_folder: "Path", shutdown_event=None) -> None:
     """Analyse les fichiers déjà traités pour bootstrapper la calibration audio.
 
-    Priorise les fichiers de nuit (22h-06h) pour obtenir un meilleur baseline
-    de bruit de fond (moins de véhicules, donc plus représentatif du silence).
+    Priorise les fichiers 2h-5h pour obtenir un meilleur baseline de bruit de fond
+    (vrai silence sur une route passante).
     Tourne en thread daemon au démarrage.
     """
     needed = audio.config.audio_calibration_files
-    night_only = audio.config.audio_night_calibration
-    ns = audio.config.audio_night_start_hour
-    ne = audio.config.audio_night_end_hour
+    cs = audio.config.audio_calibration_hour_start
+    ce = audio.config.audio_calibration_hour_end
+
+    logger.info("Bootstrap audio : priorité fenêtre %dh-%dh", cs, ce)
 
     # Déjà calibré ?
-    if night_only:
-        if audio.db.get_audio_stats_count(night_only=True, night_start=ns, night_end=ne) >= needed:
-            return
-    else:
-        if audio.db.get_audio_stats_count() >= needed:
-            return
+    if audio.db.get_audio_stats_count(night_only=True, night_start=cs, night_end=ce) >= needed:
+        return
+    if audio.db.get_audio_stats_count() >= needed:
+        return
 
     candidates = audio.db.get_files_missing_audio_stats(limit=max(needed * 20, 400))
     if not candidates:
         logger.info("Bootstrap audio : aucun fichier éligible trouvé.")
         return
 
-    # Trier : nuit en premier si calibration nuit activée
-    if night_only:
-        night_files = [f for f in candidates if _is_night_hour(_hour_from_filename(f), ns, ne)]
-        day_files   = [f for f in candidates if not _is_night_hour(_hour_from_filename(f), ns, ne)]
-        ordered = night_files + day_files
-        logger.info(
-            "Bootstrap audio : %d candidat(s) — %d de nuit (priorité) + %d de jour.",
-            len(ordered), len(night_files), len(day_files),
-        )
-    else:
-        ordered = candidates
-        logger.info(
-            "Bootstrap audio : %d candidat(s), objectif %d fichiers calibrés.",
-            len(ordered), needed,
-        )
+    # Trier : fenêtre de calibration en premier
+    calib_files = [f for f in candidates if _is_night_hour(_hour_from_filename(f), cs, ce)]
+    other_files  = [f for f in candidates if not _is_night_hour(_hour_from_filename(f), cs, ce)]
+    ordered = calib_files + other_files
+    logger.info(
+        "Bootstrap audio : %d candidat(s) — %d dans fenêtre %dh-%dh (priorité) + %d autres.",
+        len(ordered), len(calib_files), cs, ce, len(other_files),
+    )
 
     analyzed = 0
     for filename in ordered:
         if shutdown_event and shutdown_event.is_set():
             break
 
-        # Arrêt dès que le seuil est atteint (nuit d'abord)
-        if night_only:
-            if audio.db.get_audio_stats_count(night_only=True, night_start=ns, night_end=ne) >= needed:
-                break
-        else:
-            if audio.db.get_audio_stats_count() >= needed:
-                break
+        # Arrêt dès que le seuil est atteint (fenêtre calibration d'abord)
+        if audio.db.get_audio_stats_count(night_only=True, night_start=cs, night_end=ce) >= needed:
+            break
+        if audio.db.get_audio_stats_count() >= needed:
+            break
 
         matches = list(video_folder.rglob(filename))
         if not matches:
@@ -317,24 +335,25 @@ def bootstrap_calibration(audio: "AudioFilter", video_folder: "Path", shutdown_e
         except Exception as e:
             logger.debug("Bootstrap audio — erreur sur %s : %s", filename, e)
 
-    n_night = audio.db.get_audio_stats_count(night_only=True, night_start=ns, night_end=ne)
+    n_calib = audio.db.get_audio_stats_count(night_only=True, night_start=cs, night_end=ce)
     n_all   = audio.db.get_audio_stats_count()
 
-    if n_night >= needed:
+    if n_calib >= needed:
         logger.info(
-            "Bootstrap audio terminé — calibration nuit prête (%d fichiers de nuit).", n_night
+            "Bootstrap audio terminé — calibration prête (%d fichiers fenêtre %dh-%dh).",
+            n_calib, cs, ce,
         )
     elif n_all >= needed:
         logger.info(
             "Bootstrap audio terminé — calibration sur tous fichiers (%d), "
-            "seulement %d fichiers de nuit disponibles.",
-            n_all, n_night,
+            "seulement %d fichiers dans la fenêtre %dh-%dh disponibles.",
+            n_all, n_calib, cs, ce,
         )
     elif n_all > 0:
         logger.warning(
-            "Bootstrap audio terminé — %d/%d fichiers avec audio (%d de nuit). "
+            "Bootstrap audio terminé — %d/%d fichiers avec audio (%d fenêtre %dh-%dh). "
             "Réduisez audio_filter.calibration_files à %d dans la config.",
-            n_all, needed, n_night, n_all,
+            n_all, needed, n_calib, cs, ce, n_all,
         )
     else:
         logger.warning(

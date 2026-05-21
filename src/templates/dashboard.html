@@ -332,18 +332,44 @@
 
   <!-- ══════════════ AUDIO ══════════════ -->
   <div id="tab-audio" style="display:none">
+    <!-- Statut + métriques -->
     <div class="chart-box">
       <h2>Calibration audio <span id="audio-badge" style="font-size:.75rem;padding:.15rem .5rem;border-radius:10px;margin-left:.5rem;vertical-align:middle"></span></h2>
       <div id="audio-status" style="font-size:.85rem;color:#666;margin-bottom:1rem">Chargement…</div>
+      <div id="audio-cards" style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem"></div>
+    </div>
 
-      <!-- Métriques -->
-      <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.5rem" id="audio-cards"></div>
-
-      <!-- Graphique niveaux sonores -->
-      <h3 style="font-size:.9rem;font-weight:600;margin-bottom:.5rem">Niveaux sonores — derniers fichiers analysés</h3>
-      <p style="font-size:.78rem;color:#888;margin-bottom:.75rem">p10 = bruit de fond · médiane · p90 = pics · ligne rouge = seuil de détection</p>
+    <!-- Graphique niveaux sonores avec légende et slider -->
+    <div class="chart-box">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
+        <h2 style="margin:0">Niveaux sonores par fichier</h2>
+        <button onclick="loadAudioCalibration()" style="font-size:.8rem;padding:.25rem .6rem;border:1px solid #ccc;border-radius:4px;cursor:pointer">↺</button>
+      </div>
+      <p style="font-size:.78rem;color:#888;margin-bottom:.75rem">
+        Barres = plage p10→p90 · point = médiane ·
+        <span style="color:#2563eb">■</span> fichiers de calibration (2h–5h) ·
+        <span style="color:#94a3b8">■</span> autres ·
+        <span style="color:#ef4444">— —</span> seuil
+      </p>
       <div style="overflow-x:auto">
-        <canvas id="audio-chart" height="180" style="min-width:600px;width:100%"></canvas>
+        <canvas id="audio-chart" style="min-width:600px;height:260px"></canvas>
+      </div>
+
+      <!-- Slider seuil manuel -->
+      <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid #e5e7eb">
+        <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:.5rem">
+          <span style="font-size:.85rem;font-weight:600;color:#1a3a5c">Réglage manuel du seuil</span>
+          <span id="threshold-value" style="font-family:monospace;font-size:.9rem;color:#ef4444;font-weight:700;min-width:70px">—</span>
+          <span style="font-size:.78rem;color:#888">dBFS</span>
+          <button id="btn-apply-threshold" onclick="applyThreshold()" style="font-size:.82rem;padding:.28rem .65rem;border:1px solid #2563eb;border-radius:4px;background:#2563eb;color:#fff;cursor:pointer">💾 Appliquer</button>
+          <button onclick="resetThreshold()" style="font-size:.82rem;padding:.28rem .65rem;border:1px solid #6b7280;border-radius:4px;background:#fff;color:#6b7280;cursor:pointer">↺ Auto (calculé)</button>
+        </div>
+        <input type="range" id="threshold-slider" min="-90" max="-20" step="0.5"
+               style="width:100%;accent-color:#ef4444" oninput="onThresholdSlide()">
+        <div style="display:flex;justify-content:space-between;font-size:.72rem;color:#aaa;margin-top:.25rem">
+          <span>−90 dBFS (très sensible)</span>
+          <span>−20 dBFS (insensible)</span>
+        </div>
       </div>
     </div>
   </div>
@@ -1162,93 +1188,194 @@ setInterval(checkStatus, 60000);
 
 /* ─────────────── Audio calibration ─────────────── */
 let audioChartInst = null;
+let _audioData = null; // cache pour le slider
 
 async function loadAudioCalibration() {
-  const data = await (await fetch('/api/audio/calibration')).json();
+  let data;
+  try { data = await (await fetch('/api/audio/calibration')).json(); } catch(e) { return; }
+  _audioData = data;
 
-  // Badge statut
+  // Badge
   const badge = document.getElementById('audio-badge');
   if (!data.enabled) {
-    badge.textContent = 'désactivé';
-    badge.style.cssText = 'background:#f3f4f6;color:#6b7280';
+    badge.textContent = 'désactivé'; badge.style.cssText = 'background:#f3f4f6;color:#6b7280';
   } else if (data.calibrated) {
-    badge.textContent = '✓ calibré';
-    badge.style.cssText = 'background:#d1fae5;color:#065f46';
+    badge.textContent = '✓ calibré'; badge.style.cssText = 'background:#d1fae5;color:#065f46';
   } else {
     badge.textContent = `calibration ${data.files_analyzed}/${data.files_needed}`;
     badge.style.cssText = 'background:#fef3c7;color:#92400e';
   }
 
-  // Texte statut
+  // Statut
   const statusEl = document.getElementById('audio-status');
   if (!data.enabled) {
-    statusEl.textContent = 'Le filtre audio est désactivé dans la configuration (audio_filter.enabled: false).';
+    statusEl.textContent = 'Filtre audio désactivé.';
+  } else if (data.threshold_override !== null && data.threshold_override !== undefined) {
+    statusEl.innerHTML = `⚠️ Seuil <strong>manuel</strong> : <strong>${data.threshold_override} dBFS</strong> — seuil calculé serait ${data.threshold_db_calc ?? '—'} dBFS`;
   } else if (!data.calibrated) {
-    const pct = Math.round(100 * data.files_analyzed / data.files_needed);
-    statusEl.innerHTML = `Calibration en cours : <strong>${data.files_analyzed}/${data.files_needed} fichiers</strong> analysés (${pct}%). `
-      + `Le filtre sera actif dès que ${data.files_needed} fichiers auront été traités.`;
+    statusEl.innerHTML = `Calibration en cours : <strong>${data.files_analyzed}/${data.files_needed} fichiers</strong> de la fenêtre ${data.calib_hour_start}h–${data.calib_hour_end}h analysés.`;
   } else {
-    statusEl.innerHTML = `Filtre actif — seuil de détection : <strong>${data.threshold_db} dBFS</strong> `
-      + `(bruit de fond ${data.background_db} dBFS + ${data.sigma_factor}σ × ${data.noise_std_db} dB)`;
+    statusEl.innerHTML = `Filtre actif — seuil : <strong>${data.threshold_db} dBFS</strong> `
+      + `(fond ${data.background_db} dBFS + ${data.sigma_factor}σ × ${data.noise_std_db} dB) `
+      + `— calibration sur ${data.files_analyzed} fichier(s) ${data.calib_hour_start}h–${data.calib_hour_end}h`;
   }
 
-  // Cartes métriques
-  const cards = document.getElementById('audio-cards');
-  const metric = (label, val, unit='') => `
-    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:.75rem 1.2rem;min-width:120px;text-align:center">
-      <div style="font-size:1.3rem;font-weight:700;color:#1f2937">${val !== null ? val + unit : '—'}</div>
-      <div style="font-size:.75rem;color:#6b7280;margin-top:.15rem">${label}</div>
+  // Cartes
+  const metric = (label, val, unit='', extra='') =>
+    `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:.75rem 1.2rem;min-width:110px;text-align:center${extra}">
+      <div style="font-size:1.25rem;font-weight:700;color:#1f2937">${val !== null && val !== undefined ? val+unit : '—'}</div>
+      <div style="font-size:.72rem;color:#6b7280;margin-top:.1rem">${label}</div>
     </div>`;
-  cards.innerHTML =
-    metric('Fichiers analysés', data.files_analyzed) +
+  document.getElementById('audio-cards').innerHTML =
+    metric('Fichiers 2h–5h', data.files_analyzed) +
     metric('Bruit de fond', data.background_db, ' dB') +
-    metric('Variabilité (σ)', data.noise_std_db, ' dB') +
-    metric('Seuil détection', data.threshold_db, ' dB') +
+    metric('σ bruit', data.noise_std_db, ' dB') +
+    metric('Seuil calculé', data.threshold_db, ' dB') +
+    (data.threshold_override != null
+      ? metric('Seuil MANUEL', data.threshold_override, ' dB', ';border-color:#ef4444;background:#fff5f5')
+      : '') +
     metric('Facteur σ', data.sigma_factor);
 
-  // Graphique
-  if (!data.history || data.history.length === 0) return;
+  // Init slider sur la valeur courante
+  const currentThr = data.threshold_override ?? data.threshold_db ?? -55;
+  const slider = document.getElementById('threshold-slider');
+  slider.value = currentThr;
+  document.getElementById('threshold-value').textContent = parseFloat(currentThr).toFixed(1);
 
-  const hist = data.history.slice().reverse();  // chronologique
+  // Graphique
+  buildAudioChart(data);
+}
+
+function buildAudioChart(data) {
+  if (!data.history || !data.history.length) return;
+  const hist = data.history.slice().reverse();
+  const calibStart = data.calib_hour_start ?? 2;
+  const calibEnd   = data.calib_hour_end   ?? 5;
+  const currentThr = data.threshold_override ?? data.threshold_db;
+
   const _reDT = /(\d{4})(\d{2})(\d{2})[^\d](\d{2})(\d{2})(\d{2})/;
   const labels = hist.map(h => {
-    // Extraire la date depuis le nom de fichier (ex: Interphone-20260519-103000-...)
     const m = _reDT.exec(h.filename);
-    if (m) return `${m[3]}/${m[2]} ${m[4]}:${m[5]}`;
-    // Fallback : index séquentiel si le format est inconnu
-    return h.filename.slice(0, 16);
+    return m ? `${m[3]}/${m[2]} ${m[4]}h` : h.filename.slice(0,14);
   });
 
-  const datasets = [
-    { label: 'p10 (fond)', data: hist.map(h => h.p10_db.toFixed(1)),
-      borderColor:'#93c5fd', backgroundColor:'rgba(147,197,253,.15)', tension:.3, pointRadius:3 },
-    { label: 'Médiane', data: hist.map(h => h.median_db.toFixed(1)),
-      borderColor:'#6366f1', backgroundColor:'rgba(99,102,241,.1)', tension:.3, pointRadius:3 },
-    { label: 'p90 (pics)', data: hist.map(h => h.p90_db.toFixed(1)),
-      borderColor:'#f97316', backgroundColor:'rgba(249,115,22,.1)', tension:.3, pointRadius:3 },
-  ];
+  // Couleurs selon heure : bleu = calibration, gris = autre
+  const isCalib = h => {
+    const hr = h.video_hour;
+    if (hr == null) return false;
+    if (calibStart <= calibEnd) return hr >= calibStart && hr < calibEnd;
+    return hr >= calibStart || hr < calibEnd;
+  };
+  const barColors = hist.map(h => isCalib(h) ? 'rgba(37,99,235,0.7)' : 'rgba(148,163,184,0.5)');
+  const borderColors = hist.map(h => isCalib(h) ? '#1d4ed8' : '#94a3b8');
 
-  if (data.threshold_db !== null) {
-    datasets.push({
-      label: 'Seuil', data: hist.map(() => data.threshold_db),
-      borderColor:'#ef4444', borderDash:[6,3], pointRadius:0, tension:0,
-    });
-  }
+  // Dataset barres flottantes p10→p90
+  const rangeData = hist.map(h => [parseFloat(h.p10_db.toFixed(1)), parseFloat(h.p90_db.toFixed(1))]);
+
+  // Dataset médiane (scatter)
+  const medianData = hist.map(h => parseFloat(h.median_db.toFixed(1)));
+
+  // Dataset seuil (ligne constante)
+  const thresholdData = currentThr !== null ? hist.map(() => parseFloat(currentThr)) : [];
 
   const ctx = document.getElementById('audio-chart').getContext('2d');
   if (audioChartInst) audioChartInst.destroy();
+
   audioChartInst = new Chart(ctx, {
-    type: 'line',
-    data: { labels, datasets },
+    data: {
+      labels,
+      datasets: [
+        {
+          type: 'bar',
+          label: 'Plage p10→p90',
+          data: rangeData,
+          backgroundColor: barColors,
+          borderColor: borderColors,
+          borderWidth: 1,
+          borderSkipped: false,
+        },
+        {
+          type: 'line',
+          label: 'Médiane',
+          data: medianData,
+          borderColor: '#6366f1',
+          backgroundColor: 'transparent',
+          pointRadius: 4,
+          pointBackgroundColor: '#6366f1',
+          tension: 0,
+          order: 1,
+        },
+        ...(thresholdData.length ? [{
+          type: 'line',
+          label: 'Seuil',
+          data: thresholdData,
+          borderColor: '#ef4444',
+          borderDash: [6, 3],
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0,
+          order: 0,
+        }] : []),
+      ],
+    },
     options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: 'top' } },
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'top', labels: { boxWidth: 14, font: { size: 11 } } } },
       scales: {
-        x: { ticks: { maxTicksLimit: 12, maxRotation: 45 } },
-        y: { title: { display: true, text: 'dBFS' } },
+        x: { ticks: { maxTicksLimit: 15, maxRotation: 45, font: { size: 10 } } },
+        y: { title: { display: true, text: 'dBFS' },
+             suggestedMin: -90, suggestedMax: -20 },
       },
     },
   });
+}
+
+function onThresholdSlide() {
+  const val = parseFloat(document.getElementById('threshold-slider').value).toFixed(1);
+  document.getElementById('threshold-value').textContent = val;
+  // Met à jour la ligne du graphique en temps réel
+  if (audioChartInst) {
+    const datasets = audioChartInst.data.datasets;
+    const thrDs = datasets.find(d => d.label === 'Seuil');
+    if (thrDs) {
+      thrDs.data = thrDs.data.map(() => parseFloat(val));
+      audioChartInst.update('none');
+    } else {
+      // Pas encore de dataset seuil — en ajouter un
+      datasets.push({
+        type: 'line', label: 'Seuil',
+        data: audioChartInst.data.labels.map(() => parseFloat(val)),
+        borderColor: '#ef4444', borderDash: [6,3], borderWidth: 2,
+        pointRadius: 0, tension: 0, order: 0,
+      });
+      audioChartInst.update('none');
+    }
+  }
+}
+
+async function applyThreshold() {
+  const val = parseFloat(document.getElementById('threshold-slider').value);
+  const res = await fetch('/api/audio/threshold', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+    body: JSON.stringify({ threshold: val }),
+  });
+  const data = await res.json();
+  if (data.ok) { loadAudioCalibration(); }
+  else alert('Erreur : ' + data.error);
+}
+
+async function resetThreshold() {
+  if (!confirm('Revenir au seuil calculé automatiquement ?')) return;
+  const res = await fetch('/api/audio/threshold', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+    body: JSON.stringify({ threshold: null }),
+  });
+  const data = await res.json();
+  if (data.ok) { loadAudioCalibration(); }
+  else alert('Erreur : ' + data.error);
 }
 </script>
 </body>

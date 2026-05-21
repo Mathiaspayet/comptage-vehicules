@@ -682,7 +682,7 @@ class Database:
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT filename, mean_db, median_db, std_db, p10_db, p90_db, created_at
+                SELECT filename, mean_db, median_db, std_db, p10_db, p90_db, video_hour, created_at
                 FROM audio_stats
                 WHERE p10_db IS NOT NULL
                 ORDER BY created_at DESC LIMIT ?
