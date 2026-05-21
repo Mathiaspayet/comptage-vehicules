@@ -877,9 +877,24 @@ function renderFiles(files) {
       } else if (f.detection_mode === 'night') {
         modeCell = badge;
         countCell = `<span style="font-weight:${countWeight};color:${countColor}" title="Phares">${f.vehicle_count ?? 0}</span>`;
+      } else if (f.detection_mode === 'audio_fallback') {
+        modeCell = badge;
+        countCell = `<span style="font-family:monospace;font-size:.78rem;white-space:nowrap">
+          <span title="Segments audio" style="color:#065f46;font-weight:700">${f.vehicle_count ?? 0}</span>
+        </span>`;
       } else {
         modeCell = badge;
       }
+    }
+
+    // Indicateur segments audio si disponible et différent du comptage visuel
+    const seg = f.audio_segments;
+    if (seg != null && seg > 0 && f.detection_mode !== 'audio_fallback' && f.detection_mode !== 'audio_only') {
+      const ratio = f.vehicle_count / seg;
+      const audioHint = ratio < 0.5
+        ? `<span title="${seg} segments audio détectés — visuellement seulement ${f.vehicle_count} (${Math.round(ratio*100)}%)" style="margin-left:.3rem;font-size:.68rem;color:#dc2626;cursor:help">⚠️${seg}🔊</span>`
+        : `<span title="${seg} segments audio" style="margin-left:.3rem;font-size:.68rem;color:#9ca3af;cursor:help">${seg}🔊</span>`;
+      countCell = countCell.replace('</span>', '') + audioHint + '</span>';
     }
 
     return `<tr style="${rowOpacity}">

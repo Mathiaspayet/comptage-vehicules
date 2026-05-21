@@ -99,6 +99,7 @@ class Database:
                 "ALTER TABLE processed_files ADD COLUMN detection_mode TEXT",
                 "ALTER TABLE processed_files ADD COLUMN vehicles_yolo INTEGER",
                 "ALTER TABLE processed_files ADD COLUMN vehicles_night INTEGER",
+                "ALTER TABLE processed_files ADD COLUMN audio_segments INTEGER",
             ]:
                 try:
                     conn.execute(migration)
@@ -158,6 +159,7 @@ class Database:
         detection_mode: str | None = None,
         vehicles_yolo: int | None = None,
         vehicles_night: int | None = None,
+        audio_segments: int | None = None,
     ):
         now = datetime.utcnow().isoformat()
         with self._connect() as conn:
@@ -165,8 +167,8 @@ class Database:
                 """
                 INSERT INTO processed_files
                     (filename, processed_at, status, vehicle_count, processing_duration_seconds,
-                     detection_mode, vehicles_yolo, vehicles_night)
-                VALUES (?, ?, 'done', ?, ?, ?, ?, ?)
+                     detection_mode, vehicles_yolo, vehicles_night, audio_segments)
+                VALUES (?, ?, 'done', ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(filename) DO UPDATE SET
                     processed_at = excluded.processed_at,
                     status = 'done',
@@ -175,10 +177,11 @@ class Database:
                     processing_duration_seconds = excluded.processing_duration_seconds,
                     detection_mode = excluded.detection_mode,
                     vehicles_yolo = excluded.vehicles_yolo,
-                    vehicles_night = excluded.vehicles_night
+                    vehicles_night = excluded.vehicles_night,
+                    audio_segments = excluded.audio_segments
                 """,
                 (filename, now, vehicle_count, duration_seconds,
-                 detection_mode, vehicles_yolo, vehicles_night),
+                 detection_mode, vehicles_yolo, vehicles_night, audio_segments),
             )
 
     def mark_file_error(self, filename: str, error_message: str):
@@ -379,7 +382,8 @@ class Database:
 
         query = f"""
             SELECT filename, processed_at, status, vehicle_count, error_message,
-                   processing_duration_seconds, detection_mode, vehicles_yolo, vehicles_night
+                   processing_duration_seconds, detection_mode, vehicles_yolo, vehicles_night,
+                   audio_segments
             FROM processed_files
             {where}
             ORDER BY {order}

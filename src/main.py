@@ -454,6 +454,7 @@ def _process_file(
             detection_mode="audio_fallback" if audio_fallback else mode,
             vehicles_yolo=det_yolo,
             vehicles_night=det_night,
+            audio_segments=len(segments),
         )
         db.clear_checkpoint(filename)
         progress_tracker.finish_file()
