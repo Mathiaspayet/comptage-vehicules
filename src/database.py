@@ -110,7 +110,7 @@ class Database:
             #  ce qui empêche d'insérer des lignes "sans audio" avec valeurs NULL)
             try:
                 conn.execute(
-                    "INSERT OR IGNORE INTO audio_stats (filename, mean_db, created_at) "
+                    "INSERT INTO audio_stats (filename, mean_db, created_at) "
                     "VALUES ('__null_test__', NULL, datetime('now'))"
                 )
                 conn.execute("DELETE FROM audio_stats WHERE filename = '__null_test__'")
