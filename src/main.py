@@ -65,6 +65,13 @@ _shutdown = threading.Event()
 _processing_start: "float | None" = None
 _PROCESSING_TIMEOUT_SEC = 7200  # watchdog global : 2h max par fichier
 
+# Adaptation dynamique du mode crépuscule :
+# si le détecteur de phares (ou YOLO) ne trouve rien sur N fichiers consécutifs
+# pendant une session crépusculaire, on le désactive pour les suivants.
+_flash_dead_streak: int = 0  # flash=0 & YOLO>0 consécutifs en crépuscule
+_yolo_dead_streak: int = 0   # YOLO=0 & flash>0 consécutifs en crépuscule
+_ADAPT_STREAK: int = 2       # nombre de fichiers avant basculement
+
 
 def _handle_signal(signum, frame):
     logger.info("Signal %s reçu — arrêt en cours… (fichier en cours terminé avant fermeture)", signum)
@@ -307,6 +314,7 @@ def _process_file(
             progress_tracker.update_frame(done)
 
         # ── Choix du mode : nuit / crépuscule / jour ─────────────────
+        global _flash_dead_streak, _yolo_dead_streak
         mode = "day"
         brightness = 128.0
         if night.config.night_detection_enabled:
@@ -315,6 +323,27 @@ def _process_file(
                 mode = "night"
             elif brightness < night.config.night_twilight_threshold:
                 mode = "twilight"
+
+        # ── Adaptation dynamique de la session crépuscule ────────────
+        # Hors crépuscule : on sort de la session → reset des compteurs
+        brightness_mode = mode
+        if brightness_mode != "twilight":
+            _flash_dead_streak = 0
+            _yolo_dead_streak = 0
+        elif _flash_dead_streak >= _ADAPT_STREAK:
+            # Flash inutile depuis N fichiers → on bascule en YOLO seul
+            mode = "day"
+            logger.info(
+                "%s — crépuscule adaptatif → JOUR (flash=0 depuis %d fichier(s))",
+                filename, _flash_dead_streak,
+            )
+        elif _yolo_dead_streak >= _ADAPT_STREAK:
+            # YOLO inutile depuis N fichiers → on bascule en phares seul
+            mode = "night"
+            logger.info(
+                "%s — crépuscule adaptatif → NUIT (YOLO=0 depuis %d fichier(s))",
+                filename, _yolo_dead_streak,
+            )
 
         MODE_LABELS = {
             "day": "JOUR (YOLO)",
@@ -415,6 +444,17 @@ def _process_file(
         db.clear_checkpoint(filename)
         progress_tracker.finish_file()
         logger.info("%s — %d véhicule(s) compté(s) [mode=%s].", filename, total_count, mode)
+
+        # ── Mise à jour du streak adaptatif (seulement si les deux détecteurs ont tourné)
+        if brightness_mode == "twilight" and mode == "twilight":
+            yolo_c  = det_yolo  if det_yolo  is not None else 0
+            night_c = det_night if det_night is not None else 0
+            if night_c == 0 and yolo_c > 0:
+                _flash_dead_streak += 1
+                _yolo_dead_streak = 0
+            elif yolo_c == 0 and night_c > 0:
+                _yolo_dead_streak += 1
+                _flash_dead_streak = 0
 
     except Exception as e:
         logger.exception("Erreur lors du traitement de %s : %s", filename, e)

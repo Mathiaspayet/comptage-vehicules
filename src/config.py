@@ -88,7 +88,7 @@ DEFAULTS = {
     "night_detection": {
         "enabled": True,
         "brightness_threshold": 40,    # nuit franche : luminosité médiane < 40 → mode nuit pur
-        "twilight_threshold": 75,      # crépuscule : 40–75, évite les faux positifs phares en pleine journée
+        "twilight_threshold": 55,      # crépuscule : 40–55 (zone étroite autour du lever/coucher)
         "sample_fps": 5,               # échantillonnage luminosité (peu coûteux)
         "flash_sigma": 2.5,            # plus bas = plus sensible aux phares faibles (pluie, distance)
         "min_flash_sep_sec": 1.0,      # deux flashes séparés de moins de 1s = même véhicule
