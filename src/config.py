@@ -29,18 +29,17 @@ DEFAULTS = {
         "sample_fps": 2,
         "imgsz": 320,
         "model_name": "yolo11n",
-        "confidence_threshold": 0.25,       # abaissé 0.35→0.25 : moins de ratés YOLO
+        "confidence_threshold": 0.25,       # permissif : préférer rater peu de véhicules plutôt que de faire des faux positifs
         "vehicle_classes": ["car", "motorcycle", "bus", "truck"],
         "count_direction": False,
         "model_dir": "/app/data/models",
-        "night_confidence_threshold": 0.12, # abaissé 0.18→0.12 : nuit très permissif
+        "night_confidence_threshold": 0.12, # très permissif : la nuit les détections sont plus floues
         "night_enhance": True,
         "roi_crop": True,
     },
     "location": {
         "latitude": 43.67,
         "longitude": 1.42,
-        "timezone_offset": 1,
     },
     "counting": {
         "line_p1": [0, 300],
@@ -76,11 +75,10 @@ DEFAULTS = {
         "enabled": True,
         "window_sec": 0.5,              # taille de la fenêtre RMS (secondes)
         "calibration_files": 10,        # fichiers requis avant d'utiliser le filtre
-        "sigma_factor": 2.0,            # abaissé 2.5→2.0 : plus de segments audio détectés
-        "segment_padding": 2.5,         # augmenté 2.0→2.5 s : plus de contexte autour du bruit
-        "min_energy_db": -60.0,         # abaissé -55→-60 : voitures lentes/électriques
-        "night_min_energy_db": -70.0,   # abaissé -65→-70 : nuit très permissive
-        "night_calibration": True,      # utiliser les fichiers de nuit comme référence
+        "sigma_factor": 2.0,            # plus bas = plus de segments détectés (risque de bruit)
+        "segment_padding": 2.5,         # contexte autour de chaque segment actif (secondes)
+        "min_energy_db": -60.0,         # plancher diurne — en dessous = silence complet
+        "night_min_energy_db": -70.0,   # plancher nocturne plus bas (voitures lentes, électriques)
         "night_start_hour": 22,         # début plage nuit (heure locale)
         "night_end_hour": 6,            # fin plage nuit (heure locale)
         "calibration_hour_start": 2,    # début fenêtre calibration silence (heure locale)
@@ -91,8 +89,8 @@ DEFAULTS = {
         "brightness_threshold": 40,    # nuit franche : luminosité médiane < 40 → mode nuit pur
         "twilight_threshold": 75,      # crépuscule : 40–75, évite les faux positifs phares en pleine journée
         "sample_fps": 5,               # échantillonnage luminosité (peu coûteux)
-        "flash_sigma": 2.5,            # abaissé 3.0→2.5 : plus de phares détectés
-        "min_flash_sep_sec": 1.0,      # réduit 1.5→1.0 s : deux véhicules proches = 2 comptages
+        "flash_sigma": 2.5,            # plus bas = plus sensible aux phares faibles (pluie, distance)
+        "min_flash_sep_sec": 1.0,      # deux flashes séparés de moins de 1s = même véhicule
         "merge_window_sec": 4.0,       # fenêtre de fusion doublon crépuscule (secondes)
     },
 }
@@ -209,10 +207,6 @@ class Config:
         return float(self.get("location", "longitude"))
 
     @property
-    def timezone_offset(self) -> int:
-        return int(self.get("location", "timezone_offset"))
-
-    @property
     def vehicle_classes(self) -> list:
         return self.get("detector", "vehicle_classes", default=[])
 
@@ -317,10 +311,6 @@ class Config:
     @property
     def audio_night_min_energy_db(self) -> float:
         return float(self.get("audio_filter", "night_min_energy_db", default=-65.0))
-
-    @property
-    def audio_night_calibration(self) -> bool:
-        return bool(self.get("audio_filter", "night_calibration", default=True))
 
     @property
     def audio_night_start_hour(self) -> int:

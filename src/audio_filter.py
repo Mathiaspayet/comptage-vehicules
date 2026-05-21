@@ -3,17 +3,16 @@
 Principe :
   1. Extraction PCM 16 kHz mono via ffmpeg (rapide, pas de décodage vidéo)
   2. Énergie RMS par fenêtre de 0.5 s → profil dB
-  3. Auto-calibration sur les N derniers fichiers de NUIT (22h-06h) :
+  3. Auto-calibration sur les fichiers 2h–5h du matin (configurable) :
        seuil = percentile10_moyen + sigma × std_moyen
-     Les fichiers de nuit ont moins de véhicules → meilleur baseline de silence.
-     Fallback sur tous les fichiers si pas assez de fichiers de nuit.
-  4. L'audio est maintenant le détecteur principal de segments (remplace le mouvement).
+     Ces heures correspondent au vrai silence sur une route très passante.
+     Fallback sur tous les fichiers si pas assez de fichiers dans la fenêtre.
+  4. L'audio est le détecteur principal de segments (remplace le filtre de mouvement).
 """
 
 import logging
 import re
 import subprocess
-from datetime import datetime
 from pathlib import Path
 
 import numpy as np

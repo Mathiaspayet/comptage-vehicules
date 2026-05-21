@@ -585,21 +585,23 @@ class Database:
 
     def get_processing_status(self) -> dict:
         with self._connect() as conn:
-            total = conn.execute("SELECT COUNT(*) AS n FROM processed_files").fetchone()["n"]
-            done = conn.execute(
-                "SELECT COUNT(*) AS n FROM processed_files WHERE status='done'"
-            ).fetchone()["n"]
-            errors = conn.execute(
-                "SELECT COUNT(*) AS n FROM processed_files WHERE status='error'"
-            ).fetchone()["n"]
+            counts = conn.execute(
+                """
+                SELECT
+                    COUNT(*) AS total,
+                    SUM(status = 'done')  AS done,
+                    SUM(status = 'error') AS errors
+                FROM processed_files
+                """
+            ).fetchone()
             last = conn.execute(
                 "SELECT filename, processed_at FROM processed_files ORDER BY processed_at DESC LIMIT 1"
             ).fetchone()
         return {
-            "total_files": total,
-            "done": done,
-            "errors": errors,
-            "last_file": dict(last) if last else None,
+            "total_files": counts["total"],
+            "done":        counts["done"] or 0,
+            "errors":      counts["errors"] or 0,
+            "last_file":   dict(last) if last else None,
         }
 
     # ------------------------------------------------------------------ #

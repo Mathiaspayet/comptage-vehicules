@@ -597,8 +597,8 @@ async function loadVersion() {
 /* ─────────────────────────────────────────────────────────────
    Journal — progress
 ───────────────────────────────────────────────────────────── */
-const PHASE_LABELS = { motion:'🔍 Filtre mouvement', detection:'🤖 Détection IA', idle:'💤 En attente' };
-const PHASE_COLORS = { motion:'#d97706', detection:'#2563eb', idle:'#9ca3af' };
+const PHASE_LABELS = { audio:'🔊 Analyse audio', motion:'🔍 Filtre mouvement', detection:'🤖 Détection IA', idle:'💤 En attente' };
+const PHASE_COLORS = { audio:'#059669', motion:'#d97706', detection:'#2563eb', idle:'#9ca3af' };
 
 async function loadProgress() {
   let data;

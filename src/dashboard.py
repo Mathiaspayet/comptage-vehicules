@@ -19,9 +19,26 @@ logger = logging.getLogger(__name__)
 
 VERSION_FILE = Path("/app/version.json")
 
-# Module-level size cache for the pending-files API endpoint.
 # Maps filename → (size, timestamp when size was first seen at this value).
 _pending_size_cache: dict[str, tuple[int, float]] = {}
+
+_VIDEO_EXTS = {".mp4", ".avi", ".mkv", ".mov"}
+
+
+def _collect_video_files(folder: Path) -> list[Path]:
+    """Returns all video files under folder (one level deep)."""
+    videos: list[Path] = []
+    for entry in folder.iterdir():
+        if entry.is_file() and entry.suffix.lower() in _VIDEO_EXTS:
+            videos.append(entry)
+        elif entry.is_dir():
+            try:
+                for sub in entry.iterdir():
+                    if sub.is_file() and sub.suffix.lower() in _VIDEO_EXTS:
+                        videos.append(sub)
+            except PermissionError:
+                pass
+    return videos
 
 
 def _read_version() -> dict:
@@ -156,31 +173,9 @@ def create_app(config: Config, db: Database, audio=None) -> Flask:
 
     @app.route("/api/audio/calibration")
     def api_audio_calibration():
-        if audio is not None:
-            info = audio.calibration_info()
-            history = db.get_audio_stats_history(limit=60)
-            info["history"] = history
-            return jsonify(info)
-        # Fallback ancien comportement si audio non passé
-        n = db.get_audio_stats_count()
-        min_files = config.audio_calibration_files
-        agg = db.get_audio_calibration_aggregate()
-        history = db.get_audio_stats_history(limit=60)
-        threshold = None
-        if agg and n >= min_files:
-            t = agg["avg_p10_db"] + config.audio_sigma_factor * agg["avg_std_db"]
-            threshold = round(max(t, config.audio_min_energy_db), 1)
-        return jsonify({
-            "enabled":        config.audio_enabled,
-            "calibrated":     threshold is not None,
-            "files_analyzed": n,
-            "files_needed":   min_files,
-            "background_db":  round(agg["avg_p10_db"], 1) if agg else None,
-            "noise_std_db":   round(agg["avg_std_db"], 1) if agg else None,
-            "threshold_db":   threshold,
-            "sigma_factor":   config.audio_sigma_factor,
-            "history":        history,
-        })
+        info = audio.calibration_info()
+        info["history"] = db.get_audio_stats_history(limit=60)
+        return jsonify(info)
 
     @app.route("/api/audio/threshold", methods=["GET"])
     def api_audio_threshold_get():
@@ -231,27 +226,20 @@ def create_app(config: Config, db: Database, audio=None) -> Flask:
         folder = config.video_folder
         stable_delay = config.file_stable_delay
         now = _time.time()
-        exts = {".mp4", ".avi", ".mkv", ".mov"}
 
         if not folder.exists():
             return jsonify({"pending": [], "writing": []})
 
-        all_videos: list[Path] = []
         try:
-            for entry in folder.iterdir():
-                if entry.is_file() and entry.suffix.lower() in exts:
-                    all_videos.append(entry)
-                elif entry.is_dir():
-                    try:
-                        for sub in entry.iterdir():
-                            if sub.is_file() and sub.suffix.lower() in exts:
-                                all_videos.append(sub)
-                    except PermissionError:
-                        pass
+            all_videos = _collect_video_files(folder)
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
         processed_names = db.get_all_processed_filenames()
+        # Evict stale cache entries for files that are now processed.
+        for name in processed_names:
+            _pending_size_cache.pop(name, None)
+
         pending = []
         writing = []
 
@@ -305,24 +293,10 @@ def create_app(config: Config, db: Database, audio=None) -> Flask:
     @app.route("/api/files/skip-all", methods=["POST"])
     def api_files_skip_all():
         """Mark all pending files on disk as skipped so the processor ignores them."""
-        import time as _time
         folder = config.video_folder
-        exts = {".mp4", ".avi", ".mkv", ".mov"}
-        now = _time.time()
 
-        all_videos: list[Path] = []
         try:
-            if folder.exists():
-                for entry in folder.iterdir():
-                    if entry.is_file() and entry.suffix.lower() in exts:
-                        all_videos.append(entry)
-                    elif entry.is_dir():
-                        try:
-                            for sub in entry.iterdir():
-                                if sub.is_file() and sub.suffix.lower() in exts:
-                                    all_videos.append(sub)
-                        except PermissionError:
-                            pass
+            all_videos = _collect_video_files(folder) if folder.exists() else []
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
