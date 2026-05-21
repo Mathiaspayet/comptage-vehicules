@@ -40,6 +40,7 @@ DEFAULTS = {
     "location": {
         "latitude": 43.67,
         "longitude": 1.42,
+        "timezone_offset": 1,   # décalage UTC en heures (pour lever/coucher soleil)
     },
     "counting": {
         "line_p1": [0, 300],
@@ -205,6 +206,10 @@ class Config:
     @property
     def longitude(self) -> float:
         return float(self.get("location", "longitude"))
+
+    @property
+    def timezone_offset(self) -> int:
+        return int(self.get("location", "timezone_offset", default=1))
 
     @property
     def vehicle_classes(self) -> list:

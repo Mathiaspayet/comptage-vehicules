@@ -104,6 +104,38 @@ class Database:
                     conn.execute(migration)
                 except sqlite3.OperationalError:
                     pass  # colonne déjà présente
+
+            # Migration : supprimer les contraintes NOT NULL sur audio_stats
+            # (la table pouvait être créée avec NOT NULL dans une ancienne version,
+            #  ce qui empêche d'insérer des lignes "sans audio" avec valeurs NULL)
+            try:
+                conn.execute(
+                    "INSERT OR IGNORE INTO audio_stats (filename, mean_db, created_at) "
+                    "VALUES ('__null_test__', NULL, datetime('now'))"
+                )
+                conn.execute("DELETE FROM audio_stats WHERE filename = '__null_test__'")
+            except sqlite3.IntegrityError:
+                logger.info("Migration audio_stats : suppression des contraintes NOT NULL…")
+                conn.executescript("""
+                    CREATE TABLE IF NOT EXISTS audio_stats_v2 (
+                        filename   TEXT PRIMARY KEY,
+                        mean_db    REAL,
+                        median_db  REAL,
+                        std_db     REAL,
+                        p10_db     REAL,
+                        p90_db     REAL,
+                        video_hour INTEGER,
+                        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                    );
+                    INSERT OR IGNORE INTO audio_stats_v2
+                        SELECT filename, mean_db, median_db, std_db, p10_db, p90_db,
+                               video_hour, created_at
+                        FROM audio_stats WHERE mean_db IS NOT NULL;
+                    DROP TABLE audio_stats;
+                    ALTER TABLE audio_stats_v2 RENAME TO audio_stats;
+                """)
+                logger.info("Migration audio_stats terminée.")
+
         logger.debug("Schéma base de données initialisé : %s", self.db_path)
 
     # ------------------------------------------------------------------ #
