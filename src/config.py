@@ -36,6 +36,8 @@ DEFAULTS = {
         "night_confidence_threshold": 0.12, # très permissif : la nuit les détections sont plus floues
         "night_enhance": True,
         "roi_crop": True,
+        "count_mode": "presence",           # "presence" : track visible ≥ N frames = 1 véhicule ; "crossing" : franchissement de ligne
+        "min_presence_frames": 2,           # mode présence — nombre de frames minimum pour confirmer un véhicule
     },
     "location": {
         "latitude": 43.67,
@@ -218,6 +220,14 @@ class Config:
     @property
     def count_direction(self) -> bool:
         return bool(self.get("detector", "count_direction"))
+
+    @property
+    def count_mode(self) -> str:
+        return self.get("detector", "count_mode", default="presence")
+
+    @property
+    def min_presence_frames(self) -> int:
+        return int(self.get("detector", "min_presence_frames", default=2))
 
     @property
     def model_name(self) -> str:
@@ -411,6 +421,8 @@ class Config:
             "confidence_threshold": self.confidence_threshold,
             "vehicle_classes": sorted(self.vehicle_classes),
             "count_direction": self.count_direction,
+            "count_mode": self.count_mode,
+            "min_presence_frames": self.min_presence_frames,
             "audio_enabled": self.audio_enabled,
             "audio_sigma_factor": self.audio_sigma_factor,
             "audio_min_energy_db": self.audio_min_energy_db,

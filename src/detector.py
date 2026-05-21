@@ -181,6 +181,16 @@ class VehicleDetector:
         line_p1 = np.array(self.config.line_p1, dtype=np.float32)
         line_p2 = np.array(self.config.line_p2, dtype=np.float32)
 
+        # Presence-mode state: frame count per track ID, and confirmed IDs
+        count_mode = self.config.count_mode
+        track_frame_counts: dict[int, int] = {}
+        track_counted: set[int] = set()
+
+        if count_mode == "presence":
+            logger.info("Mode comptage : présence de track (min=%d frames)", self.config.min_presence_frames)
+        else:
+            logger.info("Mode comptage : franchissement de ligne")
+
         # Precompute ROI crop and adjust line coordinates into cropped space
         crop_bbox = self._roi_crop_bbox()
         if crop_bbox:
@@ -274,6 +284,8 @@ class VehicleDetector:
                     track_sides,
                     track_types,
                     track_confs,
+                    track_frame_counts=track_frame_counts if count_mode == "presence" else None,
+                    track_counted=track_counted if count_mode == "presence" else None,
                 )
                 crossings.extend(events)
                 new_crossings_dicts.extend([
@@ -361,6 +373,8 @@ class VehicleDetector:
         track_sides: dict,
         track_types: dict,
         track_confs: dict,
+        track_frame_counts: "dict[int, int] | None" = None,
+        track_counted: "set[int] | None" = None,
     ) -> list[CrossingEvent]:
         night = self._is_night(video_start_dt)
         conf = self.config.night_confidence_threshold if night else self.config.confidence_threshold
@@ -393,47 +407,65 @@ class VehicleDetector:
         xyxy = boxes.xyxy.tolist()
 
         current_sec = frame_idx / fps
-        if video_start_dt:
-            frame_dt = video_start_dt + timedelta(seconds=current_sec)
-        else:
-            frame_dt = datetime.utcnow()
+        frame_dt = (video_start_dt + timedelta(seconds=current_sec)) if video_start_dt else datetime.utcnow()
 
-        for tid, cid, conf, box in zip(track_ids, class_ids, confs, xyxy):
+        presence_mode = track_frame_counts is not None and track_counted is not None
+        min_frames = self.config.min_presence_frames
+
+        for tid, cid, conf_val, box in zip(track_ids, class_ids, confs, xyxy):
             cx = (box[0] + box[2]) / 2
             cy = (box[1] + box[3]) / 2
             centroid = np.array([cx, cy], dtype=np.float32)
 
-            side = _side_of_line(centroid, line_p1, line_p2)
-
-            track_confs[tid] = max(track_confs.get(tid, 0.0), conf)
+            track_confs[tid] = max(track_confs.get(tid, 0.0), conf_val)
             track_types[tid] = _coco_id_to_name(cid)
 
-            if tid in track_sides:
-                prev_side = track_sides[tid]
-                if prev_side != 0 and side != 0 and (
-                    (prev_side > 0 and side < 0) or (prev_side < 0 and side > 0)
-                ):
+            if presence_mode:
+                # Count each unique track visible for ≥ min_frames as one vehicle.
+                # Works regardless of direction of travel — no line orientation needed.
+                frame_count = track_frame_counts.get(tid, 0) + 1  # type: ignore[union-attr]
+                track_frame_counts[tid] = frame_count  # type: ignore[index]
+                if frame_count >= min_frames and tid not in track_counted:  # type: ignore[operator]
+                    track_counted.add(tid)  # type: ignore[union-attr]
                     direction = None
                     if self.config.count_direction:
-                        direction = "left_to_right" if prev_side > 0 else "right_to_left"
-                    crossings.append(
-                        CrossingEvent(
+                        side = _side_of_line(centroid, line_p1, line_p2)
+                        direction = "left_to_right" if side > 0 else "right_to_left"
+                    crossings.append(CrossingEvent(
+                        timestamp=frame_dt,
+                        vehicle_type=track_types[tid],
+                        direction=direction,
+                        confidence=track_confs[tid],
+                        source_file=source_name,
+                    ))
+                    logger.debug(
+                        "Présence : %s tid=%d (%d frames, confiance=%.2f)",
+                        track_types[tid], tid, frame_count, track_confs[tid],
+                    )
+            else:
+                # Line-crossing mode: count when a track crosses from one side to the other.
+                side = _side_of_line(centroid, line_p1, line_p2)
+                if tid in track_sides:
+                    prev_side = track_sides[tid]
+                    if prev_side != 0 and side != 0 and (
+                        (prev_side > 0 and side < 0) or (prev_side < 0 and side > 0)
+                    ):
+                        direction = None
+                        if self.config.count_direction:
+                            direction = "left_to_right" if prev_side > 0 else "right_to_left"
+                        crossings.append(CrossingEvent(
                             timestamp=frame_dt,
                             vehicle_type=track_types[tid],
                             direction=direction,
                             confidence=track_confs[tid],
                             source_file=source_name,
+                        ))
+                        logger.debug(
+                            "Franchissement : %s %s (confiance=%.2f)",
+                            track_types[tid], direction or "", conf_val,
                         )
-                    )
-                    logger.debug(
-                        "Franchissement : %s %s (confiance=%.2f)",
-                        track_types[tid],
-                        direction or "",
-                        conf,
-                    )
-
-            if side != 0:
-                track_sides[tid] = side
+                if side != 0:
+                    track_sides[tid] = side
 
         return crossings
 
