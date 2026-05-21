@@ -40,6 +40,11 @@ CREATE TABLE IF NOT EXISTS motion_cache (
     cached_at    TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS queue_priority (
+    filename   TEXT PRIMARY KEY,
+    added_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS audio_stats (
     filename   TEXT PRIMARY KEY,
     mean_db    REAL,
@@ -564,6 +569,45 @@ class Database:
         with self._connect() as conn:
             cur = conn.execute("DELETE FROM motion_cache")
             return cur.rowcount
+
+    # ------------------------------------------------------------------ #
+    # Queue priority                                                       #
+    # ------------------------------------------------------------------ #
+
+    def set_queue_priority(self, filenames: list[str]) -> int:
+        """Mark files to be processed before normal-priority files.
+        Multiple calls: the most recently prioritized batch is processed first."""
+        if not filenames:
+            return 0
+        now = datetime.utcnow().isoformat()
+        with self._connect() as conn:
+            conn.executemany(
+                "INSERT INTO queue_priority (filename, added_at) VALUES (?, ?) "
+                "ON CONFLICT(filename) DO UPDATE SET added_at = excluded.added_at",
+                [(f, now) for f in filenames],
+            )
+        return len(filenames)
+
+    def get_queue_priority_info(self) -> dict[str, str]:
+        """Returns {filename: added_at} for all prioritized files."""
+        with self._connect() as conn:
+            rows = conn.execute("SELECT filename, added_at FROM queue_priority").fetchall()
+        return {r["filename"]: r["added_at"] for r in rows}
+
+    def clear_queue_priority(self, filenames: "list[str] | None" = None) -> int:
+        """Remove priority entries. Pass None to clear all."""
+        with self._connect() as conn:
+            if filenames is None:
+                cur = conn.execute("DELETE FROM queue_priority")
+            else:
+                if not filenames:
+                    return 0
+                placeholders = ",".join("?" * len(filenames))
+                cur = conn.execute(
+                    f"DELETE FROM queue_priority WHERE filename IN ({placeholders})",
+                    filenames,
+                )
+        return cur.rowcount
 
     def get_calendar_stats(self, year: int, month: int) -> list[dict]:
         """Returns daily counts for a calendar month (dates in local time)."""
