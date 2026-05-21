@@ -240,6 +240,8 @@ def create_app(config: Config, db: Database, audio=None) -> Flask:
         for name in processed_names:
             _pending_size_cache.pop(name, None)
 
+        priority_info = db.get_queue_priority_info()
+
         pending = []
         writing = []
 
@@ -265,11 +267,19 @@ def create_app(config: Config, db: Database, audio=None) -> Flask:
                 "filename": f.name,
                 "age_minutes": round(age_sec / 60, 1),
                 "size_kb": round(current_size / 1024, 0),
+                "priority": f.name in priority_info,
             }
             if is_stable:
                 pending.append(entry)
             else:
                 writing.append(entry)
+
+        # Mirror processing order: prioritized files first (most recently prioritized first)
+        if priority_info:
+            prio = [e for e in pending if e["priority"]]
+            normal = [e for e in pending if not e["priority"]]
+            prio.sort(key=lambda e: priority_info.get(e["filename"], ""), reverse=True)
+            pending = prio + normal
 
         return jsonify({
             "pending": pending,
@@ -289,6 +299,43 @@ def create_app(config: Config, db: Database, audio=None) -> Flask:
         except Exception as e:
             return jsonify({"error": str(e)}), 500
         return jsonify({"ok": True, "reset_count": count})
+
+    @app.route("/api/files/pending/skip", methods=["POST"])
+    def api_files_pending_skip():
+        """Mark specific pending files as skipped (won't be processed)."""
+        data = request.get_json() or {}
+        filenames = data.get("filenames", [])
+        if not filenames or not isinstance(filenames, list):
+            return jsonify({"error": "filenames (liste) requis"}), 400
+        try:
+            count = db.skip_files(filenames)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        return jsonify({"ok": True, "skipped_count": count})
+
+    @app.route("/api/files/pending/priority", methods=["POST"])
+    def api_files_pending_priority_set():
+        """Move specific pending files to the front of the processing queue."""
+        data = request.get_json() or {}
+        filenames = data.get("filenames", [])
+        if not filenames or not isinstance(filenames, list):
+            return jsonify({"error": "filenames (liste) requis"}), 400
+        try:
+            count = db.set_queue_priority(filenames)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        return jsonify({"ok": True, "count": count})
+
+    @app.route("/api/files/pending/priority", methods=["DELETE"])
+    def api_files_pending_priority_clear():
+        """Remove priority for specific (or all if omitted) pending files."""
+        data = request.get_json() or {}
+        filenames = data.get("filenames")  # None = clear all
+        try:
+            count = db.clear_queue_priority(filenames)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        return jsonify({"ok": True, "count": count})
 
     @app.route("/api/files/skip-all", methods=["POST"])
     def api_files_skip_all():

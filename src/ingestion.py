@@ -46,6 +46,16 @@ class FileWatcher:
         if not pending:
             return []
 
+        # Prioritized files (set by user in dashboard) come first.
+        # Among prioritized files: most recently prioritized first (added_at DESC).
+        # Among normal files: keep original mtime ASC order.
+        priority_info = self.db.get_queue_priority_info()
+        if priority_info:
+            prio = [f for f in pending if f.name in priority_info]
+            normal = [f for f in pending if f.name not in priority_info]
+            prio.sort(key=lambda f: priority_info[f.name], reverse=True)
+            pending = prio + normal
+
         max_n = self.config.max_recent_files
         if max_n > 0 and len(pending) > max_n:
             to_skip = pending[:-max_n]

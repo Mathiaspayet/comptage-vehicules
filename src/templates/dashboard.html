@@ -45,10 +45,13 @@
     .sort-arrow { color:#1a3a5c; font-size:.7rem; }
     .pending-row { display:flex; align-items:center; gap:.5rem; padding:.25rem 0; border-bottom:1px solid #f3f3f3; font-size:.79rem; }
     .pending-row:last-child { border-bottom:none; }
+    .pending-row.selected { background:#eff6ff; border-radius:4px; }
     .pill { border-radius:10px; padding:.1rem .55rem; font-size:.73rem; font-weight:600; }
     .pill-ready    { background:#fef3c7; color:#92400e; }
     .pill-soon     { background:#f1f5f9; color:#64748b; }
     .pill-writing  { background:#fee2e2; color:#991b1b; }
+    .pill-priority { background:#dbeafe; color:#1d4ed8; }
+    #pending-action-bar { display:none; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:.4rem .75rem; margin-bottom:.5rem; align-items:center; gap:.5rem; flex-wrap:wrap; }
     /* Calendar heatmap */
     .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; margin-top:.5rem; }
     .cal-header-cell { text-align:center; font-size:.7rem; font-weight:600; color:#888; padding:.25rem 0; }
@@ -231,6 +234,14 @@
         <h2 style="margin:0;flex:1">⏳ En attente de traitement</h2>
         <button onclick="skipAllPending()" style="font-size:.8rem;padding:.25rem .6rem;border:1px solid #6366f1;border-radius:4px;cursor:pointer;background:#fff;color:#6366f1" title="Ignorer tous les fichiers en attente et repartir de zéro">⏭ Ignorer le backlog</button>
         <button onclick="loadPending()" style="font-size:.8rem;padding:.25rem .6rem;border:1px solid #ccc;border-radius:4px;cursor:pointer;background:#fff">↺</button>
+      </div>
+      <!-- Barre d'actions (visible seulement quand des fichiers sont sélectionnés) -->
+      <div id="pending-action-bar" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:.4rem .75rem;margin-bottom:.5rem;align-items:center;gap:.5rem;flex-wrap:wrap">
+        <span id="pending-sel-count" style="font-size:.8rem;color:#1d4ed8;font-weight:600">0 sélectionné(s)</span>
+        <button onclick="prioritizePending()" style="font-size:.79rem;padding:.2rem .55rem;border:1px solid #2563eb;border-radius:4px;background:#2563eb;color:#fff;cursor:pointer" title="Traiter ces fichiers avant les autres">⬆ Traiter en premier</button>
+        <button onclick="skipSelectedPending()" style="font-size:.79rem;padding:.2rem .55rem;border:1px solid #dc2626;border-radius:4px;background:#fff;color:#dc2626;cursor:pointer" title="Ignorer définitivement ces fichiers">⊘ Ignorer</button>
+        <button onclick="unprioritizePending()" style="font-size:.79rem;padding:.2rem .55rem;border:1px solid #9ca3af;border-radius:4px;background:#fff;color:#6b7280;cursor:pointer" title="Retirer la priorité de ces fichiers">↺ Priorité normale</button>
+        <button onclick="deselectAllPending()" style="font-size:.79rem;padding:.2rem .55rem;border:none;background:none;color:#6b7280;cursor:pointer;margin-left:auto">✕ Annuler</button>
       </div>
       <div id="pending-section" style="font-size:.83rem;color:#888">Chargement…</div>
     </div>
@@ -716,13 +727,14 @@ async function loadPending() {
   renderPending(data);
 }
 
-function renderPending({ pending, writing, stable_delay_seconds }) {
+function renderPending({ pending, writing }) {
   const el = document.getElementById('pending-section');
   const nPending = pending?.length || 0;
   const nWriting = writing?.length || 0;
 
   if (!nPending && !nWriting) {
     el.innerHTML = '<em style="color:#888">Aucun fichier en attente.</em>';
+    updatePendingActionBar();
     return;
   }
 
@@ -743,18 +755,103 @@ function renderPending({ pending, writing, stable_delay_seconds }) {
 
   if (nPending) {
     html += `<div>
-      <div style="font-size:.8rem;font-weight:600;color:#92400e;margin-bottom:.3rem">
-        🟡 ${nPending} fichier(s) prêt(s) à analyser
+      <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem">
+        <span style="font-size:.8rem;font-weight:600;color:#92400e">🟡 ${nPending} fichier(s) prêt(s) à analyser</span>
+        <label style="font-size:.75rem;color:#9ca3af;margin-left:auto;cursor:pointer">
+          <input type="checkbox" id="pending-select-all" onchange="toggleSelectAllPending(this)"> tout sélectionner
+        </label>
       </div>`;
     html += pending.map(f => `
-      <div class="pending-row">
-        <span class="pill pill-ready" title="${f.size_kb} Ko">${f.age_minutes} min</span>
+      <div class="pending-row" id="prow-${CSS.escape(f.filename)}">
+        <input type="checkbox" class="pending-cb" value="${escHtml(f.filename)}" onchange="onPendingSelect()">
+        ${f.priority
+          ? `<span class="pill pill-priority" title="Priorité haute — sera traité avant les autres">⬆ priorité</span>`
+          : `<span class="pill pill-ready" title="${f.size_kb} Ko">${f.age_minutes} min</span>`
+        }
         <span style="font-family:monospace;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.78rem">${escHtml(f.filename)}</span>
       </div>`).join('');
     html += '</div>';
   }
 
   el.innerHTML = html;
+  updatePendingActionBar();
+}
+
+function getPendingSelected() {
+  return [...document.querySelectorAll('.pending-cb:checked')].map(c => c.value);
+}
+
+function onPendingSelect() {
+  updatePendingActionBar();
+}
+
+function toggleSelectAllPending(cb) {
+  document.querySelectorAll('.pending-cb').forEach(c => {
+    c.checked = cb.checked;
+    const row = c.closest('.pending-row');
+    if (row) row.classList.toggle('selected', cb.checked);
+  });
+  updatePendingActionBar();
+}
+
+function updatePendingActionBar() {
+  const sel = getPendingSelected();
+  const bar = document.getElementById('pending-action-bar');
+  if (!bar) return;
+  bar.style.display = sel.length ? 'flex' : 'none';
+  const cnt = document.getElementById('pending-sel-count');
+  if (cnt) cnt.textContent = `${sel.length} sélectionné(s)`;
+  // Highlight selected rows
+  document.querySelectorAll('.pending-cb').forEach(c => {
+    const row = c.closest('.pending-row');
+    if (row) row.classList.toggle('selected', c.checked);
+  });
+}
+
+function deselectAllPending() {
+  document.querySelectorAll('.pending-cb').forEach(c => c.checked = false);
+  const all = document.getElementById('pending-select-all');
+  if (all) all.checked = false;
+  updatePendingActionBar();
+}
+
+async function prioritizePending() {
+  const sel = getPendingSelected();
+  if (!sel.length) return;
+  const res = await fetch('/api/files/pending/priority', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+    body: JSON.stringify({ filenames: sel }),
+  });
+  const data = await res.json();
+  if (data.ok) { deselectAllPending(); loadPending(); }
+  else alert('Erreur : ' + data.error);
+}
+
+async function unprioritizePending() {
+  const sel = getPendingSelected();
+  const res = await fetch('/api/files/pending/priority', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+    body: JSON.stringify({ filenames: sel.length ? sel : null }),
+  });
+  const data = await res.json();
+  if (data.ok) { deselectAllPending(); loadPending(); }
+  else alert('Erreur : ' + data.error);
+}
+
+async function skipSelectedPending() {
+  const sel = getPendingSelected();
+  if (!sel.length) return;
+  if (!confirm(`Ignorer ${sel.length} fichier(s) ? Ils ne seront pas analysés.`)) return;
+  const res = await fetch('/api/files/pending/skip', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+    body: JSON.stringify({ filenames: sel }),
+  });
+  const data = await res.json();
+  if (data.ok) { deselectAllPending(); loadPending(); loadFiles(); }
+  else alert('Erreur : ' + data.error);
 }
 
 /* ─────────────────────────────────────────────────────────────
