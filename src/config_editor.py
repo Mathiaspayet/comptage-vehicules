@@ -62,12 +62,6 @@ def create_config_blueprint(config: Config) -> Blueprint:
                     "file_stable_delay_seconds": int(data.get("file_stable_delay_seconds", 120)),
                     "max_recent_files": int(data.get("max_recent_files", 0)),
                 },
-                "motion_filter": {
-                    "sample_fps": float(data.get("motion_sample_fps", 2)),
-                    "motion_threshold": int(data.get("motion_threshold", 25)),
-                    "min_motion_area": int(data.get("min_motion_area", 500)),
-                    "segment_padding_seconds": float(data.get("segment_padding_seconds", 1.0)),
-                },
                 "detector": {
                     "sample_fps": float(data.get("detector_sample_fps", 2)),
                     "model_name": data.get("model_name", "yolo11n"),
@@ -125,7 +119,6 @@ def create_config_blueprint(config: Config) -> Blueprint:
                     "backup_count": 3,
                 },
                 "performance": {
-                    "prefetch_motion": bool(data.get("prefetch_motion", True)),
                     "backlog_throttle_threshold": int(data.get("backlog_throttle_threshold", 10)),
                     "backlog_fps_factor": float(data.get("backlog_fps_factor", 0.5)),
                 },
