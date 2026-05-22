@@ -19,12 +19,6 @@ DEFAULTS = {
         "file_stable_delay_seconds": 120,
         "max_recent_files": 0,
     },
-    "motion_filter": {
-        "sample_fps": 2,
-        "motion_threshold": 25,
-        "min_motion_area": 500,
-        "segment_padding_seconds": 1.0,
-    },
     "detector": {
         "sample_fps": 2,
         "imgsz": 320,
@@ -67,7 +61,6 @@ DEFAULTS = {
         "backup_count": 3,
     },
     "performance": {
-        "prefetch_motion": True,
         "backlog_throttle_threshold": 10,
         "backlog_fps_factor": 0.5,
     },
@@ -160,22 +153,6 @@ class Config:
     def max_recent_files(self) -> int:
         """Max number of recent files to process per scan (0 = unlimited)."""
         return int(self.get("ingestion", "max_recent_files", default=0))
-
-    @property
-    def motion_sample_fps(self) -> float:
-        return float(self.get("motion_filter", "sample_fps"))
-
-    @property
-    def motion_threshold(self) -> int:
-        return int(self.get("motion_filter", "motion_threshold"))
-
-    @property
-    def min_motion_area(self) -> int:
-        return int(self.get("motion_filter", "min_motion_area"))
-
-    @property
-    def segment_padding(self) -> float:
-        return float(self.get("motion_filter", "segment_padding_seconds"))
 
     @property
     def detector_sample_fps(self) -> float:
@@ -272,24 +249,12 @@ class Config:
         return int(self.get("data", "retention_days", default=0))
 
     @property
-    def prefetch_motion(self) -> bool:
-        return bool(self.get("performance", "prefetch_motion", default=True))
-
-    @property
     def backlog_throttle_threshold(self) -> int:
         return int(self.get("performance", "backlog_throttle_threshold", default=10))
 
     @property
     def backlog_fps_factor(self) -> float:
         return float(self.get("performance", "backlog_fps_factor", default=0.5))
-
-    @property
-    def effective_motion_fps(self) -> float:
-        base = self.motion_sample_fps
-        t = self.backlog_throttle_threshold
-        if t > 0 and self._backlog_size > t:
-            return max(0.5, base * self.backlog_fps_factor)
-        return base
 
     @property
     def effective_detector_fps(self) -> float:
@@ -370,18 +335,6 @@ class Config:
     @property
     def night_merge_window_sec(self) -> float:
         return float(self.get("night_detection", "merge_window_sec", default=4.0))
-
-    def motion_fingerprint(self) -> str:
-        """MD5 of parameters that affect only motion detection (not AI inference)."""
-        relevant = {
-            "motion_threshold": self.motion_threshold,
-            "min_motion_area": self.min_motion_area,
-            "motion_sample_fps": self.motion_sample_fps,
-            "segment_padding": self.segment_padding,
-            "roi_polygon": self.roi_polygon,
-        }
-        blob = json.dumps(relevant, sort_keys=True)
-        return hashlib.md5(blob.encode()).hexdigest()
 
     def reload(self) -> set:
         """Re-reads the config file and updates _data in place.
@@ -468,14 +421,13 @@ def validate_config(data: dict) -> list[str]:
             except (ValueError, TypeError):
                 warnings.append(f"detector.{key} doit être un nombre (actuel : {val!r})")
 
-    for section, key in [("motion_filter", "sample_fps"), ("detector", "sample_fps")]:
-        val = data.get(section, {}).get(key)
-        if val is not None:
-            try:
-                if float(val) <= 0:
-                    warnings.append(f"{section}.{key} doit être > 0 (actuel : {val})")
-            except (ValueError, TypeError):
-                warnings.append(f"{section}.{key} doit être un nombre (actuel : {val!r})")
+    val = data.get("detector", {}).get("sample_fps")
+    if val is not None:
+        try:
+            if float(val) <= 0:
+                warnings.append(f"detector.sample_fps doit être > 0 (actuel : {val})")
+        except (ValueError, TypeError):
+            warnings.append(f"detector.sample_fps doit être un nombre (actuel : {val!r})")
 
     valid_classes = {"car", "motorcycle", "bus", "truck"}
     classes = detector.get("vehicle_classes", [])

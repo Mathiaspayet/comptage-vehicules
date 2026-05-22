@@ -117,41 +117,6 @@
     </div>
   </div>
 
-  <!-- FILTRE DE MOUVEMENT -->
-  <div class="card">
-    <h2>🎥 Filtre de mouvement</h2>
-    <div class="field">
-      <label for="motion_sample_fps">Images analysées par seconde de vidéo</label>
-      <div class="range-row">
-        <input type="range" id="motion_sample_fps_range" min="1" max="8" step="0.5"
-               oninput="sync('motion_sample_fps', this.value); updateEstimate()">
-        <input type="number" id="motion_sample_fps" min="1" max="8" step="0.5"
-               oninput="sync('motion_sample_fps_range', this.value); updateEstimate()">
-      </div>
-      <div class="hint"><strong>2 recommandé.</strong> Plus élevé = plus précis mais plus lent. Ce paramètre a un impact fort sur la durée de traitement.</div>
-    </div>
-    <div class="field">
-      <label for="motion_threshold">Seuil de sensibilité (0–255)</label>
-      <div class="range-row">
-        <input type="range" id="motion_threshold_range" min="5" max="100" step="1" oninput="sync('motion_threshold', this.value)">
-        <input type="number" id="motion_threshold" min="5" max="100" oninput="sync('motion_threshold_range', this.value)">
-      </div>
-      <div class="hint">Augmenter si trop de faux positifs (feuilles, pluie). Diminuer si des véhicules sont manqués.</div>
-    </div>
-    <div class="field">
-      <label for="min_motion_area">Surface minimale de mouvement (pixels²)</label>
-      <input type="number" id="min_motion_area" min="50" max="10000" step="50">
-      <div class="hint">Filtre les petits mouvements parasites. <strong>500</strong> est une bonne valeur de départ.</div>
-    </div>
-    <div class="field">
-      <label for="segment_padding_seconds">Marge autour des segments actifs (secondes)</label>
-      <div class="range-row">
-        <input type="range" id="segment_padding_range" min="0" max="5" step="0.5" oninput="sync('segment_padding_seconds', this.value)">
-        <input type="number" id="segment_padding_seconds" min="0" max="5" step="0.5" oninput="sync('segment_padding_range', this.value)">
-      </div>
-    </div>
-  </div>
-
   <!-- DÉTECTION IA -->
   <div class="card">
     <h2>🤖 Détection IA</h2>
@@ -507,14 +472,6 @@ async function loadConfig() {
   setVal('max_recent_files',           data.ingestion?.max_recent_files);
   setVal('max_recent_files_range',     data.ingestion?.max_recent_files);
 
-  setVal('motion_sample_fps',       data.motion_filter?.sample_fps);
-  setVal('motion_sample_fps_range', data.motion_filter?.sample_fps);
-  setVal('motion_threshold',        data.motion_filter?.motion_threshold);
-  setVal('motion_threshold_range',  data.motion_filter?.motion_threshold);
-  setVal('min_motion_area',         data.motion_filter?.min_motion_area);
-  setVal('segment_padding_seconds', data.motion_filter?.segment_padding_seconds);
-  setVal('segment_padding_range',   data.motion_filter?.segment_padding_seconds);
-
   setVal('detector_sample_fps',       data.detector?.sample_fps);
   setVal('detector_sample_fps_range', data.detector?.sample_fps);
   // model_name radio
@@ -594,10 +551,6 @@ async function saveConfig() {
     file_stable_delay_seconds: document.getElementById('file_stable_delay_seconds').value,
     scan_interval_seconds:    document.getElementById('scan_interval_seconds').value,
     max_recent_files:         document.getElementById('max_recent_files').value,
-    motion_sample_fps:        document.getElementById('motion_sample_fps').value,
-    motion_threshold:         document.getElementById('motion_threshold').value,
-    min_motion_area:          document.getElementById('min_motion_area').value,
-    segment_padding_seconds:  document.getElementById('segment_padding_seconds').value,
     detector_sample_fps:      document.getElementById('detector_sample_fps').value,
     model_name:                    document.querySelector('input[name=model_name]:checked')?.value || 'yolo11n',
     confidence_threshold:          document.getElementById('confidence_threshold').value,
