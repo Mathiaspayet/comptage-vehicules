@@ -72,6 +72,7 @@ def create_config_blueprint(config: Config) -> Blueprint:
                     "roi_crop": bool(data.get("roi_crop", True)),
                     "vehicle_classes": data.get("vehicle_classes", ["car", "motorcycle", "bus", "truck"]),
                     "min_presence_frames": int(data.get("min_presence_frames", 2)),
+                    "count_direction": bool(data.get("count_direction", False)),
                     "model_dir": "/app/data/models",
                 },
                 "audio_filter": {

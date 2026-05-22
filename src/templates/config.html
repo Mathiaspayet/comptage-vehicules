@@ -226,6 +226,16 @@
       </div>
       <div class="hint">Nombre d'images minimum pour qu'un track soit compté. <strong>2 recommandé</strong> — élimine les faux positifs sans manquer de passages.</div>
     </div>
+    <div class="field">
+      <label>Compter le sens de circulation</label>
+      <div class="toggle-row">
+        <label class="toggle">
+          <input type="checkbox" id="count_direction">
+          <span class="slider"></span>
+        </label>
+        <span style="font-size:.85rem;color:#666">Déduit le sens (gauche→droite / droite→gauche) du déplacement de chaque véhicule — sans ligne de comptage</span>
+      </div>
+    </div>
 
     <!-- Estimation du temps de traitement -->
     <div class="field" style="margin-top:1.1rem">
@@ -482,6 +492,7 @@ async function loadConfig() {
 
   setVal('min_presence_frames',       data.detector?.min_presence_frames);
   setVal('min_presence_frames_range', data.detector?.min_presence_frames);
+  document.getElementById('count_direction').checked = !!data.detector?.count_direction;
 
   const classes = data.detector?.vehicle_classes || [];
   document.querySelectorAll('#vehicle_classes input[type=checkbox]').forEach(cb => {
@@ -540,6 +551,7 @@ async function saveConfig() {
     longitude:                     parseFloat(document.getElementById('longitude').value),
     timezone_offset:               parseInt(document.getElementById('timezone_offset').value),
     vehicle_classes:               classes,
+    count_direction:          document.getElementById('count_direction').checked,
     min_presence_frames:      parseInt(document.getElementById('min_presence_frames').value),
     // Audio filter
     audio_filter_enabled:     document.getElementById('audio_filter_enabled').checked,

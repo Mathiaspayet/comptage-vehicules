@@ -30,6 +30,7 @@ DEFAULTS = {
         "night_enhance": True,
         "roi_crop": True,
         "min_presence_frames": 2,           # nombre de frames minimum pour confirmer un véhicule
+        "count_direction": False,           # déduit le sens du déplacement net du centroïde (sans ligne)
     },
     "location": {
         "latitude": 43.67,
@@ -195,6 +196,10 @@ class Config:
         return int(self.get("detector", "min_presence_frames", default=2))
 
     @property
+    def count_direction(self) -> bool:
+        return bool(self.get("detector", "count_direction", default=False))
+
+    @property
     def model_name(self) -> str:
         return self.get("detector", "model_name", default="yolo11n")
 
@@ -350,6 +355,7 @@ class Config:
             "confidence_threshold": self.confidence_threshold,
             "vehicle_classes": sorted(self.vehicle_classes),
             "min_presence_frames": self.min_presence_frames,
+            "count_direction": self.count_direction,
             "audio_enabled": self.audio_enabled,
             "audio_sigma_factor": self.audio_sigma_factor,
             "audio_min_energy_db": self.audio_min_energy_db,

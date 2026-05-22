@@ -183,13 +183,20 @@ class VehicleDetector:
         track_counted: set[int] = set()
         track_types: dict[int, str] = {}
         track_confs: dict[int, float] = {}
+        # Trajectory state for direction (first/last horizontal centroid per track)
+        track_first_cx: dict[int, float] = {}
+        track_last_cx: dict[int, float] = {}
+        track_event: dict[int, CrossingEvent] = {}
 
         # Precompute ROI crop bbox
         crop_bbox = self._roi_crop_bbox()
         if crop_bbox:
             x0, y0, x1, y1 = crop_bbox
+            frame_w = x1 - x0
             logger.debug("ROI crop activé : (%d,%d)→(%d,%d) — %dx%d px au lieu de la frame entière",
                          x0, y0, x1, y1, x1 - x0, y1 - y0)
+        else:
+            frame_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 1280)
 
         # New crossings found in this run (not including initial_crossings)
         crossings: list[CrossingEvent] = []
@@ -267,6 +274,9 @@ class VehicleDetector:
                     track_confs,
                     track_frame_counts,
                     track_counted,
+                    track_first_cx,
+                    track_last_cx,
+                    track_event,
                 )
                 crossings.extend(events)
                 new_crossings_dicts.extend([
@@ -292,6 +302,20 @@ class VehicleDetector:
                     on_segment_done(seg_idx, list(new_crossings_dicts))
                 seg_idx += 1
                 inside_segment = False
+
+        # Direction = sens du déplacement net du centroïde entre 1re et dernière frame.
+        # Pas de ligne nécessaire : le suivi ByteTrack suffit. Un déplacement trop
+        # faible (véhicule à l'arrêt, bruit de tracking) reste sans direction.
+        if self.config.count_direction:
+            min_disp = max(20.0, 0.08 * frame_w)
+            for tid, ev in track_event.items():
+                first = track_first_cx.get(tid)
+                last = track_last_cx.get(tid)
+                if first is None or last is None:
+                    continue
+                delta = last - first
+                if abs(delta) >= min_disp:
+                    ev.direction = "left_to_right" if delta > 0 else "right_to_left"
 
         logger.info(
             "%s → %d véhicule(s) | %d frames analysées | %d/%d segments",
@@ -352,6 +376,9 @@ class VehicleDetector:
         track_confs: dict,
         track_frame_counts: dict,
         track_counted: set,
+        track_first_cx: dict,
+        track_last_cx: dict,
+        track_event: dict,
     ) -> list[CrossingEvent]:
         night = self._is_night(video_start_dt)
         conf = self.config.night_confidence_threshold if night else self.config.confidence_threshold
@@ -381,15 +408,22 @@ class VehicleDetector:
         track_ids = boxes.id.int().tolist()
         class_ids = boxes.cls.int().tolist()
         confs = boxes.conf.tolist()
+        xyxy = boxes.xyxy.tolist()
 
         current_sec = frame_idx / fps
         frame_dt = (video_start_dt + timedelta(seconds=current_sec)) if video_start_dt else datetime.utcnow()
 
         min_frames = self.config.min_presence_frames
 
-        for tid, cid, conf_val in zip(track_ids, class_ids, confs):
+        for tid, cid, conf_val, box in zip(track_ids, class_ids, confs, xyxy):
+            cx = (box[0] + box[2]) / 2
             track_confs[tid] = max(track_confs.get(tid, 0.0), conf_val)
             track_types[tid] = _coco_id_to_name(cid)
+
+            # Record horizontal trajectory for direction (finalized at end of _process).
+            if tid not in track_first_cx:
+                track_first_cx[tid] = cx
+            track_last_cx[tid] = cx
 
             # Count each unique track visible for ≥ min_frames as one vehicle.
             # Works regardless of direction of travel — no line orientation needed.
@@ -397,13 +431,15 @@ class VehicleDetector:
             track_frame_counts[tid] = frame_count
             if frame_count >= min_frames and tid not in track_counted:
                 track_counted.add(tid)
-                crossings.append(CrossingEvent(
+                ev = CrossingEvent(
                     timestamp=frame_dt,
                     vehicle_type=track_types[tid],
                     direction=None,
                     confidence=track_confs[tid],
                     source_file=source_name,
-                ))
+                )
+                crossings.append(ev)
+                track_event[tid] = ev
                 logger.debug(
                     "Présence : %s tid=%d (%d frames, confiance=%.2f)",
                     track_types[tid], tid, frame_count, track_confs[tid],
