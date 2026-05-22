@@ -73,8 +73,6 @@ def create_calibration_blueprint(config: Config) -> Blueprint:
     @bp.route("/api/current-config")
     def api_current_config():
         return jsonify({
-            "line_p1": list(config.line_p1),
-            "line_p2": list(config.line_p2),
             "roi_polygon": config.roi_polygon,
         })
 
@@ -84,12 +82,10 @@ def create_calibration_blueprint(config: Config) -> Blueprint:
         if not data:
             return jsonify({"error": "Données manquantes"}), 400
 
-        line_p1 = data.get("line_p1")
-        line_p2 = data.get("line_p2")
         roi_polygon = data.get("roi_polygon", [])
 
-        if not line_p1 or not line_p2:
-            return jsonify({"error": "line_p1 et line_p2 sont requis"}), 400
+        if not roi_polygon or len(roi_polygon) < 3:
+            return jsonify({"error": "Le polygone ROI doit avoir au moins 3 points."}), 400
 
         config_path = os.environ.get("CONFIG_PATH", "/app/data/config.yaml")
         try:
@@ -99,10 +95,7 @@ def create_calibration_blueprint(config: Config) -> Blueprint:
             cfg = {}
 
         cfg.setdefault("counting", {})
-        cfg["counting"]["line_p1"] = [int(line_p1[0]), int(line_p1[1])]
-        cfg["counting"]["line_p2"] = [int(line_p2[0]), int(line_p2[1])]
-        if roi_polygon:
-            cfg["counting"]["roi_polygon"] = [[int(p[0]), int(p[1])] for p in roi_polygon]
+        cfg["counting"]["roi_polygon"] = [[int(p[0]), int(p[1])] for p in roi_polygon]
 
         try:
             with open(config_path, "w", encoding="utf-8") as f:
@@ -110,7 +103,7 @@ def create_calibration_blueprint(config: Config) -> Blueprint:
         except IOError as e:
             return jsonify({"error": f"Impossible d'écrire config.yaml : {e}"}), 500
 
-        logger.info("Calibration enregistrée → ligne: %s–%s", line_p1, line_p2)
+        logger.info("ROI enregistré → %d points", len(roi_polygon))
         return jsonify({"ok": True, "saved_to": config_path})
 
     return bp
