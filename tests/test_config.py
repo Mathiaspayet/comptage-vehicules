@@ -34,9 +34,9 @@ def test_deep_merge_does_not_pollute_base():
 # Fingerprint                                                          #
 # ------------------------------------------------------------------ #
 
-def test_fingerprint_changes_with_line():
-    data1 = _deep_merge(DEFAULTS, {"counting": {"line_p1": [0, 100]}})
-    data2 = _deep_merge(DEFAULTS, {"counting": {"line_p1": [0, 200]}})
+def test_fingerprint_changes_with_roi():
+    data1 = _deep_merge(DEFAULTS, {"counting": {"roi_polygon": [[0, 100], [1280, 100], [1280, 500], [0, 500]]}})
+    data2 = _deep_merge(DEFAULTS, {"counting": {"roi_polygon": [[0, 200], [1280, 200], [1280, 600], [0, 600]]}})
     fp1 = Config(data1).detection_fingerprint()
     fp2 = Config(data2).detection_fingerprint()
     assert fp1 != fp2
@@ -97,13 +97,6 @@ def test_validate_clean_defaults():
     from src.config import validate_config
     warnings = validate_config(DEFAULTS)
     assert warnings == []
-
-
-def test_validate_bad_line_p1():
-    from src.config import validate_config
-    data = _deep_merge(DEFAULTS, {"counting": {"line_p1": [0]}})  # missing y
-    warnings = validate_config(data)
-    assert any("line_p1" in w for w in warnings)
 
 
 def test_validate_bad_roi_too_few_points():
