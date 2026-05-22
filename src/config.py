@@ -25,13 +25,11 @@ DEFAULTS = {
         "model_name": "yolo11n",
         "confidence_threshold": 0.25,       # permissif : préférer rater peu de véhicules plutôt que de faire des faux positifs
         "vehicle_classes": ["car", "motorcycle", "bus", "truck"],
-        "count_direction": False,
         "model_dir": "/app/data/models",
         "night_confidence_threshold": 0.12, # très permissif : la nuit les détections sont plus floues
         "night_enhance": True,
         "roi_crop": True,
-        "count_mode": "presence",           # "presence" : track visible ≥ N frames = 1 véhicule ; "crossing" : franchissement de ligne
-        "min_presence_frames": 2,           # mode présence — nombre de frames minimum pour confirmer un véhicule
+        "min_presence_frames": 2,           # nombre de frames minimum pour confirmer un véhicule
     },
     "location": {
         "latitude": 43.67,
@@ -39,8 +37,6 @@ DEFAULTS = {
         "timezone_offset": 1,   # décalage UTC en heures (pour lever/coucher soleil)
     },
     "counting": {
-        "line_p1": [0, 300],
-        "line_p2": [1280, 300],
         "roi_polygon": [[0, 200], [1280, 200], [1280, 500], [0, 500]],
     },
     "database": {
@@ -195,14 +191,6 @@ class Config:
         return self.get("detector", "vehicle_classes", default=[])
 
     @property
-    def count_direction(self) -> bool:
-        return bool(self.get("detector", "count_direction"))
-
-    @property
-    def count_mode(self) -> str:
-        return self.get("detector", "count_mode", default="presence")
-
-    @property
     def min_presence_frames(self) -> int:
         return int(self.get("detector", "min_presence_frames", default=2))
 
@@ -213,16 +201,6 @@ class Config:
     @property
     def model_dir(self) -> Path:
         return Path(self.get("detector", "model_dir"))
-
-    @property
-    def line_p1(self) -> tuple:
-        p = self.get("counting", "line_p1")
-        return tuple(p)
-
-    @property
-    def line_p2(self) -> tuple:
-        p = self.get("counting", "line_p2")
-        return tuple(p)
 
     @property
     def roi_polygon(self) -> list:
@@ -367,14 +345,10 @@ class Config:
         old files is a manual action ("Remettre en attente" in the dashboard).
         """
         relevant = {
-            "line_p1": list(self.line_p1),
-            "line_p2": list(self.line_p2),
             "roi_polygon": self.roi_polygon,
             "model_name": self.model_name,
             "confidence_threshold": self.confidence_threshold,
             "vehicle_classes": sorted(self.vehicle_classes),
-            "count_direction": self.count_direction,
-            "count_mode": self.count_mode,
             "min_presence_frames": self.min_presence_frames,
             "audio_enabled": self.audio_enabled,
             "audio_sigma_factor": self.audio_sigma_factor,
@@ -394,11 +368,6 @@ def validate_config(data: dict) -> list[str]:
     """Returns a list of human-readable warnings for invalid config values."""
     warnings: list[str] = []
     counting = data.get("counting", {})
-
-    for key in ("line_p1", "line_p2"):
-        val = counting.get(key)
-        if val is not None and (not isinstance(val, (list, tuple)) or len(val) != 2):
-            warnings.append(f"counting.{key} doit être [x, y] — valeur actuelle : {val!r}")
 
     roi = counting.get("roi_polygon")
     if roi is not None:

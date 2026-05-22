@@ -71,8 +71,6 @@ def create_config_blueprint(config: Config) -> Blueprint:
                     "night_enhance": bool(data.get("night_enhance", True)),
                     "roi_crop": bool(data.get("roi_crop", True)),
                     "vehicle_classes": data.get("vehicle_classes", ["car", "motorcycle", "bus", "truck"]),
-                    "count_direction": bool(data.get("count_direction", False)),
-                    "count_mode": data.get("count_mode", "presence"),
                     "min_presence_frames": int(data.get("min_presence_frames", 2)),
                     "model_dir": "/app/data/models",
                 },

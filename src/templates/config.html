@@ -218,24 +218,6 @@
         <label><input type="checkbox" value="motorcycle"> Moto</label>
       </div>
     </div>
-    <div class="field">
-      <label>Compter le sens de circulation</label>
-      <div class="toggle-row">
-        <label class="toggle">
-          <input type="checkbox" id="count_direction">
-          <span class="slider"></span>
-        </label>
-        <span style="font-size:.85rem;color:#666">Si activé, distingue gauche→droite et droite→gauche</span>
-      </div>
-    </div>
-    <div class="field">
-      <label for="count_mode">Mode de comptage</label>
-      <select id="count_mode">
-        <option value="presence">Présence — chaque track unique visible ≥ N images = 1 véhicule (recommandé)</option>
-        <option value="crossing">Franchissement de ligne — compte à chaque traversée de la ligne de comptage</option>
-      </select>
-      <div class="hint">Le mode <strong>présence</strong> est recommandé : robuste pour les véhicules qui passent latéralement. Le mode <strong>franchissement</strong> est sensible à l'orientation de la ligne et peut manquer des passages.</div>
-    </div>
     <div class="field" id="field_min_presence_frames">
       <label for="min_presence_frames">Présence minimale (images)</label>
       <div class="range-row">
@@ -498,10 +480,6 @@ async function loadConfig() {
   setVal('data_retention_days', data.data?.retention_days);
   setVal('log_level',    data.logging?.level);
 
-  document.getElementById('count_direction').checked = !!data.detector?.count_direction;
-
-  const countMode = data.detector?.count_mode || 'presence';
-  setVal('count_mode', countMode);
   setVal('min_presence_frames',       data.detector?.min_presence_frames);
   setVal('min_presence_frames_range', data.detector?.min_presence_frames);
 
@@ -562,8 +540,6 @@ async function saveConfig() {
     longitude:                     parseFloat(document.getElementById('longitude').value),
     timezone_offset:               parseInt(document.getElementById('timezone_offset').value),
     vehicle_classes:               classes,
-    count_direction:          document.getElementById('count_direction').checked,
-    count_mode:               document.getElementById('count_mode').value,
     min_presence_frames:      parseInt(document.getElementById('min_presence_frames').value),
     // Audio filter
     audio_filter_enabled:     document.getElementById('audio_filter_enabled').checked,

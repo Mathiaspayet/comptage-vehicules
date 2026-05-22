@@ -103,15 +103,6 @@ def create_debug_blueprint(config: Config) -> Blueprint:
             cv2.addWeighted(overlay, 0.15, annotated, 0.85, 0, annotated)
             cv2.polylines(annotated, [pts], True, (0, 255, 0), 2)
 
-        # Draw counting line
-        p1 = tuple(map(int, config.line_p1))
-        p2 = tuple(map(int, config.line_p2))
-        cv2.line(annotated, p1, p2, (0, 255, 255), 3)
-        cv2.circle(annotated, p1, 7, (0, 255, 255), -1)
-        cv2.circle(annotated, p2, 7, (0, 255, 255), -1)
-        cv2.putText(annotated, "Ligne de comptage", (p1[0] + 8, p1[1] - 8),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-
         # Encode
         _, buf = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 88])
         b64 = base64.b64encode(buf.tobytes()).decode("ascii")

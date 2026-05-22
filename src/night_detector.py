@@ -131,7 +131,7 @@ class NightDetector:
                     ev = CrossingEvent(
                         timestamp=ts,
                         vehicle_type="car",
-                        direction=direction if self.config.count_direction else None,
+                        direction=None,
                         confidence=round(conf, 2),
                         source_file=source_name,
                     )
