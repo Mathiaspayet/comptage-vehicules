@@ -163,7 +163,7 @@
         <input type="number" id="detector_sample_fps" min="0.5" max="6" step="0.5"
                oninput="sync('detector_sample_fps_range', this.value); updateEstimate()">
       </div>
-      <div class="hint"><strong>4 recommandé</strong> pour les véhicules rapides (moins de 2s sur l'image).</div>
+      <div class="hint"><strong>2 recommandé.</strong> Plus élevé = plus précis mais plus lent. Ce paramètre a un impact fort sur la durée de traitement.</div>
     </div>
     <div class="field">
       <label>🧠 Modèle de détection</label>
@@ -226,13 +226,13 @@
       <div class="hint">Seuil abaissé automatiquement la nuit. Valeur recommandée : 0.18.</div>
     </div>
     <div class="field">
-      <label>🌙 Mode nuit — rehaussement de contraste (CLAHE)</label>
+      <label>Rehaussement de contraste CLAHE</label>
       <div class="toggle-row">
         <label class="toggle">
           <input type="checkbox" id="night_enhance">
           <span class="slider"></span>
         </label>
-        <span style="font-size:.85rem;color:#666">Améliore la détection sur images sombres (recommandé)</span>
+        <span style="font-size:.85rem;color:#666">Applique CLAHE sur toutes les frames avant l'inférence — améliore la détection de jour comme de nuit (recommandé)</span>
       </div>
     </div>
     <div class="field">
@@ -263,6 +263,22 @@
         <span style="font-size:.85rem;color:#666">Si activé, distingue gauche→droite et droite→gauche</span>
       </div>
     </div>
+    <div class="field">
+      <label for="count_mode">Mode de comptage</label>
+      <select id="count_mode">
+        <option value="presence">Présence — chaque track unique visible ≥ N images = 1 véhicule (recommandé)</option>
+        <option value="crossing">Franchissement de ligne — compte à chaque traversée de la ligne de comptage</option>
+      </select>
+      <div class="hint">Le mode <strong>présence</strong> est recommandé : robuste pour les véhicules qui passent latéralement. Le mode <strong>franchissement</strong> est sensible à l'orientation de la ligne et peut manquer des passages.</div>
+    </div>
+    <div class="field" id="field_min_presence_frames">
+      <label for="min_presence_frames">Présence minimale (images)</label>
+      <div class="range-row">
+        <input type="range" id="min_presence_frames_range" min="1" max="10" step="1" oninput="sync('min_presence_frames', this.value)">
+        <input type="number" id="min_presence_frames" min="1" max="20" oninput="sync('min_presence_frames_range', this.value)">
+      </div>
+      <div class="hint">Nombre d'images minimum pour qu'un track soit compté. <strong>2 recommandé</strong> — élimine les faux positifs sans manquer de passages.</div>
+    </div>
 
     <!-- Estimation du temps de traitement -->
     <div class="field" style="margin-top:1.1rem">
@@ -281,12 +297,134 @@
     </div>
   </div>
 
+  <!-- FILTRE AUDIO -->
+  <div class="card">
+    <h2>🔊 Filtre audio</h2>
+    <div class="field">
+      <label>Activer la détection audio</label>
+      <div class="toggle-row">
+        <label class="toggle">
+          <input type="checkbox" id="audio_filter_enabled">
+          <span class="slider"></span>
+        </label>
+        <span style="font-size:.85rem;color:#666">Détecte les segments audio avec activité véhicule pour cibler l'analyse IA et réduire le temps de traitement</span>
+      </div>
+    </div>
+    <div class="field">
+      <label for="audio_sigma_factor">Facteur sigma (sensibilité du seuil)</label>
+      <div class="range-row">
+        <input type="range" id="audio_sigma_factor_range" min="1.0" max="5.0" step="0.1" oninput="sync('audio_sigma_factor', this.value)">
+        <input type="number" id="audio_sigma_factor" min="1.0" max="5.0" step="0.1" oninput="sync('audio_sigma_factor_range', this.value)">
+      </div>
+      <div class="hint">Seuil = médiane + σ × sigma_factor. Valeur haute = moins sensible. <strong>2.0 recommandé.</strong></div>
+    </div>
+    <div class="field">
+      <label for="audio_min_energy_db">Énergie minimale de jour (dB)</label>
+      <div class="range-row">
+        <input type="range" id="audio_min_energy_db_range" min="-80" max="-30" step="1" oninput="sync('audio_min_energy_db', this.value)">
+        <input type="number" id="audio_min_energy_db" min="-80" max="-30" step="1" oninput="sync('audio_min_energy_db_range', this.value)">
+      </div>
+      <div class="hint">Énergie minimale absolue pour qu'un segment soit considéré actif (jour). <strong>-60 dB recommandé.</strong></div>
+    </div>
+    <div class="field">
+      <label for="audio_night_min_energy_db">Énergie minimale de nuit (dB)</label>
+      <div class="range-row">
+        <input type="range" id="audio_night_min_energy_db_range" min="-80" max="-30" step="1" oninput="sync('audio_night_min_energy_db', this.value)">
+        <input type="number" id="audio_night_min_energy_db" min="-80" max="-30" step="1" oninput="sync('audio_night_min_energy_db_range', this.value)">
+      </div>
+      <div class="hint">Seuil abaissé la nuit pour capter les sons faibles. <strong>-70 dB recommandé.</strong></div>
+    </div>
+    <div class="field">
+      <label for="audio_segment_padding">Marge autour des segments audio (secondes)</label>
+      <div class="range-row">
+        <input type="range" id="audio_segment_padding_range" min="0" max="10" step="0.5" oninput="sync('audio_segment_padding', this.value)">
+        <input type="number" id="audio_segment_padding" min="0" max="10" step="0.5" oninput="sync('audio_segment_padding_range', this.value)">
+      </div>
+      <div class="hint">Durée ajoutée avant et après chaque segment actif. <strong>2.5 s recommandé.</strong></div>
+    </div>
+    <div class="field">
+      <label for="audio_calibration_files">Fichiers de calibration du bruit de fond</label>
+      <input type="number" id="audio_calibration_files" min="1" max="50">
+      <div class="hint">Nombre de fichiers récents utilisés pour calibrer le seuil de bruit de fond. <strong>10 recommandé.</strong></div>
+    </div>
+  </div>
+
+  <!-- DÉTECTION NUIT -->
+  <div class="card">
+    <h2>🌙 Détection nuit</h2>
+    <div class="field">
+      <label>Activer la détection automatique nuit/jour</label>
+      <div class="toggle-row">
+        <label class="toggle">
+          <input type="checkbox" id="night_detection_enabled">
+          <span class="slider"></span>
+        </label>
+        <span style="font-size:.85rem;color:#666">Détecte la luminosité et les phares — active le mode nuit dynamiquement selon le contenu de la vidéo</span>
+      </div>
+    </div>
+    <div class="field">
+      <label for="night_brightness_threshold">Seuil de luminosité nuit (0–255)</label>
+      <div class="range-row">
+        <input type="range" id="night_brightness_threshold_range" min="10" max="80" step="1" oninput="sync('night_brightness_threshold', this.value)">
+        <input type="number" id="night_brightness_threshold" min="10" max="80" oninput="sync('night_brightness_threshold_range', this.value)">
+      </div>
+      <div class="hint">Luminosité moyenne en dessous de laquelle l'image est classée nuit. <strong>40 recommandé.</strong></div>
+    </div>
+    <div class="field">
+      <label for="night_twilight_threshold">Seuil de crépuscule (0–255)</label>
+      <div class="range-row">
+        <input type="range" id="night_twilight_threshold_range" min="10" max="100" step="1" oninput="sync('night_twilight_threshold', this.value)">
+        <input type="number" id="night_twilight_threshold" min="10" max="100" oninput="sync('night_twilight_threshold_range', this.value)">
+      </div>
+      <div class="hint">Zone intermédiaire entre nuit et jour (crépuscule/aube). <strong>55 recommandé.</strong></div>
+    </div>
+    <div class="field">
+      <label for="night_flash_sigma">Sensibilité détection de phares (sigma)</label>
+      <div class="range-row">
+        <input type="range" id="night_flash_sigma_range" min="1.0" max="5.0" step="0.1" oninput="sync('night_flash_sigma', this.value)">
+        <input type="number" id="night_flash_sigma" min="1.0" max="5.0" step="0.1" oninput="sync('night_flash_sigma_range', this.value)">
+      </div>
+      <div class="hint">Écart-type pour la détection de pics de luminosité (phares). <strong>2.5 recommandé.</strong></div>
+    </div>
+    <div class="field">
+      <label for="night_min_flash_sep_sec">Séparation minimale entre deux phares (secondes)</label>
+      <div class="range-row">
+        <input type="range" id="night_min_flash_sep_range" min="0.2" max="5.0" step="0.1" oninput="sync('night_min_flash_sep_sec', this.value)">
+        <input type="number" id="night_min_flash_sep_sec" min="0.2" max="5.0" step="0.1" oninput="sync('night_min_flash_sep_range', this.value)">
+      </div>
+      <div class="hint">Durée minimale entre deux détections de phares. <strong>1.0 s recommandé.</strong></div>
+    </div>
+    <div class="field">
+      <label for="night_merge_window_sec">Fenêtre de fusion des phares (secondes)</label>
+      <div class="range-row">
+        <input type="range" id="night_merge_window_range" min="1.0" max="10.0" step="0.5" oninput="sync('night_merge_window_sec', this.value)">
+        <input type="number" id="night_merge_window_sec" min="1.0" max="10.0" step="0.5" oninput="sync('night_merge_window_range', this.value)">
+      </div>
+      <div class="hint">Deux phares détectés dans cette fenêtre sont fusionnés (avant + arrière du même véhicule). <strong>4.0 s recommandé.</strong></div>
+    </div>
+  </div>
+
   <!-- INTERFACE -->
   <div class="card">
     <h2>📊 Interface</h2>
     <div class="field">
       <label for="default_days">Nombre de jours affichés par défaut (vue quotidienne)</label>
       <input type="number" id="default_days" min="1" max="365">
+    </div>
+    <div class="field">
+      <label for="dashboard_username">Identifiant de connexion</label>
+      <input type="text" id="dashboard_username" autocomplete="off">
+      <div class="hint">Laisser vide pour désactiver l'authentification.</div>
+    </div>
+    <div class="field">
+      <label for="dashboard_password">Mot de passe</label>
+      <input type="text" id="dashboard_password" autocomplete="new-password">
+      <div class="hint">Laisser vide pour désactiver l'authentification.</div>
+    </div>
+    <div class="field">
+      <label for="data_retention_days">Rétention des données (jours, 0 = illimitée)</label>
+      <input type="number" id="data_retention_days" min="0" max="3650">
+      <div class="hint">Supprime automatiquement les enregistrements plus anciens que N jours. <strong>0</strong> = conserver toutes les données.</div>
     </div>
     <div class="field">
       <label for="log_level">Niveau de journalisation</label>
@@ -326,13 +464,12 @@ async function updateEstimate() {
     const res  = await fetch('/config/api/estimate');
     const data = await res.json();
     const totalMin  = data.estimated_minutes;
-    const motionMin = data.motion_contribution_min;
     const audioMin  = data.audio_contribution_min ?? 0;
     const detectMin = data.detect_contribution_min;
 
     document.getElementById('est-total').textContent = `~${totalMin} min`;
     document.getElementById('est-detail').textContent =
-      `Mouvement : ${motionMin} min  +  Audio : ${audioMin} min  +  IA : ${detectMin} min`;
+      `Audio : ${audioMin} min  +  IA : ${detectMin} min`;
 
     const bar  = document.getElementById('est-bar');
     const hint = document.getElementById('est-hint');
@@ -399,14 +536,47 @@ async function loadConfig() {
   setVal('timezone_offset', data.location?.timezone_offset);
 
   setVal('default_days', data.dashboard?.default_days);
+  setVal('dashboard_username', data.dashboard?.username);
+  setVal('dashboard_password', data.dashboard?.password);
+  setVal('data_retention_days', data.data?.retention_days);
   setVal('log_level',    data.logging?.level);
 
   document.getElementById('count_direction').checked = !!data.detector?.count_direction;
+
+  const countMode = data.detector?.count_mode || 'presence';
+  setVal('count_mode', countMode);
+  setVal('min_presence_frames',       data.detector?.min_presence_frames);
+  setVal('min_presence_frames_range', data.detector?.min_presence_frames);
 
   const classes = data.detector?.vehicle_classes || [];
   document.querySelectorAll('#vehicle_classes input[type=checkbox]').forEach(cb => {
     cb.checked = classes.includes(cb.value);
   });
+
+  // Audio filter
+  document.getElementById('audio_filter_enabled').checked = data.audio_filter?.enabled !== false;
+  setVal('audio_sigma_factor',        data.audio_filter?.sigma_factor);
+  setVal('audio_sigma_factor_range',  data.audio_filter?.sigma_factor);
+  setVal('audio_min_energy_db',       data.audio_filter?.min_energy_db);
+  setVal('audio_min_energy_db_range', data.audio_filter?.min_energy_db);
+  setVal('audio_night_min_energy_db',       data.audio_filter?.night_min_energy_db);
+  setVal('audio_night_min_energy_db_range', data.audio_filter?.night_min_energy_db);
+  setVal('audio_segment_padding',       data.audio_filter?.segment_padding);
+  setVal('audio_segment_padding_range', data.audio_filter?.segment_padding);
+  setVal('audio_calibration_files', data.audio_filter?.calibration_files);
+
+  // Night detection
+  document.getElementById('night_detection_enabled').checked = data.night_detection?.enabled !== false;
+  setVal('night_brightness_threshold',       data.night_detection?.brightness_threshold);
+  setVal('night_brightness_threshold_range', data.night_detection?.brightness_threshold);
+  setVal('night_twilight_threshold',       data.night_detection?.twilight_threshold);
+  setVal('night_twilight_threshold_range', data.night_detection?.twilight_threshold);
+  setVal('night_flash_sigma',       data.night_detection?.flash_sigma);
+  setVal('night_flash_sigma_range', data.night_detection?.flash_sigma);
+  setVal('night_min_flash_sep_sec',  data.night_detection?.min_flash_sep_sec);
+  setVal('night_min_flash_sep_range', data.night_detection?.min_flash_sep_sec);
+  setVal('night_merge_window_sec',  data.night_detection?.merge_window_sec);
+  setVal('night_merge_window_range', data.night_detection?.merge_window_sec);
 
   updateEstimate();
   _snapshotInitialValues();
@@ -440,7 +610,27 @@ async function saveConfig() {
     timezone_offset:               parseInt(document.getElementById('timezone_offset').value),
     vehicle_classes:               classes,
     count_direction:          document.getElementById('count_direction').checked,
+    count_mode:               document.getElementById('count_mode').value,
+    min_presence_frames:      parseInt(document.getElementById('min_presence_frames').value),
+    // Audio filter
+    audio_filter_enabled:     document.getElementById('audio_filter_enabled').checked,
+    audio_sigma_factor:       parseFloat(document.getElementById('audio_sigma_factor').value),
+    audio_min_energy_db:      parseFloat(document.getElementById('audio_min_energy_db').value),
+    audio_night_min_energy_db: parseFloat(document.getElementById('audio_night_min_energy_db').value),
+    audio_segment_padding:    parseFloat(document.getElementById('audio_segment_padding').value),
+    audio_calibration_files:  parseInt(document.getElementById('audio_calibration_files').value),
+    // Night detection
+    night_detection_enabled:      document.getElementById('night_detection_enabled').checked,
+    night_brightness_threshold:   parseInt(document.getElementById('night_brightness_threshold').value),
+    night_twilight_threshold:     parseInt(document.getElementById('night_twilight_threshold').value),
+    night_flash_sigma:            parseFloat(document.getElementById('night_flash_sigma').value),
+    night_min_flash_sep_sec:      parseFloat(document.getElementById('night_min_flash_sep_sec').value),
+    night_merge_window_sec:       parseFloat(document.getElementById('night_merge_window_sec').value),
+    // Interface
     default_days:             document.getElementById('default_days').value,
+    dashboard_username:       document.getElementById('dashboard_username').value,
+    dashboard_password:       document.getElementById('dashboard_password').value,
+    data_retention_days:      parseInt(document.getElementById('data_retention_days').value || '0'),
     log_level:                document.getElementById('log_level').value,
   };
 
@@ -478,10 +668,9 @@ function showMsg(text, type) {
 }
 
 // ── Boutons dynamiques ─────────────────────────────────────────────
-// IDs des champs dont le changement nécessite un redémarrage complet.
-// Port et chemin DB ne sont pas éditables via l'UI donc la liste est vide
-// pour l'instant — à compléter si ces champs deviennent éditables.
-const RESTART_REQUIRED_IDS = new Set([]);
+// Champs dont le changement nécessite un redémarrage (re-export OpenVINO).
+const RESTART_REQUIRED_IDS    = new Set([]);
+const RESTART_REQUIRED_RADIOS = new Set(['model_name', 'imgsz']);
 
 let _initialValues = {};
 
@@ -490,6 +679,10 @@ function _snapshotInitialValues() {
     const el = document.getElementById(id);
     if (!el) return;
     _initialValues[id] = el.type === 'checkbox' ? el.checked : el.value;
+  });
+  RESTART_REQUIRED_RADIOS.forEach(name => {
+    const el = document.querySelector(`input[name=${name}]:checked`);
+    _initialValues['radio_' + name] = el ? el.value : '';
   });
 }
 
@@ -500,6 +693,11 @@ function _needsRestart() {
     const cur = el.type === 'checkbox' ? el.checked : el.value;
     if (String(cur) !== String(_initialValues[id])) return true;
   }
+  for (const name of RESTART_REQUIRED_RADIOS) {
+    const el = document.querySelector(`input[name=${name}]:checked`);
+    const cur = el ? el.value : '';
+    if (cur !== _initialValues['radio_' + name]) return true;
+  }
   return false;
 }
 
@@ -509,10 +707,15 @@ function updateActionButtons() {
   document.getElementById('btn-save-restart').style.display = restart ? ''     : 'none';
 }
 
-// Attach listeners to all restart-required fields
+// Attach listeners to restart-required fields
 RESTART_REQUIRED_IDS.forEach(id => {
   const el = document.getElementById(id);
   if (el) el.addEventListener('change', updateActionButtons);
+});
+RESTART_REQUIRED_RADIOS.forEach(name => {
+  document.querySelectorAll(`input[name=${name}]`).forEach(el =>
+    el.addEventListener('change', updateActionButtons)
+  );
 });
 
 loadConfig();
