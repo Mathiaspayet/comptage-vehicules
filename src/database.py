@@ -237,6 +237,27 @@ class Database:
                 crossings,
             )
 
+    def get_crossings_for_file(self, filename: str) -> list[dict]:
+        """Return all crossings for a given source file, ordered by timestamp."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT timestamp, vehicle_type, direction, confidence FROM crossings"
+                " WHERE source_file = ? ORDER BY timestamp",
+                (filename,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_processed_files_done(self, limit: int = 300) -> list[dict]:
+        """Return recently processed files for the debug selector."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT filename, processed_at, vehicle_count, audio_segments, detection_mode
+                   FROM processed_files WHERE status = 'done'
+                   ORDER BY processed_at DESC LIMIT ?""",
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def delete_old_crossings(self, days: int) -> int:
         """Delete crossings older than `days` days. Returns count deleted."""
         if days <= 0:

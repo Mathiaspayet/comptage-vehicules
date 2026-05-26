@@ -97,7 +97,7 @@ def create_app(config: Config, db: Database, audio=None) -> Flask:
     app.register_blueprint(config_bp)
 
     # ── Débogage sous /debug ────────────────────────────────────────
-    debug_bp = create_debug_blueprint(config)
+    debug_bp = create_debug_blueprint(config, db, audio)
     app.register_blueprint(debug_bp)
 
     # ── Dashboard ──────────────────────────────────────────────────

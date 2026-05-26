@@ -3,22 +3,35 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Débogage détection — Comptage de véhicules</title>
+  <title>Débogage — Comptage de véhicules</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: system-ui, sans-serif; background: #f4f6f9; color: #222; }
     header { background: #1a3a5c; color: #fff; padding: .75rem 1.5rem; display: flex; align-items: center; gap: 1rem; }
     header h1 { font-size: 1.1rem; flex: 1; }
     .btn-back { background: #2e6da4; color: #fff; border: none; border-radius: 4px; padding: .35rem .8rem; font-size: .82rem; cursor: pointer; text-decoration: none; }
-    main { max-width: 1000px; margin: 1.5rem auto; padding: 0 1rem 2rem; }
+    main { max-width: 1200px; margin: 1.5rem auto; padding: 0 1rem 2rem; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 0; border-bottom: 2px solid #dde3ec; margin-bottom: 1rem; }
+    .tab-btn { background: none; border: none; padding: .6rem 1.2rem; font-size: .9rem; font-weight: 600; color: #666; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: color .15s; }
+    .tab-btn:hover { color: #1a3a5c; }
+    .tab-btn.active { color: #1a3a5c; border-bottom-color: #1a3a5c; }
+
+    /* Cards */
     .card { background: #fff; border-radius: 6px; padding: 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 1rem; }
     .card h2 { font-size: .95rem; color: #1a3a5c; margin-bottom: 1rem; }
+
+    /* Controls */
     .controls { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
-    select, input { padding: .4rem .65rem; border: 1px solid #ccc; border-radius: 4px; font-size: .9rem; }
+    select, input[type=number] { padding: .4rem .65rem; border: 1px solid #ccc; border-radius: 4px; font-size: .9rem; }
     .btn { padding: .45rem .9rem; border: none; border-radius: 4px; font-size: .9rem; cursor: pointer; font-weight: 600; }
     .btn-primary { background: #1a3a5c; color: #fff; }
     .btn-primary:hover { background: #2a5080; }
+    .btn-sm { padding: .3rem .65rem; font-size: .8rem; }
     label { font-size: .82rem; color: #555; }
+
+    /* Frame detect (tab 1) */
     #img-wrap { background: #000; border-radius: 4px; overflow: hidden; margin-top: .75rem; text-align: center; min-height: 100px; display: flex; align-items: center; justify-content: center; }
     #img-wrap img { max-width: 100%; display: block; }
     #img-wrap .placeholder { color: #666; font-size: .9rem; padding: 2rem; }
@@ -37,57 +50,177 @@
     .legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: .8rem; margin-top: .5rem; }
     .legend span { display: flex; align-items: center; gap: .3rem; }
     .dot { width: 12px; height: 4px; border-radius: 2px; display: inline-block; }
+
+    /* Analyse de fichier (tab 2) */
+    .analyze-layout { display: grid; grid-template-columns: 360px 1fr; gap: 1rem; align-items: start; }
+    @media (max-width: 900px) { .analyze-layout { grid-template-columns: 1fr; } }
+
+    .segment-panel { background: #fff; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,.08); overflow: hidden; }
+    .segment-panel-header { padding: .65rem 1rem; background: #f1f5f9; border-bottom: 1px solid #e2e8ef; font-size: .82rem; font-weight: 700; color: #444; text-transform: uppercase; letter-spacing: .05em; }
+    .segment-list { max-height: 600px; overflow-y: auto; }
+    .segment-row { padding: .6rem 1rem; border-bottom: 1px solid #f0f4f8; cursor: pointer; transition: background .1s; display: flex; align-items: flex-start; gap: .75rem; }
+    .segment-row:last-child { border-bottom: none; }
+    .segment-row:hover { background: #f0f7ff; }
+    .segment-row.selected { background: #dbeafe; border-left: 3px solid #1a3a5c; }
+    .segment-row.no-vehicle { background: #fffbeb; }
+    .segment-row.no-vehicle:hover { background: #fef3c7; }
+    .seg-idx { font-size: .75rem; color: #999; font-weight: 700; min-width: 22px; padding-top: .15rem; }
+    .seg-body { flex: 1; min-width: 0; }
+    .seg-time { font-size: .85rem; font-weight: 600; color: #1a3a5c; }
+    .seg-dur { font-size: .75rem; color: #888; margin-left: .35rem; }
+    .seg-vehicles { margin-top: .25rem; display: flex; flex-wrap: wrap; gap: .25rem; }
+    .vtype-badge { font-size: .72rem; padding: .1rem .4rem; border-radius: 10px; font-weight: 600; }
+    .vtype-car  { background: #dcfce7; color: #166534; }
+    .vtype-truck { background: #dbeafe; color: #1e40af; }
+    .vtype-bus  { background: #fce7f3; color: #9d174d; }
+    .vtype-moto { background: #fff7ed; color: #9a3412; }
+    .vtype-unknown { background: #f1f5f9; color: #475569; }
+    .no-veh-badge { font-size: .72rem; padding: .1rem .45rem; border-radius: 10px; background: #fef9c3; color: #92400e; font-weight: 600; }
+    .seg-count { font-size: .75rem; font-weight: 700; min-width: 38px; text-align: right; padding-top: .15rem; }
+    .seg-count.has-v { color: #16a34a; }
+    .seg-count.no-v  { color: #d97706; }
+
+    /* Video panel */
+    .video-panel { background: #fff; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,.08); padding: 1rem; }
+    #debug-video { width: 100%; border-radius: 4px; background: #000; display: block; max-height: 400px; }
+    .nav-bar { display: flex; align-items: center; gap: .4rem; margin-top: .6rem; flex-wrap: wrap; }
+    .nav-bar .btn-nav { background: #f1f5f9; border: 1px solid #cbd5e1; color: #334155; border-radius: 4px; padding: .3rem .65rem; font-size: .82rem; cursor: pointer; font-weight: 600; }
+    .nav-bar .btn-nav:hover { background: #e2e8f0; }
+    #time-display { font-size: .85rem; color: #666; font-variant-numeric: tabular-nums; flex: 1; text-align: center; }
+    .analyze-btn { width: 100%; margin-top: .6rem; }
+    #yolo-result { margin-top: .75rem; }
+    #yolo-img { width: 100%; border-radius: 4px; display: block; }
+    .yolo-detections { margin-top: .5rem; font-size: .82rem; display: flex; flex-wrap: wrap; gap: .3rem; }
+
+    /* Summary bar */
+    .summary-bar { display: flex; gap: 1.5rem; flex-wrap: wrap; padding: .75rem 1rem; background: #f8fafc; border: 1px solid #e2e8ef; border-radius: 6px; margin-bottom: 1rem; font-size: .85rem; }
+    .summary-item strong { color: #1a3a5c; }
+
+    #analyze-status { font-size: .85rem; color: #666; margin-top: .5rem; min-height: 1.2em; }
   </style>
 </head>
 <body>
 <header>
-  <h1>🔍 Débogage — Test de détection</h1>
+  <h1>🔍 Débogage</h1>
   <a class="btn-back" href="/">← Tableau de bord</a>
 </header>
 <main>
-  <div class="card">
-    <h2>Paramètres du test</h2>
-    <div class="controls">
-      <label>Vidéo :
-        <select id="video-select" style="max-width:320px"><option>Chargement…</option></select>
-      </label>
-      <label>Seconde :
-        <input type="number" id="frame-sec" value="10" min="0" max="600" style="width:70px">
-      </label>
-      <label>Seuil confiance :
-        <input type="number" id="conf" value="0.15" min="0.05" max="0.95" step="0.05" style="width:70px">
-        <span style="font-size:.75rem;color:#888">(0.15 = très permissif pour le debug)</span>
-      </label>
-      <button class="btn btn-primary" onclick="runDetect()">▶ Lancer la détection</button>
-    </div>
-    <div id="status"></div>
-    <div class="legend">
-      <span><span class="dot" style="background:#00ff00"></span> ROI (zone d'intérêt)</span>
-      <span><span class="dot" style="background:#00ffff;height:3px"></span> Ligne de comptage</span>
-      <span><span class="dot" style="background:#00c800"></span> Véhicule détecté</span>
-      <span><span class="dot" style="background:#888"></span> Autre objet (ignoré)</span>
-    </div>
-    <div id="img-wrap"><div class="placeholder">L'image annotée apparaîtra ici après le test.</div></div>
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('detect')">Test de détection</button>
+    <button class="tab-btn" onclick="switchTab('analyse')">Analyse d'un fichier traité</button>
   </div>
 
-  <div class="result-grid" id="results" style="display:none">
-    <div class="result-box">
-      <h3>🚗 Véhicules détectés</h3>
-      <div id="vehicles-list"></div>
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- ONGLET 1 — Test de détection frame -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <div id="tab-detect">
+    <div class="card">
+      <h2>Paramètres du test</h2>
+      <div class="controls">
+        <label>Vidéo :
+          <select id="video-select" style="max-width:340px"><option>Chargement…</option></select>
+        </label>
+        <label>Seconde :
+          <input type="number" id="frame-sec" value="10" min="0" max="3600" style="width:70px">
+        </label>
+        <label>Seuil confiance :
+          <input type="number" id="conf" value="0.15" min="0.05" max="0.95" step="0.05" style="width:70px">
+          <span style="font-size:.75rem;color:#888">(0.15 = très permissif)</span>
+        </label>
+        <button class="btn btn-primary" onclick="runDetect()">▶ Lancer</button>
+      </div>
+      <div id="status"></div>
+      <div class="legend">
+        <span><span class="dot" style="background:#00ff00"></span> ROI (zone d'intérêt)</span>
+        <span><span class="dot" style="background:#00c800"></span> Véhicule détecté</span>
+        <span><span class="dot" style="background:#888"></span> Autre objet (ignoré)</span>
+      </div>
+      <div id="img-wrap"><div class="placeholder">L'image annotée apparaîtra ici après le test.</div></div>
     </div>
-    <div class="result-box">
-      <h3>📦 Autres objets (non comptés)</h3>
-      <div id="others-list"></div>
+
+    <div class="result-grid" id="results" style="display:none">
+      <div class="result-box">
+        <h3>🚗 Véhicules détectés</h3>
+        <div id="vehicles-list"></div>
+      </div>
+      <div class="result-box">
+        <h3>📦 Autres objets (non comptés)</h3>
+        <div id="others-list"></div>
+      </div>
+    </div>
+    <div class="hint-box" id="hint-box" style="display:none"></div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- ONGLET 2 — Analyse d'un fichier traité -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <div id="tab-analyse" style="display:none">
+    <div class="card">
+      <h2>Sélectionner un fichier traité</h2>
+      <div class="controls">
+        <label style="flex:1">Fichier :
+          <select id="file-select" style="width:100%;max-width:560px"><option value="">Chargement…</option></select>
+        </label>
+        <button class="btn btn-primary" onclick="analyzeFile()">🔍 Analyser</button>
+      </div>
+      <div id="analyze-status"></div>
+    </div>
+
+    <div id="analyze-results" style="display:none">
+      <div class="summary-bar" id="analyze-summary"></div>
+      <div class="analyze-layout">
+
+        <!-- Segment list -->
+        <div class="segment-panel">
+          <div class="segment-panel-header">Segments audio détectés</div>
+          <div class="segment-list" id="segment-list"></div>
+        </div>
+
+        <!-- Video + YOLO -->
+        <div class="video-panel">
+          <video id="debug-video" controls preload="metadata">
+            Votre navigateur ne supporte pas la lecture vidéo.
+          </video>
+          <div class="nav-bar">
+            <button class="btn-nav" onclick="seekRel(-10)">-10s</button>
+            <button class="btn-nav" onclick="seekRel(-2)">-2s</button>
+            <span id="time-display">—</span>
+            <button class="btn-nav" onclick="seekRel(+2)">+2s</button>
+            <button class="btn-nav" onclick="seekRel(+10)">+10s</button>
+          </div>
+          <button class="btn btn-primary analyze-btn" onclick="analyzeCurrentFrame()">
+            🔬 Analyser cette frame (YOLO)
+          </button>
+          <div id="yolo-result" style="display:none">
+            <img id="yolo-img" alt="Frame annotée YOLO">
+            <div class="yolo-detections" id="yolo-detections"></div>
+          </div>
+        </div>
+
+      </div>
     </div>
   </div>
 
-  <div class="hint-box" id="hint-box" style="display:none"></div>
 </main>
+
 <script>
-fetch('/calibration/api/videos').then(r=>r.json()).then(data=>{
+// ─── State ───────────────────────────────────────────────────────────────────
+let currentAnalyzeFile = null;
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.getElementById('tab-detect').style.display  = name === 'detect'  ? '' : 'none';
+  document.getElementById('tab-analyse').style.display = name === 'analyse' ? '' : 'none';
+  document.querySelectorAll('.tab-btn').forEach((btn, i) => {
+    btn.classList.toggle('active', (i === 0 && name === 'detect') || (i === 1 && name === 'analyse'));
+  });
+}
+
+// ─── Onglet 1 : liste des vidéos disponibles ──────────────────────────────────
+fetch('/calibration/api/videos').then(r => r.json()).then(data => {
   const sel = document.getElementById('video-select');
-  sel.innerHTML = data.videos.length
-    ? data.videos.map(v=>`<option value="${v}">${v}</option>`).join('')
+  sel.innerHTML = data.videos && data.videos.length
+    ? data.videos.map(v => `<option value="${v}">${v}</option>`).join('')
     : '<option>Aucune vidéo trouvée</option>';
 });
 
@@ -96,7 +229,7 @@ async function runDetect() {
   const sec   = document.getElementById('frame-sec').value;
   const conf  = document.getElementById('conf').value;
 
-  document.getElementById('status').textContent = '⏳ Analyse en cours (peut prendre 20–40s la première fois, YOLO se charge)…';
+  document.getElementById('status').textContent = '⏳ Analyse en cours…';
   document.getElementById('results').style.display = 'none';
   document.getElementById('hint-box').style.display = 'none';
   document.getElementById('img-wrap').innerHTML = '<div class="placeholder">⏳ Chargement…</div>';
@@ -109,56 +242,201 @@ async function runDetect() {
     return;
   }
 
-  // Image
   const img = document.createElement('img');
   img.src = data.image;
   const wrap = document.getElementById('img-wrap');
   wrap.innerHTML = '';
   wrap.appendChild(img);
 
-  // Véhicules
-  const vList = document.getElementById('vehicles-list');
-  vList.innerHTML = data.vehicles.length
+  document.getElementById('vehicles-list').innerHTML = data.vehicles.length
     ? data.vehicles.map(d => {
         const cls = d.conf > 0.5 ? 'ok' : d.conf > 0.3 ? '' : 'low';
         return `<div class="detection-item"><span>${d.name}</span><span class="conf-badge ${cls}">${(d.conf*100).toFixed(0)}%</span></div>`;
       }).join('')
     : '<div class="empty">Aucun véhicule détecté à ce seuil.</div>';
 
-  // Autres
-  const oList = document.getElementById('others-list');
-  oList.innerHTML = data.other_detections.length
+  document.getElementById('others-list').innerHTML = data.other_detections.length
     ? data.other_detections.map(d => `<div class="detection-item"><span>${d.name}</span><span class="conf-badge low">${(d.conf*100).toFixed(0)}%</span></div>`).join('')
     : '<div class="empty">Rien d\'autre détecté.</div>';
 
   document.getElementById('results').style.display = '';
 
-  // Hint
-  const hint = buildHint(data);
+  const hint = buildDetectHint(data);
   if (hint) {
     document.getElementById('hint-box').innerHTML = hint;
     document.getElementById('hint-box').style.display = '';
   }
 
   document.getElementById('status').textContent =
-    `✅ ${data.vehicles.length} véhicule(s) détecté(s) sur cette frame (seuil ${(data.conf_used*100).toFixed(0)}%) — source : ${data.source}`;
+    `✅ ${data.vehicles.length} véhicule(s) sur cette frame (seuil ${(data.conf_used*100).toFixed(0)}%) — ${data.source}`;
 }
 
-function buildHint(data) {
+function buildDetectHint(data) {
   const hints = [];
   if (data.vehicles.length === 0 && data.other_detections.length === 0) {
-    hints.push('<strong>Aucune détection du tout.</strong> Soit la frame est vide (aucun véhicule visible), soit le modèle YOLO n\'est pas encore chargé. Vérifiez le Journal — vous devriez voir une ligne "Chargement du modèle".');
+    hints.push('<strong>Aucune détection.</strong> Soit la frame est vide, soit YOLO n\'est pas encore chargé. Vérifiez le Journal.');
   }
   if (data.vehicles.length === 0 && data.other_detections.length > 0) {
-    hints.push('<strong>Objets détectés mais aucun véhicule.</strong> Les véhicules comptés sont : voiture, camion, bus, moto. Vérifiez que la frame contient bien un de ces types de véhicules.');
+    hints.push('<strong>Objets détectés mais aucun véhicule.</strong> Les classes comptées sont : voiture, camion, bus, moto.');
   }
   if (data.vehicles.length > 0) {
-    hints.push(`<strong>${data.vehicles.length} véhicule(s) visible(s) sur cette frame.</strong> Si le comptage ne fonctionne pas, le problème vient probablement de la <strong>ligne de comptage</strong> (en cyan) : vérifiez qu'elle coupe bien la trajectoire des véhicules. Utilisez l'outil de <a href="/calibration/">calibration</a> pour la repositionner.`);
+    hints.push(`<strong>${data.vehicles.length} véhicule(s) visible(s) sur cette frame.</strong> Si le comptage ne correspond pas, vérifiez la <strong>zone ROI</strong> dans l'<a href="/calibration/">outil de calibration</a>, ou ajustez le seuil de confiance dans la configuration.`);
   }
   if (data.vehicles.some(d => d.conf < 0.3)) {
-    hints.push('Certains véhicules ont une confiance très faible (&lt;30%). En mode normal (seuil 0.35), ils seraient ignorés. Essayez un seuil plus bas dans la configuration.');
+    hints.push('Certains véhicules ont une confiance très faible (&lt;30%). En mode normal ils seraient ignorés — essayez un seuil plus bas dans la configuration.');
   }
   return hints.map(h => `<p style="margin-bottom:.4rem">${h}</p>`).join('');
+}
+
+// ─── Onglet 2 : liste des fichiers traités ────────────────────────────────────
+fetch('/debug/api/files').then(r => r.json()).then(data => {
+  const sel = document.getElementById('file-select');
+  if (!data.files || data.files.length === 0) {
+    sel.innerHTML = '<option value="">Aucun fichier traité</option>';
+    return;
+  }
+  sel.innerHTML = data.files.map(f => {
+    const dt = f.processed_at ? f.processed_at.replace('T', ' ').slice(0, 16) : '';
+    const mode = f.detection_mode ? ` · ${f.detection_mode}` : '';
+    const v = f.vehicle_count != null ? ` · ${f.vehicle_count} veh` : '';
+    return `<option value="${f.filename}">${f.filename}  (${dt}${v}${mode})</option>`;
+  }).join('');
+}).catch(() => {
+  document.getElementById('file-select').innerHTML = '<option value="">Erreur de chargement</option>';
+});
+
+async function analyzeFile() {
+  const filename = document.getElementById('file-select').value;
+  if (!filename) return;
+
+  currentAnalyzeFile = filename;
+  document.getElementById('analyze-status').textContent = '⏳ Analyse audio en cours… (peut prendre 15–30s)';
+  document.getElementById('analyze-results').style.display = 'none';
+
+  let data;
+  try {
+    const res = await fetch(`/debug/api/analyze?file=${encodeURIComponent(filename)}`);
+    data = await res.json();
+  } catch (e) {
+    document.getElementById('analyze-status').textContent = '❌ Erreur réseau : ' + e;
+    return;
+  }
+
+  if (data.error) {
+    document.getElementById('analyze-status').textContent = '❌ ' + data.error;
+    return;
+  }
+
+  document.getElementById('analyze-status').textContent =
+    `✅ ${data.total_segments} segments analysés · ${data.total_vehicles} véhicule(s) en DB`;
+
+  // Summary bar
+  const fpCount = data.segments.filter(s => s.crossings.length === 0).length;
+  const fpPct = data.total_segments > 0 ? Math.round(fpCount / data.total_segments * 100) : 0;
+  document.getElementById('analyze-summary').innerHTML = `
+    <div class="summary-item"><strong>${data.total_segments}</strong> segments audio</div>
+    <div class="summary-item"><strong>${data.total_vehicles}</strong> véhicules détectés (YOLO/nuit)</div>
+    <div class="summary-item" title="Segments audio sans aucun véhicule détecté dans la DB">
+      <strong style="color:${fpCount > 0 ? '#d97706' : '#16a34a'}">${fpCount}</strong>
+      segments sans véhicule (${fpPct}% — potentiels faux positifs audio)
+    </div>
+    ${data.unmatched_crossings > 0
+      ? `<div class="summary-item" title="Véhicules DB hors de tout segment audio"><strong style="color:#d97706">${data.unmatched_crossings}</strong> véhicule(s) hors segments</div>`
+      : ''}
+  `;
+
+  // Segment list
+  renderSegments(data.segments, filename);
+
+  // Video player
+  const video = document.getElementById('debug-video');
+  video.src = `/debug/video/${encodeURIComponent(filename)}`;
+  video.load();
+
+  document.getElementById('analyze-results').style.display = '';
+  document.getElementById('yolo-result').style.display = 'none';
+}
+
+function renderSegments(segments, filename) {
+  const list = document.getElementById('segment-list');
+  list.innerHTML = segments.map(seg => {
+    const hasV = seg.crossings.length > 0;
+    const rowClass = hasV ? 'segment-row' : 'segment-row no-vehicle';
+    const countClass = hasV ? 'seg-count has-v' : 'seg-count no-v';
+    const countLabel = hasV ? `${seg.crossings.length} veh` : '⚠ 0';
+
+    const types = {};
+    seg.crossings.forEach(c => { types[c.vehicle_type] = (types[c.vehicle_type] || 0) + 1; });
+    const typeBadges = Object.entries(types).map(([t, n]) => {
+      const cls = t === 'car' ? 'vtype-car' : t === 'truck' ? 'vtype-truck' : t === 'bus' ? 'vtype-bus' : t.includes('moto') ? 'vtype-moto' : 'vtype-unknown';
+      const label = t === 'car' ? 'voiture' : t === 'truck' ? 'camion' : t;
+      return `<span class="vtype-badge ${cls}">${label}${n > 1 ? ' ×' + n : ''}</span>`;
+    }).join('');
+    const noVBadge = !hasV ? '<span class="no-veh-badge">faux positif audio ?</span>' : '';
+
+    return `<div class="${rowClass}" onclick="seekToSegment(${seg.start}, ${seg.idx})">
+      <div class="seg-idx">#${seg.idx + 1}</div>
+      <div class="seg-body">
+        <span class="seg-time">${fmtTime(seg.start)} → ${fmtTime(seg.end)}</span>
+        <span class="seg-dur">${seg.duration}s</span>
+        <div class="seg-vehicles">${typeBadges}${noVBadge}</div>
+      </div>
+      <div class="${countClass}">${countLabel}</div>
+    </div>`;
+  }).join('');
+}
+
+function fmtTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  const ms = Math.floor((sec % 1) * 10);
+  return `${m}:${String(s).padStart(2, '0')}.${ms}`;
+}
+
+function seekToSegment(startSec, idx) {
+  const video = document.getElementById('debug-video');
+  // On recule de 2s pour voir l'approche
+  video.currentTime = Math.max(0, startSec - 2);
+  video.play().catch(() => {});
+
+  // Highlight la ligne sélectionnée
+  document.querySelectorAll('.segment-row').forEach((el, i) => {
+    el.classList.toggle('selected', i === idx);
+  });
+}
+
+function seekRel(delta) {
+  const video = document.getElementById('debug-video');
+  if (video.src) video.currentTime = Math.max(0, video.currentTime + delta);
+}
+
+// Sync time display
+document.getElementById('debug-video').addEventListener('timeupdate', function() {
+  document.getElementById('time-display').textContent = fmtTime(this.currentTime) + ' / ' + fmtTime(this.duration || 0);
+});
+
+async function analyzeCurrentFrame() {
+  if (!currentAnalyzeFile) return;
+  const video = document.getElementById('debug-video');
+  const sec = video.currentTime.toFixed(1);
+  const conf = 0.15;
+
+  document.getElementById('yolo-result').style.display = 'none';
+
+  const res  = await fetch(`/debug/api/detect?video=${encodeURIComponent(currentAnalyzeFile)}&second=${sec}&conf=${conf}`);
+  const data = await res.json();
+  if (data.error) { alert('Erreur YOLO : ' + data.error); return; }
+
+  document.getElementById('yolo-img').src = data.image;
+  const det = document.getElementById('yolo-detections');
+  det.innerHTML = data.vehicles.length
+    ? data.vehicles.map(d => {
+        const cls = d.conf > 0.5 ? 'ok' : d.conf > 0.3 ? '' : 'low';
+        return `<span class="conf-badge ${cls}">${d.name} ${(d.conf*100).toFixed(0)}%</span>`;
+      }).join('')
+    : '<span style="color:#999;font-style:italic">Aucun véhicule détecté</span>';
+
+  document.getElementById('yolo-result').style.display = '';
 }
 </script>
 </body>
