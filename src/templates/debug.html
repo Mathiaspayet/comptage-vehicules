@@ -234,6 +234,9 @@
 let currentAnalyzeFile = null;
 let timelineData = null;      // { energy_db, window_sec, threshold_db, duration_sec, segments }
 let selectedSegIdx = -1;      // segment sélectionné dans la timeline
+let tlBg = null;              // ImageData du fond pré-rendu (sans curseur)
+let tlW = 0;                  // largeur utilisée pour tlBg
+let rafPending = false;       // throttle rAF sur timeupdate
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 function switchTab(name) {
@@ -406,7 +409,8 @@ async function analyzeFile() {
   document.getElementById('analyze-results').style.display = '';
   document.getElementById('yolo-result').style.display = 'none';
 
-  requestAnimationFrame(() => drawTimeline(video.currentTime));
+  buildTimelineBackground();
+  drawTimeline(video.currentTime);
 }
 
 function renderSegments(segments, filename) {
@@ -446,20 +450,32 @@ function fmtTime(sec) {
 }
 
 // ─── Timeline canvas ──────────────────────────────────────────────────────────
-function drawTimeline(currentTimeSec) {
+// Pré-rendu du fond (courbe + seuil + segments) — appelé une fois après analyse
+// ou quand la sélection change. Stocké en ImageData pour putImageData rapide.
+function buildTimelineBackground() {
   if (!timelineData) return;
   const canvas = document.getElementById('audio-timeline');
   const W = canvas.offsetWidth || canvas.parentElement.clientWidth;
   if (W < 10) return;
-  canvas.width = W;
   const H = canvas.height;
-  const ctx = canvas.getContext('2d');
 
+  // Redimensionner seulement si nécessaire (évite le reflow)
+  if (canvas.width !== W) canvas.width = W;
+  tlW = W;
+
+  const ctx = canvas.getContext('2d');
   const { energy_db, window_sec, threshold_db, duration_sec, segments } = timelineData;
   if (!energy_db || energy_db.length === 0) return;
 
-  const minDb = Math.min(...energy_db) - 3;
-  const maxDb = Math.max(threshold_db != null ? threshold_db + 8 : -20, Math.max(...energy_db) + 3);
+  // min/max sans spread (évite stack overflow sur grands tableaux)
+  let minDb = energy_db[0], maxDb = energy_db[0];
+  for (let i = 1; i < energy_db.length; i++) {
+    if (energy_db[i] < minDb) minDb = energy_db[i];
+    if (energy_db[i] > maxDb) maxDb = energy_db[i];
+  }
+  minDb -= 3;
+  maxDb = Math.max(threshold_db != null ? threshold_db + 8 : -20, maxDb + 3);
+
   const toX = sec => (sec / duration_sec) * W;
   const toY = db  => H - ((db - minDb) / (maxDb - minDb)) * H;
 
@@ -467,20 +483,19 @@ function drawTimeline(currentTimeSec) {
   ctx.fillStyle = '#1a2535';
   ctx.fillRect(0, 0, W, H);
 
-  // Segments actifs (vert semi-transparent, sélectionné en jaune)
+  // Segments (vert, sélectionné en jaune)
   segments.forEach((seg, i) => {
     const x1 = toX(seg.start), x2 = toX(seg.end);
     ctx.fillStyle = i === selectedSegIdx ? 'rgba(251,191,36,.35)' : 'rgba(22,163,74,.25)';
     ctx.fillRect(x1, 0, x2 - x1, H);
   });
 
-  // Courbe énergie (remplie sous la courbe)
+  // Remplissage sous la courbe
   ctx.beginPath();
-  energy_db.forEach((db, i) => {
-    const x = toX(i * window_sec);
-    const y = toY(db);
+  for (let i = 0; i < energy_db.length; i++) {
+    const x = toX(i * window_sec), y = toY(energy_db[i]);
     i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-  });
+  }
   ctx.lineTo(toX((energy_db.length - 1) * window_sec), H);
   ctx.lineTo(0, H);
   ctx.closePath();
@@ -489,11 +504,10 @@ function drawTimeline(currentTimeSec) {
 
   // Trait courbe
   ctx.beginPath();
-  energy_db.forEach((db, i) => {
-    const x = toX(i * window_sec);
-    const y = toY(db);
+  for (let i = 0; i < energy_db.length; i++) {
+    const x = toX(i * window_sec), y = toY(energy_db[i]);
     i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-  });
+  }
   ctx.strokeStyle = '#60a5fa';
   ctx.lineWidth = 1.2;
   ctx.stroke();
@@ -514,14 +528,24 @@ function drawTimeline(currentTimeSec) {
     ctx.fillText(`${threshold_db.toFixed(1)} dB`, 4, Math.max(12, ty - 3));
   }
 
-  // Curseur vidéo
-  if (currentTimeSec != null && duration_sec > 0) {
-    const cx = toX(currentTimeSec);
+  // Snapshot du fond sans curseur
+  tlBg = ctx.getImageData(0, 0, W, H);
+}
+
+// Mise à jour rapide : restore le fond + dessine uniquement le curseur
+function drawTimeline(currentTimeSec) {
+  if (!tlBg || !timelineData) return;
+  const canvas = document.getElementById('audio-timeline');
+  const ctx = canvas.getContext('2d');
+  ctx.putImageData(tlBg, 0, 0);
+
+  if (currentTimeSec != null && timelineData.duration_sec > 0) {
+    const cx = (currentTimeSec / timelineData.duration_sec) * tlW;
     ctx.beginPath();
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = 1.5;
     ctx.moveTo(cx, 0);
-    ctx.lineTo(cx, H);
+    ctx.lineTo(cx, canvas.height);
     ctx.stroke();
   }
 }
@@ -549,21 +573,24 @@ function seekToSegment(startSec, idx) {
     el.classList.toggle('selected', i === idx);
   });
 
+  // Rebâtir le fond (couleur segment sélectionné change) puis curseur
+  buildTimelineBackground();
   drawTimeline(video.currentTime);
 }
 
 function seekRel(delta) {
   const video = document.getElementById('debug-video');
-  if (video.src) {
-    video.currentTime = Math.max(0, video.currentTime + delta);
-    drawTimeline(video.currentTime);
-  }
+  if (video.src) video.currentTime = Math.max(0, video.currentTime + delta);
 }
 
-// Sync time display + timeline cursor
+// Sync time display + timeline cursor (throttlé par rAF — max 60fps)
 document.getElementById('debug-video').addEventListener('timeupdate', function() {
   document.getElementById('time-display').textContent = fmtTime(this.currentTime) + ' / ' + fmtTime(this.duration || 0);
-  drawTimeline(this.currentTime);
+  if (!rafPending) {
+    rafPending = true;
+    const t = this.currentTime;
+    requestAnimationFrame(() => { drawTimeline(t); rafPending = false; });
+  }
 });
 
 async function analyzeCurrentFrame() {
