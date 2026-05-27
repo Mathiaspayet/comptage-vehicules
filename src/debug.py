@@ -156,16 +156,28 @@ def create_debug_blueprint(config: Config, db=None, audio_filter=None) -> Bluepr
         if not filename:
             return jsonify({"error": "Paramètre file manquant"}), 400
 
+        threshold_override = None
+        threshold_param = request.args.get("threshold", "").strip()
+        if threshold_param:
+            try:
+                threshold_override = float(threshold_param)
+            except ValueError:
+                return jsonify({"error": "Paramètre threshold invalide"}), 400
+
         video_file = _find_video_by_name(config.video_folder, filename)
         if video_file is None:
             return jsonify({"error": f"Fichier vidéo introuvable : {filename}"}), 404
 
-        # Re-analyse audio (rapide, ~8s)
         try:
-            segments_raw = audio_filter.analyze_video(video_file)
+            debug_data = audio_filter.analyze_video_debug(video_file, threshold_override=threshold_override)
         except Exception as e:
             logger.error("Erreur analyse audio debug : %s", e)
             return jsonify({"error": f"Erreur analyse audio : {e}"}), 500
+
+        if "error" in debug_data:
+            return jsonify({"error": debug_data["error"]}), 500
+
+        segments_raw = debug_data["segments"]
 
         # Crossings depuis la DB
         crossings = db.get_crossings_for_file(filename)
@@ -217,6 +229,10 @@ def create_debug_blueprint(config: Config, db=None, audio_filter=None) -> Bluepr
             "total_vehicles": len(crossings),
             "unmatched_crossings": len(unmatched),
             "video_start": video_start_dt.isoformat() if video_start_dt else None,
+            "energy_db": debug_data["energy_db"],
+            "window_sec": debug_data["window_sec"],
+            "threshold_db": debug_data["threshold_db"],
+            "duration_sec": debug_data["duration_sec"],
         })
 
     # ------------------------------------------------------------------ #
