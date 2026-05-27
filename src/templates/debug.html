@@ -51,6 +51,14 @@
     .legend span { display: flex; align-items: center; gap: .3rem; }
     .dot { width: 12px; height: 4px; border-radius: 2px; display: inline-block; }
 
+    /* Timeline audio */
+    .timeline-wrap { background: #fff; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,.08); padding: .75rem 1rem; margin-bottom: 1rem; }
+    .timeline-wrap h3 { font-size: .82rem; font-weight: 700; color: #444; text-transform: uppercase; letter-spacing: .05em; margin-bottom: .5rem; }
+    #audio-timeline { display: block; width: 100%; border-radius: 4px; cursor: crosshair; }
+    .timeline-legend { display: flex; gap: 1.2rem; flex-wrap: wrap; font-size: .75rem; color: #666; margin-top: .4rem; }
+    .timeline-legend span { display: flex; align-items: center; gap: .3rem; }
+    .tl-dot { width: 20px; height: 3px; display: inline-block; border-radius: 2px; }
+
     /* Analyse de fichier (tab 2) */
     .analyze-layout { display: grid; grid-template-columns: 360px 1fr; gap: 1rem; align-items: start; }
     @media (max-width: 900px) { .analyze-layout { grid-template-columns: 1fr; } }
@@ -159,7 +167,12 @@
       <h2>Sélectionner un fichier traité</h2>
       <div class="controls">
         <label style="flex:1">Fichier :
-          <select id="file-select" style="width:100%;max-width:560px"><option value="">Chargement…</option></select>
+          <select id="file-select" style="width:100%;max-width:480px"><option value="">Chargement…</option></select>
+        </label>
+        <label>Seuil audio (dB) :
+          <input type="number" id="threshold-input" placeholder="auto" step="0.5" style="width:90px"
+                 title="Laisser vide = seuil calibré automatiquement">
+          <button class="btn btn-sm" onclick="resetThreshold()" title="Revenir au seuil auto">↺</button>
         </label>
         <button class="btn btn-primary" onclick="analyzeFile()">🔍 Analyser</button>
       </div>
@@ -168,6 +181,19 @@
 
     <div id="analyze-results" style="display:none">
       <div class="summary-bar" id="analyze-summary"></div>
+
+      <!-- Timeline audio -->
+      <div class="timeline-wrap">
+        <h3>Timeline audio — <span id="timeline-filename" style="font-weight:400;text-transform:none;letter-spacing:0;color:#1a3a5c"></span></h3>
+        <canvas id="audio-timeline" height="90"></canvas>
+        <div class="timeline-legend">
+          <span><span class="tl-dot" style="background:#60a5fa"></span>Énergie (dBFS)</span>
+          <span><span class="tl-dot" style="background:#f87171;height:2px;border-top:2px dashed #f87171"></span>Seuil de détection</span>
+          <span><span class="tl-dot" style="background:rgba(22,163,74,.4)"></span>Segment actif</span>
+          <span><span class="tl-dot" style="background:#fbbf24"></span>Segment sélectionné</span>
+        </div>
+      </div>
+
       <div class="analyze-layout">
 
         <!-- Segment list -->
@@ -206,6 +232,8 @@
 <script>
 // ─── State ───────────────────────────────────────────────────────────────────
 let currentAnalyzeFile = null;
+let timelineData = null;      // { energy_db, window_sec, threshold_db, duration_sec, segments }
+let selectedSegIdx = -1;      // segment sélectionné dans la timeline
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 function switchTab(name) {
@@ -305,17 +333,25 @@ fetch('/debug/api/files').then(r => r.json()).then(data => {
   document.getElementById('file-select').innerHTML = '<option value="">Erreur de chargement</option>';
 });
 
+function resetThreshold() {
+  document.getElementById('threshold-input').value = '';
+}
+
 async function analyzeFile() {
   const filename = document.getElementById('file-select').value;
   if (!filename) return;
 
+  const thresholdVal = document.getElementById('threshold-input').value.trim();
+  const thresholdParam = thresholdVal ? `&threshold=${encodeURIComponent(thresholdVal)}` : '';
+
   currentAnalyzeFile = filename;
+  selectedSegIdx = -1;
   document.getElementById('analyze-status').textContent = '⏳ Analyse audio en cours… (peut prendre 15–30s)';
   document.getElementById('analyze-results').style.display = 'none';
 
   let data;
   try {
-    const res = await fetch(`/debug/api/analyze?file=${encodeURIComponent(filename)}`);
+    const res = await fetch(`/debug/api/analyze?file=${encodeURIComponent(filename)}${thresholdParam}`);
     data = await res.json();
   } catch (e) {
     document.getElementById('analyze-status').textContent = '❌ Erreur réseau : ' + e;
@@ -327,8 +363,13 @@ async function analyzeFile() {
     return;
   }
 
+  // Pré-remplir le champ seuil avec la valeur utilisée (si pas déjà renseigné)
+  if (!thresholdVal && data.threshold_db != null) {
+    document.getElementById('threshold-input').placeholder = `auto (${data.threshold_db.toFixed(1)} dB)`;
+  }
+
   document.getElementById('analyze-status').textContent =
-    `✅ ${data.total_segments} segments analysés · ${data.total_vehicles} véhicule(s) en DB`;
+    `✅ ${data.total_segments} segments analysés · ${data.total_vehicles} véhicule(s) en DB · seuil ${data.threshold_db != null ? data.threshold_db.toFixed(1) + ' dB' : 'N/A'}`;
 
   // Summary bar
   const fpCount = data.segments.filter(s => s.crossings.length === 0).length;
@@ -353,8 +394,19 @@ async function analyzeFile() {
   video.src = `/debug/video/${encodeURIComponent(filename)}`;
   video.load();
 
+  // Timeline
+  timelineData = {
+    energy_db:    data.energy_db,
+    window_sec:   data.window_sec,
+    threshold_db: data.threshold_db,
+    duration_sec: data.duration_sec,
+    segments:     data.segments,
+  };
+  document.getElementById('timeline-filename').textContent = filename;
   document.getElementById('analyze-results').style.display = '';
   document.getElementById('yolo-result').style.display = 'none';
+
+  requestAnimationFrame(() => drawTimeline(video.currentTime));
 }
 
 function renderSegments(segments, filename) {
@@ -393,26 +445,125 @@ function fmtTime(sec) {
   return `${m}:${String(s).padStart(2, '0')}.${ms}`;
 }
 
+// ─── Timeline canvas ──────────────────────────────────────────────────────────
+function drawTimeline(currentTimeSec) {
+  if (!timelineData) return;
+  const canvas = document.getElementById('audio-timeline');
+  const W = canvas.offsetWidth || canvas.parentElement.clientWidth;
+  if (W < 10) return;
+  canvas.width = W;
+  const H = canvas.height;
+  const ctx = canvas.getContext('2d');
+
+  const { energy_db, window_sec, threshold_db, duration_sec, segments } = timelineData;
+  if (!energy_db || energy_db.length === 0) return;
+
+  const minDb = Math.min(...energy_db) - 3;
+  const maxDb = Math.max(threshold_db != null ? threshold_db + 8 : -20, Math.max(...energy_db) + 3);
+  const toX = sec => (sec / duration_sec) * W;
+  const toY = db  => H - ((db - minDb) / (maxDb - minDb)) * H;
+
+  // Fond
+  ctx.fillStyle = '#1a2535';
+  ctx.fillRect(0, 0, W, H);
+
+  // Segments actifs (vert semi-transparent, sélectionné en jaune)
+  segments.forEach((seg, i) => {
+    const x1 = toX(seg.start), x2 = toX(seg.end);
+    ctx.fillStyle = i === selectedSegIdx ? 'rgba(251,191,36,.35)' : 'rgba(22,163,74,.25)';
+    ctx.fillRect(x1, 0, x2 - x1, H);
+  });
+
+  // Courbe énergie (remplie sous la courbe)
+  ctx.beginPath();
+  energy_db.forEach((db, i) => {
+    const x = toX(i * window_sec);
+    const y = toY(db);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.lineTo(toX((energy_db.length - 1) * window_sec), H);
+  ctx.lineTo(0, H);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(96,165,250,.18)';
+  ctx.fill();
+
+  // Trait courbe
+  ctx.beginPath();
+  energy_db.forEach((db, i) => {
+    const x = toX(i * window_sec);
+    const y = toY(db);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = '#60a5fa';
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+
+  // Ligne de seuil
+  if (threshold_db != null) {
+    const ty = toY(threshold_db);
+    ctx.beginPath();
+    ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = '#f87171';
+    ctx.lineWidth = 1.5;
+    ctx.moveTo(0, ty);
+    ctx.lineTo(W, ty);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#f87171';
+    ctx.font = '10px system-ui';
+    ctx.fillText(`${threshold_db.toFixed(1)} dB`, 4, Math.max(12, ty - 3));
+  }
+
+  // Curseur vidéo
+  if (currentTimeSec != null && duration_sec > 0) {
+    const cx = toX(currentTimeSec);
+    ctx.beginPath();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.moveTo(cx, 0);
+    ctx.lineTo(cx, H);
+    ctx.stroke();
+  }
+}
+
+// Clic sur timeline → seek vidéo
+document.getElementById('audio-timeline').addEventListener('click', function(e) {
+  if (!timelineData) return;
+  const rect = this.getBoundingClientRect();
+  const ratio = (e.clientX - rect.left) / rect.width;
+  const sec = ratio * timelineData.duration_sec;
+  const video = document.getElementById('debug-video');
+  video.currentTime = Math.max(0, sec);
+});
+
 function seekToSegment(startSec, idx) {
   const video = document.getElementById('debug-video');
   // On recule de 2s pour voir l'approche
   video.currentTime = Math.max(0, startSec - 2);
   video.play().catch(() => {});
 
+  selectedSegIdx = idx;
+
   // Highlight la ligne sélectionnée
   document.querySelectorAll('.segment-row').forEach((el, i) => {
     el.classList.toggle('selected', i === idx);
   });
+
+  drawTimeline(video.currentTime);
 }
 
 function seekRel(delta) {
   const video = document.getElementById('debug-video');
-  if (video.src) video.currentTime = Math.max(0, video.currentTime + delta);
+  if (video.src) {
+    video.currentTime = Math.max(0, video.currentTime + delta);
+    drawTimeline(video.currentTime);
+  }
 }
 
-// Sync time display
+// Sync time display + timeline cursor
 document.getElementById('debug-video').addEventListener('timeupdate', function() {
   document.getElementById('time-display').textContent = fmtTime(this.currentTime) + ' / ' + fmtTime(this.duration || 0);
+  drawTimeline(this.currentTime);
 });
 
 async function analyzeCurrentFrame() {

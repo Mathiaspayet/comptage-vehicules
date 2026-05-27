@@ -115,6 +115,39 @@ class AudioFilter:
         )
         return segments
 
+    def analyze_video_debug(
+        self, video_path: Path, threshold_override: "float | None" = None
+    ) -> dict:
+        """Analyse audio avec retour des données brutes d'énergie pour visualisation debug."""
+        if not self.config.audio_enabled:
+            return {"error": "Filtre audio désactivé."}
+
+        samples = self._extract_audio(video_path)
+        if samples is None or len(samples) < _SAMPLE_RATE:
+            return {"error": "Pas de piste audio utilisable."}
+
+        duration_sec = len(samples) / _SAMPLE_RATE
+        energy_db = self._compute_energy_db(samples)
+
+        video_hour = _hour_from_filename(video_path.name)
+        is_night = _is_night_hour(
+            video_hour, self.config.audio_night_start_hour, self.config.audio_night_end_hour
+        )
+
+        threshold = threshold_override if threshold_override is not None else self._get_threshold(is_night=is_night)
+
+        segments = []
+        if threshold is not None:
+            segments = self._detect_segments(energy_db, threshold, duration_sec)
+
+        return {
+            "segments": segments,
+            "energy_db": energy_db.tolist(),
+            "window_sec": float(self.config.audio_window_sec),
+            "threshold_db": float(threshold) if threshold is not None else None,
+            "duration_sec": round(duration_sec, 1),
+        }
+
     def calibration_info(self) -> dict:
         """Informations de calibration pour le dashboard."""
         cs = self.config.audio_calibration_hour_start
