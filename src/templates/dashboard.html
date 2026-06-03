@@ -149,92 +149,94 @@
 </header>
 
 <main>
-  <!-- ══════════════ ANALYTICS ══════════════ -->
-  <div class="a-section-label">📊 Analyse du trafic</div>
-  <div class="analytics-section">
-    <div class="a-tile">
-      <div class="a-tile-header">
-        <h2>Trafic par créneau horaire</h2>
-        <div class="a-controls">
-          <div class="tpgrp">
-            <button class="tpbtn active" id="hm-mode-avg" onclick="setHmMode('avg')">Moyenne</button>
-            <button class="tpbtn" id="hm-mode-week" onclick="setHmMode('week')">Semaine</button>
-          </div>
-          <span id="hm-period-ctrl" class="a-controls">
-            <button class="tpbtn hm-btn active" onclick="setHeatmapPeriod(7,this)">7j</button>
-            <button class="tpbtn hm-btn" onclick="setHeatmapPeriod(14,this)">14j</button>
-            <button class="tpbtn hm-btn" onclick="setHeatmapPeriod(30,this)">30j</button>
-            <button class="tpbtn hm-btn" onclick="setHeatmapPeriod(90,this)">90j</button>
-          </span>
-          <span id="hm-week-ctrl" class="a-controls" style="display:none">
-            <button class="tpbtn" onclick="hmWeekPrev()">‹</button>
-            <span id="hm-week-label" style="font-size:.82rem;color:#555;min-width:160px;text-align:center">—</span>
-            <button class="tpbtn" onclick="hmWeekNext()">›</button>
-          </span>
-          <select id="heatmap-type" onchange="loadHeatmap()" style="padding:.25rem .45rem;border:1px solid #ccc;border-radius:4px;font-size:.82rem">
-            <option value="all">Tous</option>
-            <option value="car">Voiture</option>
-            <option value="truck">Camion</option>
-            <option value="bus">Bus</option>
-            <option value="motorcycle">Moto</option>
-          </select>
-        </div>
-      </div>
-      <div class="heatmap-wrap">
-        <canvas id="heatmap-canvas"></canvas>
-        <div class="heatmap-tooltip" id="heatmap-tooltip"></div>
-      </div>
-      <div style="display:flex;gap:1rem;margin-top:.5rem;font-size:.75rem;color:#888;align-items:center">
-        <span>Intensité :</span>
-        <div style="display:flex;align-items:center;gap:.4rem">
-          <div style="width:80px;height:10px;background:linear-gradient(to right,#f8fafc,hsl(48,88%,63%),hsl(24,88%,55%),hsl(0,88%,45%));border-radius:2px;border:1px solid #e2e8f0"></div>
-          <span>faible → fort</span>
-        </div>
-      </div>
-    </div>
-    <div class="a-2col">
-      <div class="a-tile">
-        <div class="a-tile-header">
-          <h2>Évolution des types</h2>
-          <div class="a-controls">
-            <button class="tpbtn evo-btn active" onclick="setEvoPeriod(14,this)">14j</button>
-            <button class="tpbtn evo-btn" onclick="setEvoPeriod(30,this)">30j</button>
-            <button class="tpbtn evo-btn" onclick="setEvoPeriod(60,this)">60j</button>
-            <button class="tpbtn evo-btn" onclick="setEvoPeriod(90,this)">90j</button>
-          </div>
-        </div>
-        <canvas id="chart-type-evo" height="160"></canvas>
-      </div>
-      <div class="a-tile">
-        <div class="a-tile-header">
-          <h2>Comparaison de périodes</h2>
-          <div class="a-controls">
-            <button class="tpbtn cmp-btn active" onclick="setCmpPeriod(7,this)">7j</button>
-            <button class="tpbtn cmp-btn" onclick="setCmpPeriod(14,this)">14j</button>
-            <button class="tpbtn cmp-btn" onclick="setCmpPeriod(30,this)">30j</button>
-          </div>
-        </div>
-        <canvas id="chart-comparison" height="160"></canvas>
-        <div style="font-size:.72rem;color:#888;margin-top:.4rem">
-          Moy. journalière par jour de semaine —
-          <span style="display:inline-block;width:12px;height:3px;background:#1a3a5c;vertical-align:middle;border-radius:2px"></span> Récente &nbsp;
-          <span style="display:inline-block;width:12px;height:3px;background:#94a3b8;vertical-align:middle;border-radius:2px"></span> Précédente
-        </div>
-      </div>
-    </div>
-  </div>
-
   <div class="tab-nav">
-    <button class="tab-btn active" onclick="showTab('hourly', this)">Vue horaire</button>
-    <button class="tab-btn" onclick="showTab('daily', this)">Vue quotidienne</button>
+    <button class="tab-btn active" onclick="showTab('analyse', this)">📊 Analyse</button>
+    <button class="tab-btn" onclick="showTab('hourly', this)">Horaire</button>
+    <button class="tab-btn" onclick="showTab('daily', this)">Quotidien</button>
     <button class="tab-btn" onclick="showTab('calendar', this)">📅 Calendrier</button>
     <button class="tab-btn" onclick="showTab('files', this)">📁 Fichiers</button>
     <button class="tab-btn" onclick="showTab('journal', this)">📋 Journal</button>
     <button class="tab-btn" onclick="showTab('audio', this)">🔊 Audio</button>
   </div>
 
+  <!-- ══════════════ ANALYSE ══════════════ -->
+  <div id="tab-analyse">
+    <div class="analytics-section">
+      <div class="a-tile">
+        <div class="a-tile-header">
+          <h2>Trafic par créneau horaire</h2>
+          <div class="a-controls">
+            <div class="tpgrp">
+              <button class="tpbtn active" id="hm-mode-avg" onclick="setHmMode('avg')">Moyenne</button>
+              <button class="tpbtn" id="hm-mode-week" onclick="setHmMode('week')">Semaine</button>
+            </div>
+            <span id="hm-period-ctrl" class="a-controls">
+              <button class="tpbtn hm-btn active" onclick="setHeatmapPeriod(7,this)">7j</button>
+              <button class="tpbtn hm-btn" onclick="setHeatmapPeriod(14,this)">14j</button>
+              <button class="tpbtn hm-btn" onclick="setHeatmapPeriod(30,this)">30j</button>
+              <button class="tpbtn hm-btn" onclick="setHeatmapPeriod(90,this)">90j</button>
+            </span>
+            <span id="hm-week-ctrl" class="a-controls" style="display:none">
+              <button class="tpbtn" onclick="hmWeekPrev()">‹</button>
+              <span id="hm-week-label" style="font-size:.82rem;color:var(--text-2);min-width:160px;text-align:center">—</span>
+              <button class="tpbtn" onclick="hmWeekNext()">›</button>
+            </span>
+            <select id="heatmap-type" onchange="loadHeatmap()" style="padding:.3rem .5rem;border:1px solid var(--border-2);border-radius:var(--r-sm);font-size:.82rem;background:var(--surface);color:var(--text)">
+              <option value="all">Tous</option>
+              <option value="car">Voiture</option>
+              <option value="truck">Camion</option>
+              <option value="bus">Bus</option>
+              <option value="motorcycle">Moto</option>
+            </select>
+          </div>
+        </div>
+        <div class="heatmap-wrap">
+          <canvas id="heatmap-canvas"></canvas>
+          <div class="heatmap-tooltip" id="heatmap-tooltip"></div>
+        </div>
+        <div style="display:flex;gap:1rem;margin-top:.5rem;font-size:.75rem;color:var(--text-3);align-items:center">
+          <span>Intensité :</span>
+          <div style="display:flex;align-items:center;gap:.4rem">
+            <div style="width:80px;height:10px;background:linear-gradient(to right,#f8fafc,hsl(48,88%,63%),hsl(24,88%,55%),hsl(0,88%,45%));border-radius:2px;border:1px solid var(--border)"></div>
+            <span>faible → fort</span>
+          </div>
+        </div>
+      </div>
+      <div class="a-2col">
+        <div class="a-tile">
+          <div class="a-tile-header">
+            <h2>Évolution des types</h2>
+            <div class="a-controls">
+              <button class="tpbtn evo-btn active" onclick="setEvoPeriod(14,this)">14j</button>
+              <button class="tpbtn evo-btn" onclick="setEvoPeriod(30,this)">30j</button>
+              <button class="tpbtn evo-btn" onclick="setEvoPeriod(60,this)">60j</button>
+              <button class="tpbtn evo-btn" onclick="setEvoPeriod(90,this)">90j</button>
+            </div>
+          </div>
+          <canvas id="chart-type-evo" height="160"></canvas>
+        </div>
+        <div class="a-tile">
+          <div class="a-tile-header">
+            <h2>Comparaison de périodes</h2>
+            <div class="a-controls">
+              <button class="tpbtn cmp-btn active" onclick="setCmpPeriod(7,this)">7j</button>
+              <button class="tpbtn cmp-btn" onclick="setCmpPeriod(14,this)">14j</button>
+              <button class="tpbtn cmp-btn" onclick="setCmpPeriod(30,this)">30j</button>
+            </div>
+          </div>
+          <canvas id="chart-comparison" height="160"></canvas>
+          <div style="font-size:.72rem;color:var(--text-3);margin-top:.4rem">
+            Moy. journalière par jour de semaine —
+            <span style="display:inline-block;width:12px;height:3px;background:var(--navy-m);vertical-align:middle;border-radius:2px"></span> Récente &nbsp;
+            <span style="display:inline-block;width:12px;height:3px;background:var(--text-3);vertical-align:middle;border-radius:2px"></span> Précédente
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ══════════════ HORAIRE ══════════════ -->
-  <div id="tab-hourly">
+  <div id="tab-hourly" style="display:none">
     <div class="controls">
       <label>Date : <input type="date" id="date-picker" value="{{ today }}" onchange="loadHourly()"></label>
       <label>Véhicule :
@@ -627,13 +629,15 @@ let filesSortDir = 'desc';
 function showTab(name, btn) {
   document.querySelectorAll('.tab-nav .tab-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  ['hourly','daily','calendar','files','journal','audio'].forEach(t =>
+  ['analyse','hourly','daily','calendar','files','journal','audio'].forEach(t =>
     document.getElementById('tab-'+t).style.display = name === t ? '' : 'none'
   );
   clearInterval(journalTimer);
   clearInterval(journalTimer2);
   clearInterval(filesTimer);
 
+  if (name === 'analyse') { loadHeatmap(); loadTypeEvolution(); loadComparison(); }
+  if (name === 'hourly')   loadHourly();
   if (name === 'daily')    loadDaily();
   if (name === 'calendar') loadCalendar();
   if (name === 'journal') {
@@ -1435,7 +1439,7 @@ function renderCalendar({ year, month, first_weekday, last_day, days }) {
 function calClickDay(dateStr) {
   // Switch to hourly tab and load the selected day
   document.getElementById('date-picker').value = dateStr;
-  const btn = document.querySelector('.tab-nav .tab-btn');  // first button = hourly
+  const btn = document.querySelector('.tab-nav .tab-btn:nth-child(2)');  // second button = hourly
   showTab('hourly', btn);
   loadHourly();
 }
@@ -1443,7 +1447,6 @@ function calClickDay(dateStr) {
 /* ─────────────────────────────────────────────────────────────
    Init
 ───────────────────────────────────────────────────────────── */
-loadHourly();
 loadHeatmap();
 loadTypeEvolution();
 loadComparison();
