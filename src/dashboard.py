@@ -173,6 +173,19 @@ def create_app(config: Config, db: Database, audio=None) -> Flask:
             return jsonify({"error": str(e)}), 500
         return jsonify({"days": days, "data": data})
 
+    @app.route("/api/stats/week_heatmap")
+    def api_week_heatmap():
+        from datetime import date, timedelta
+        date_str = request.args.get("date", date.today().isoformat())
+        vehicle_type = request.args.get("vehicle_type", "all")
+        try:
+            d = date.fromisoformat(date_str)
+            week_start = (d - timedelta(days=d.weekday())).isoformat()
+            data = db.get_week_heatmap_stats(week_start, vehicle_type)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        return jsonify({"week_start": week_start, "data": data})
+
     @app.route("/api/stats/type_evolution")
     def api_type_evolution():
         days = max(1, min(int(request.args.get("days", 30)), 365))

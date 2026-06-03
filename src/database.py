@@ -675,6 +675,28 @@ class Database:
             for r in rows
         ]
 
+    def get_week_heatmap_stats(self, week_start: str, vehicle_type: str = "all") -> list[dict]:
+        """Returns exact counts per (weekday 0=Mon, hour) for the Mon-Sun week of week_start."""
+        from datetime import date, timedelta
+        d = date.fromisoformat(week_start)
+        week_end = (d + timedelta(days=6)).isoformat()
+        tzmod = self._tz_mod()
+        type_filter = "" if vehicle_type == "all" else "AND vehicle_type = :vtype"
+        query = f"""
+            SELECT
+                (CAST(strftime('%w', datetime(timestamp, :tzmod)) AS INTEGER) + 6) % 7 AS weekday,
+                CAST(strftime('%H', datetime(timestamp, :tzmod)) AS INTEGER) AS hour,
+                COUNT(*) AS count
+            FROM crossings
+            WHERE date(datetime(timestamp, :tzmod)) BETWEEN :date_from AND :date_to
+            {type_filter}
+            GROUP BY weekday, hour
+        """
+        params = {"date_from": week_start, "date_to": week_end, "vtype": vehicle_type, "tzmod": tzmod}
+        with self._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+        return [{"weekday": r["weekday"], "hour": r["hour"], "count": r["count"]} for r in rows]
+
     def get_type_evolution(self, days: int = 30) -> list[dict]:
         """Returns per-day, per-vehicle-type counts for the last N days."""
         tzmod = self._tz_mod()
