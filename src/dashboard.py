@@ -163,6 +163,25 @@ def create_app(config: Config, db: Database, audio=None) -> Flask:
             return jsonify({"error": str(e)}), 500
         return jsonify({"days": days, "daily": daily})
 
+    @app.route("/api/stats/heatmap")
+    def api_heatmap():
+        days = max(1, min(int(request.args.get("days", 30)), 365))
+        vehicle_type = request.args.get("vehicle_type", "all")
+        try:
+            data = db.get_heatmap_stats(days, vehicle_type)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        return jsonify({"days": days, "data": data})
+
+    @app.route("/api/stats/type_evolution")
+    def api_type_evolution():
+        days = max(1, min(int(request.args.get("days", 30)), 365))
+        try:
+            data = db.get_type_evolution(days)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        return jsonify({"days": days, "data": data})
+
     @app.route("/api/dates")
     def api_dates():
         try:

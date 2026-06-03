@@ -65,6 +65,14 @@
     .dir-bar-wrap { display:flex; height:16px; border-radius:8px; overflow:hidden; margin:.5rem 0; }
     .dir-bar-ltr { background:#2563eb; transition:width .4s; }
     .dir-bar-rtl { background:#16a34a; transition:width .4s; }
+    /* Trends tab */
+    .heatmap-wrap { position:relative; overflow:hidden; }
+    #heatmap-canvas { display:block; width:100%; cursor:crosshair; }
+    .heatmap-tooltip { position:absolute; background:rgba(15,23,42,.85); color:#fff; font-size:.75rem; padding:.3rem .6rem; border-radius:4px; pointer-events:none; display:none; white-space:nowrap; z-index:10; }
+    .trend-controls { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin-bottom:.9rem; }
+    .tpbtn { padding:.3rem .65rem; border:1px solid #cbd5e1; border-radius:4px; background:#fff; cursor:pointer; font-size:.82rem; }
+    .tpbtn:hover { background:#f1f5f9; }
+    .tpbtn.active { background:#1a3a5c; color:#fff; border-color:#1a3a5c; }
   </style>
 </head>
 <body>
@@ -87,6 +95,7 @@
     <button onclick="showTab('files', this)">📁 Fichiers</button>
     <button onclick="showTab('journal', this)">📋 Journal</button>
     <button onclick="showTab('audio', this)">🔊 Audio</button>
+    <button onclick="showTab('trends', this)">📊 Tendances</button>
   </div>
 
   <!-- ══════════════ HORAIRE ══════════════ -->
@@ -448,6 +457,73 @@
     </div>
   </div>
 
+  <!-- ══════════════ TENDANCES ══════════════ -->
+  <div id="tab-trends" style="display:none">
+
+    <!-- Heatmap -->
+    <div class="chart-box">
+      <h2>Trafic moyen par créneau horaire et jour de semaine</h2>
+      <div class="trend-controls">
+        <span style="font-size:.83rem;color:#555">Période :</span>
+        <button class="tpbtn hm-btn active" onclick="setHeatmapPeriod(7,this)">7 j</button>
+        <button class="tpbtn hm-btn" onclick="setHeatmapPeriod(14,this)">14 j</button>
+        <button class="tpbtn hm-btn" onclick="setHeatmapPeriod(30,this)">30 j</button>
+        <button class="tpbtn hm-btn" onclick="setHeatmapPeriod(90,this)">90 j</button>
+        <label style="font-size:.83rem;color:#555;margin-left:.5rem">Véhicule :
+          <select id="heatmap-type" onchange="loadHeatmap()" style="padding:.25rem .45rem;border:1px solid #ccc;border-radius:4px;font-size:.83rem">
+            <option value="all">Tous</option>
+            <option value="car">Voiture</option>
+            <option value="truck">Camion</option>
+            <option value="bus">Bus</option>
+            <option value="motorcycle">Moto</option>
+          </select>
+        </label>
+      </div>
+      <div class="heatmap-wrap">
+        <canvas id="heatmap-canvas"></canvas>
+        <div class="heatmap-tooltip" id="heatmap-tooltip"></div>
+      </div>
+      <div style="display:flex;gap:1rem;margin-top:.5rem;font-size:.75rem;color:#888;align-items:center">
+        <span>Intensité (passages moyens / créneau) :</span>
+        <div style="display:flex;align-items:center;gap:.4rem">
+          <div style="width:80px;height:10px;background:linear-gradient(to right,#e8f0fa,#1a3a5c);border-radius:2px;border:1px solid #dde3ec"></div>
+          <span>faible → fort</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Évolution des types -->
+    <div class="chart-box">
+      <h2>Évolution des types de véhicules</h2>
+      <div class="trend-controls">
+        <span style="font-size:.83rem;color:#555">Période :</span>
+        <button class="tpbtn evo-btn active" onclick="setEvoPeriod(14,this)">14 j</button>
+        <button class="tpbtn evo-btn" onclick="setEvoPeriod(30,this)">30 j</button>
+        <button class="tpbtn evo-btn" onclick="setEvoPeriod(60,this)">60 j</button>
+        <button class="tpbtn evo-btn" onclick="setEvoPeriod(90,this)">90 j</button>
+      </div>
+      <canvas id="chart-type-evo" height="100"></canvas>
+    </div>
+
+    <!-- Comparaison de périodes -->
+    <div class="chart-box">
+      <h2>Comparaison de deux périodes</h2>
+      <div class="trend-controls">
+        <span style="font-size:.83rem;color:#555">Comparer les</span>
+        <button class="tpbtn cmp-btn active" onclick="setCmpPeriod(7,this)">7 j</button>
+        <button class="tpbtn cmp-btn" onclick="setCmpPeriod(14,this)">14 j</button>
+        <button class="tpbtn cmp-btn" onclick="setCmpPeriod(30,this)">30 j</button>
+        <span style="font-size:.83rem;color:#555">récents vs la période précédente identique</span>
+      </div>
+      <canvas id="chart-comparison" height="80"></canvas>
+      <div style="font-size:.75rem;color:#888;margin-top:.4rem">
+        Moy. journalière par jour de semaine —
+        <span style="display:inline-block;width:14px;height:3px;background:#1a3a5c;vertical-align:middle;border-radius:2px"></span> Période récente &nbsp;
+        <span style="display:inline-block;width:14px;height:3px;background:#94a3b8;vertical-align:middle;border-radius:2px"></span> Période précédente
+      </div>
+    </div>
+  </div>
+
   <div id="crossing-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center">
     <div style="background:#fff;border-radius:8px;padding:1.5rem;max-width:560px;width:90%;max-height:80vh;display:flex;flex-direction:column;gap:.75rem">
       <div style="display:flex;justify-content:space-between;align-items:center">
@@ -465,6 +541,9 @@
    Globals
 ───────────────────────────────────────────────────────────── */
 let chartHourly = null, chartDaily = null;
+let chartTypeEvo = null, chartComparison = null;
+let heatmapDays = 7, evoDays = 14, cmpDays = 7;
+let heatmapRawData = null;
 let allLogLines = [];
 let journalTimer = null, journalTimer2 = null;
 let filesTimer  = null;
@@ -478,7 +557,7 @@ let filesSortDir = 'desc';
 function showTab(name, btn) {
   document.querySelectorAll('.tab-bar button').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  ['hourly','daily','calendar','files','journal','audio'].forEach(t =>
+  ['hourly','daily','calendar','files','journal','audio','trends'].forEach(t =>
     document.getElementById('tab-'+t).style.display = name === t ? '' : 'none'
   );
   clearInterval(journalTimer);
@@ -500,6 +579,7 @@ function showTab(name, btn) {
     filesTimer = setInterval(() => { loadPending(); loadFilesProgress(); }, 15000);
   }
   if (name === 'audio') loadAudioCalibration();
+  if (name === 'trends') loadTrends();
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -1489,6 +1569,220 @@ async function resetThreshold() {
   const data = await res.json();
   if (data.ok) { loadAudioCalibration(); }
   else alert('Erreur : ' + data.error);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Tendances
+───────────────────────────────────────────────────────────── */
+function loadTrends() { loadHeatmap(); loadTypeEvolution(); loadComparison(); }
+
+function setHeatmapPeriod(days, btn) {
+  heatmapDays = days;
+  document.querySelectorAll('.hm-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  loadHeatmap();
+}
+function setEvoPeriod(days, btn) {
+  evoDays = days;
+  document.querySelectorAll('.evo-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  loadTypeEvolution();
+}
+function setCmpPeriod(days, btn) {
+  cmpDays = days;
+  document.querySelectorAll('.cmp-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  loadComparison();
+}
+
+async function loadHeatmap() {
+  const vtype = document.getElementById('heatmap-type').value;
+  const res = await fetch(`/api/stats/heatmap?days=${heatmapDays}&vehicle_type=${vtype}`);
+  const data = await res.json();
+  if (data.error) return;
+  heatmapRawData = data.data;
+  requestAnimationFrame(() => drawHeatmap(data.data));
+}
+
+function drawHeatmap(data) {
+  const canvas = document.getElementById('heatmap-canvas');
+  const W = canvas.offsetWidth || canvas.parentElement.clientWidth;
+  if (W < 100) return;
+
+  const DAYS_SHORT = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+  const DAYS_LONG  = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+  const LABEL_W = 36, HEADER_H = 22, CELL_H = 30;
+  const CELL_W = (W - LABEL_W) / 24;
+  const H = CELL_H * 7 + HEADER_H + 4;
+  if (canvas.width !== W) canvas.width = W;
+  canvas.height = H;
+
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  // Matrix
+  const matrix = Array.from({length: 7}, () => new Float32Array(24));
+  let maxVal = 0;
+  data.forEach(d => {
+    matrix[d.weekday][d.hour] = d.avg_count;
+    if (d.avg_count > maxVal) maxVal = d.avg_count;
+  });
+
+  // Hour header
+  ctx.font = '10px system-ui';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#888';
+  for (let h = 0; h < 24; h++) {
+    ctx.fillText(h, LABEL_W + h * CELL_W + CELL_W / 2, HEADER_H / 2 + 2);
+  }
+
+  for (let d = 0; d < 7; d++) {
+    // Day label
+    ctx.fillStyle = '#555';
+    ctx.textAlign = 'right';
+    ctx.font = '11px system-ui';
+    ctx.fillText(DAYS_SHORT[d], LABEL_W - 5, HEADER_H + d * CELL_H + CELL_H / 2);
+
+    for (let h = 0; h < 24; h++) {
+      const val = matrix[d][h];
+      const intensity = maxVal > 0 ? val / maxVal : 0;
+      const x = LABEL_W + h * CELL_W, y = HEADER_H + d * CELL_H;
+
+      // Color: #e8f0fa (light) → #1a3a5c (dark)
+      if (intensity < 0.01) {
+        ctx.fillStyle = '#f1f5f9';
+      } else {
+        const r = Math.round(232 - intensity * (232 - 26));
+        const g = Math.round(240 - intensity * (240 - 58));
+        const b = Math.round(250 - intensity * (250 - 92));
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+      }
+      ctx.fillRect(x + 1, y + 1, CELL_W - 2, CELL_H - 2);
+
+      // Value label
+      if (val > 0) {
+        ctx.fillStyle = intensity > 0.55 ? '#fff' : '#1a3a5c';
+        ctx.font = `${CELL_W > 28 ? 10 : 9}px system-ui`;
+        ctx.textAlign = 'center';
+        const label = val % 1 === 0 ? String(val) : val.toFixed(1);
+        ctx.fillText(label, x + CELL_W / 2, y + CELL_H / 2);
+      }
+    }
+  }
+
+  // Store DAYS_LONG on canvas for tooltip
+  canvas._daysLong = DAYS_LONG;
+}
+
+(function() {
+  const canvas = document.getElementById('heatmap-canvas');
+  const tooltip = document.getElementById('heatmap-tooltip');
+  canvas.addEventListener('mousemove', function(e) {
+    if (!heatmapRawData || !heatmapRawData.length) return;
+    const rect = this.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const LABEL_W = 36, HEADER_H = 22, CELL_H = 30;
+    const CELL_W = (this.width - LABEL_W) / 24;
+    const d = Math.floor((my - HEADER_H) / CELL_H);
+    const h = Math.floor((mx - LABEL_W) / CELL_W);
+    const DAYS = this._daysLong || ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+    if (d >= 0 && d < 7 && h >= 0 && h < 24) {
+      const cell = heatmapRawData.find(x => x.weekday === d && x.hour === h);
+      const avg = cell ? cell.avg_count : 0;
+      tooltip.textContent = `${DAYS[d]} ${h}h–${h+1}h : ${avg > 0 ? avg.toFixed(1) + ' passages (moy.)' : 'aucun passage'}`;
+      tooltip.style.display = 'block';
+      const tipX = mx + 12, tipY = my - 32;
+      tooltip.style.left = tipX + 'px';
+      tooltip.style.top  = tipY + 'px';
+    } else {
+      tooltip.style.display = 'none';
+    }
+  });
+  canvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+})();
+
+async function loadTypeEvolution() {
+  const res = await fetch(`/api/stats/type_evolution?days=${evoDays}`);
+  const data = await res.json();
+  if (data.error || !data.data.length) return;
+
+  const rows   = data.data;
+  const labels = rows.map(d => d.date.slice(5));
+  if (chartTypeEvo) chartTypeEvo.destroy();
+  chartTypeEvo = new Chart(document.getElementById('chart-type-evo'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Voiture',  data: rows.map(d => d.car || 0),        backgroundColor: '#4ade80', stack: 's' },
+        { label: 'Camion',   data: rows.map(d => d.truck || 0),      backgroundColor: '#60a5fa', stack: 's' },
+        { label: 'Bus',      data: rows.map(d => d.bus || 0),        backgroundColor: '#f472b6', stack: 's' },
+        { label: 'Moto',     data: rows.map(d => d.motorcycle || 0), backgroundColor: '#fb923c', stack: 's' },
+      ],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { mode: 'index' },
+      },
+      scales: {
+        x: { stacked: true, ticks: { font: { size: 10 }, maxRotation: 45 } },
+        y: { stacked: true, beginAtZero: true },
+      },
+    },
+  });
+}
+
+async function loadComparison() {
+  const total = cmpDays * 2;
+  const res = await fetch(`/api/stats/daily?days=${total}`);
+  const data = await res.json();
+  if (data.error || !data.daily.length) return;
+
+  const all = data.daily;
+  const mid = Math.floor(all.length / 2);
+  const periodA = all.slice(mid);    // plus récents
+  const periodB = all.slice(0, mid); // plus anciens
+
+  // Groupe par jour de semaine (0=Lun, 6=Dim) et moyenne
+  const DAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+  function weekdayAvg(arr) {
+    const sums = new Array(7).fill(0), cnts = new Array(7).fill(0);
+    arr.forEach(d => {
+      const wd = (new Date(d.date + 'T12:00:00').getDay() + 6) % 7;
+      sums[wd] += d.count; cnts[wd]++;
+    });
+    return sums.map((s, i) => cnts[i] ? Math.round(s / cnts[i] * 10) / 10 : 0);
+  }
+
+  const avgA = weekdayAvg(periodA);
+  const avgB = weekdayAvg(periodB);
+  const labelA = `J-${cmpDays} → aujourd'hui`;
+  const labelB = `J-${total} → J-${cmpDays}`;
+
+  if (chartComparison) chartComparison.destroy();
+  chartComparison = new Chart(document.getElementById('chart-comparison'), {
+    type: 'bar',
+    data: {
+      labels: DAYS,
+      datasets: [
+        { label: labelA, data: avgA, backgroundColor: '#1a3a5c' },
+        { label: labelB, data: avgB, backgroundColor: '#94a3b8' },
+      ],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: {
+          callbacks: { label: ctx => `${ctx.dataset.label} : ${ctx.parsed.y} véh/j (moy)` },
+        },
+      },
+      scales: { y: { beginAtZero: true } },
+    },
+  });
 }
 </script>
 </body>
