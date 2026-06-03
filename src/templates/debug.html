@@ -5,122 +5,142 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Débogage — Comptage de véhicules</title>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, sans-serif; background: #f4f6f9; color: #222; }
-    header { background: #1a3a5c; color: #fff; padding: .75rem 1.5rem; display: flex; align-items: center; gap: 1rem; }
-    header h1 { font-size: 1.1rem; flex: 1; }
-    .btn-back { background: #2e6da4; color: #fff; border: none; border-radius: 4px; padding: .35rem .8rem; font-size: .82rem; cursor: pointer; text-decoration: none; }
-    main { max-width: 1200px; margin: 1.5rem auto; padding: 0 1rem 2rem; }
-
-    /* Tabs */
-    .tabs { display: flex; gap: 0; border-bottom: 2px solid #dde3ec; margin-bottom: 1rem; }
-    .tab-btn { background: none; border: none; padding: .6rem 1.2rem; font-size: .9rem; font-weight: 600; color: #666; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: color .15s; }
-    .tab-btn:hover { color: #1a3a5c; }
-    .tab-btn.active { color: #1a3a5c; border-bottom-color: #1a3a5c; }
-
-    /* Cards */
-    .card { background: #fff; border-radius: 6px; padding: 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 1rem; }
-    .card h2 { font-size: .95rem; color: #1a3a5c; margin-bottom: 1rem; }
-
-    /* Controls */
-    .controls { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
-    select, input[type=number] { padding: .4rem .65rem; border: 1px solid #ccc; border-radius: 4px; font-size: .9rem; }
-    .btn { padding: .45rem .9rem; border: none; border-radius: 4px; font-size: .9rem; cursor: pointer; font-weight: 600; }
-    .btn-primary { background: #1a3a5c; color: #fff; }
-    .btn-primary:hover { background: #2a5080; }
-    .btn-sm { padding: .3rem .65rem; font-size: .8rem; }
-    label { font-size: .82rem; color: #555; }
-
-    /* Frame detect (tab 1) */
-    #img-wrap { background: #000; border-radius: 4px; overflow: hidden; margin-top: .75rem; text-align: center; min-height: 100px; display: flex; align-items: center; justify-content: center; }
-    #img-wrap img { max-width: 100%; display: block; }
-    #img-wrap .placeholder { color: #666; font-size: .9rem; padding: 2rem; }
-    .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
-    .result-box { background: #f8fafc; border: 1px solid #e2e8ef; border-radius: 6px; padding: .75rem; }
-    .result-box h3 { font-size: .82rem; font-weight: 700; margin-bottom: .5rem; text-transform: uppercase; letter-spacing: .05em; color: #555; }
-    .detection-item { display: flex; align-items: center; justify-content: space-between; padding: .3rem 0; border-bottom: 1px solid #eee; font-size: .85rem; }
-    .detection-item:last-child { border-bottom: none; }
-    .conf-badge { background: #1a3a5c; color: #fff; border-radius: 10px; padding: .1rem .5rem; font-size: .75rem; }
-    .conf-badge.low { background: #d97706; }
-    .conf-badge.ok  { background: #16a34a; }
-    .empty { color: #999; font-size: .85rem; font-style: italic; }
-    #status { font-size: .85rem; color: #666; margin-top: .5rem; min-height: 1.2em; }
-    .hint-box { background: #fef9c3; border: 1px solid #fcd34d; border-radius: 6px; padding: .75rem 1rem; font-size: .83rem; line-height: 1.6; margin-top: 1rem; }
-    .hint-box strong { color: #92400e; }
-    .legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: .8rem; margin-top: .5rem; }
-    .legend span { display: flex; align-items: center; gap: .3rem; }
-    .dot { width: 12px; height: 4px; border-radius: 2px; display: inline-block; }
-
-    /* Timeline audio */
-    .timeline-wrap { background: #fff; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,.08); padding: .75rem 1rem; margin-bottom: 1rem; }
-    .timeline-wrap h3 { font-size: .82rem; font-weight: 700; color: #444; text-transform: uppercase; letter-spacing: .05em; margin-bottom: .5rem; }
-    #audio-timeline { display: block; width: 100%; border-radius: 4px; cursor: crosshair; }
-    .timeline-legend { display: flex; gap: 1.2rem; flex-wrap: wrap; font-size: .75rem; color: #666; margin-top: .4rem; }
-    .timeline-legend span { display: flex; align-items: center; gap: .3rem; }
-    .tl-dot { width: 20px; height: 3px; display: inline-block; border-radius: 2px; }
-
-    /* Analyse de fichier (tab 2) */
-    .analyze-layout { display: grid; grid-template-columns: 360px 1fr; gap: 1rem; align-items: start; }
-    @media (max-width: 900px) { .analyze-layout { grid-template-columns: 1fr; } }
-
-    .segment-panel { background: #fff; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,.08); overflow: hidden; }
-    .segment-panel-header { padding: .65rem 1rem; background: #f1f5f9; border-bottom: 1px solid #e2e8ef; font-size: .82rem; font-weight: 700; color: #444; text-transform: uppercase; letter-spacing: .05em; }
-    .segment-list { max-height: 600px; overflow-y: auto; }
-    .segment-row { padding: .6rem 1rem; border-bottom: 1px solid #f0f4f8; cursor: pointer; transition: background .1s; display: flex; align-items: flex-start; gap: .75rem; }
-    .segment-row:last-child { border-bottom: none; }
-    .segment-row:hover { background: #f0f7ff; }
-    .segment-row.selected { background: #dbeafe; border-left: 3px solid #1a3a5c; }
-    .segment-row.no-vehicle { background: #fffbeb; }
-    .segment-row.no-vehicle:hover { background: #fef3c7; }
-    .seg-idx { font-size: .75rem; color: #999; font-weight: 700; min-width: 22px; padding-top: .15rem; }
-    .seg-body { flex: 1; min-width: 0; }
-    .seg-time { font-size: .85rem; font-weight: 600; color: #1a3a5c; }
-    .seg-dur { font-size: .75rem; color: #888; margin-left: .35rem; }
-    .seg-vehicles { margin-top: .25rem; display: flex; flex-wrap: wrap; gap: .25rem; }
-    .vtype-badge { font-size: .72rem; padding: .1rem .4rem; border-radius: 10px; font-weight: 600; }
-    .vtype-car  { background: #dcfce7; color: #166534; }
-    .vtype-truck { background: #dbeafe; color: #1e40af; }
-    .vtype-bus  { background: #fce7f3; color: #9d174d; }
-    .vtype-moto { background: #fff7ed; color: #9a3412; }
-    .vtype-unknown { background: #f1f5f9; color: #475569; }
-    .no-veh-badge { font-size: .72rem; padding: .1rem .45rem; border-radius: 10px; background: #fef9c3; color: #92400e; font-weight: 600; }
-    .seg-count { font-size: .75rem; font-weight: 700; min-width: 38px; text-align: right; padding-top: .15rem; }
-    .seg-count.has-v { color: #16a34a; }
-    .seg-count.no-v  { color: #d97706; }
-
-    /* Video panel */
-    .video-panel { background: #fff; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,.08); padding: 1rem; }
-    #debug-video { width: 100%; border-radius: 4px; background: #000; display: block; max-height: 400px; }
-    .nav-bar { display: flex; align-items: center; gap: .4rem; margin-top: .6rem; flex-wrap: wrap; }
-    .nav-bar .btn-nav { background: #f1f5f9; border: 1px solid #cbd5e1; color: #334155; border-radius: 4px; padding: .3rem .65rem; font-size: .82rem; cursor: pointer; font-weight: 600; }
-    .nav-bar .btn-nav:hover { background: #e2e8f0; }
-    #time-display { font-size: .85rem; color: #666; font-variant-numeric: tabular-nums; flex: 1; text-align: center; }
-    .analyze-btn { width: 100%; margin-top: .6rem; }
-    #yolo-result { margin-top: .75rem; }
-    #yolo-img { width: 100%; border-radius: 4px; display: block; }
-    .yolo-detections { margin-top: .5rem; font-size: .82rem; display: flex; flex-wrap: wrap; gap: .3rem; }
-
-    /* Summary bar */
-    .summary-bar { display: flex; gap: 1.5rem; flex-wrap: wrap; padding: .75rem 1rem; background: #f8fafc; border: 1px solid #e2e8ef; border-radius: 6px; margin-bottom: 1rem; font-size: .85rem; }
-    .summary-item strong { color: #1a3a5c; }
-
-    #analyze-status { font-size: .85rem; color: #666; margin-top: .5rem; min-height: 1.2em; }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:#eef2f7;color:#1e293b;line-height:1.5;-webkit-font-smoothing:antialiased}
+  :root{
+    --navy:#0d2340;--navy-m:#1a3a5c;--blue:#2563eb;
+    --surface:#fff;--surface-2:#f8fafc;
+    --border:#e2e8f0;--border-2:#cbd5e1;
+    --text:#1e293b;--text-2:#64748b;--text-3:#94a3b8;
+    --green:#059669;--amber:#d97706;--red:#dc2626;
+    --r:12px;--r-sm:6px;
+    --sh:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+    --sh-md:0 4px 14px rgba(0,0,0,.09)
+  }
+  /* Header */
+  .app-header{background:linear-gradient(135deg,#0d2340 0%,#1a3a5c 100%);position:sticky;top:0;z-index:100;box-shadow:0 2px 20px rgba(0,0,0,.3)}
+  .header-inner{max-width:1200px;margin:0 auto;padding:.65rem 1.5rem;display:flex;align-items:center;gap:1rem}
+  .brand{display:flex;align-items:center;gap:.7rem;flex-shrink:0}
+  .brand-icon{width:36px;height:36px;background:rgba(255,255,255,.13);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:1.15rem;flex-shrink:0}
+  .brand-name{font-size:.95rem;font-weight:700;letter-spacing:-.01em;color:#fff}
+  .brand-sub{font-size:.72rem;color:rgba(255,255,255,.5)}
+  .hdr-spacer{flex:1}
+  .hdr-link{display:inline-flex;align-items:center;gap:.3rem;padding:.35rem .72rem;border-radius:6px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.82);font-size:.8rem;text-decoration:none;transition:.15s;white-space:nowrap}
+  .hdr-link:hover{background:rgba(255,255,255,.18);color:#fff}
+  /* Layout */
+  main{max-width:1200px;margin:1.5rem auto;padding:0 1rem 3rem}
+  /* Tab nav */
+  .tab-nav{display:flex;gap:.2rem;background:var(--surface);padding:.3rem;border-radius:var(--r);box-shadow:var(--sh);margin-bottom:1.4rem;overflow-x:auto;scrollbar-width:none}
+  .tab-nav::-webkit-scrollbar{display:none}
+  .tab-btn{flex-shrink:0;padding:.47rem 1.05rem;border:none;border-radius:8px;background:transparent;cursor:pointer;font-size:.83rem;font-weight:500;color:var(--text-2);transition:all .17s;white-space:nowrap}
+  .tab-btn.active{background:var(--navy-m);color:#fff;box-shadow:0 1px 6px rgba(26,58,92,.3);font-weight:600}
+  .tab-btn:hover:not(.active){background:var(--surface-2);color:var(--text)}
+  /* Cards */
+  .card{background:var(--surface);border-radius:var(--r);padding:1.25rem;box-shadow:var(--sh);margin-bottom:1rem}
+  .card h2{font-size:.8rem;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:1rem}
+  /* Controls */
+  .controls{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center}
+  select,input[type=number]{padding:.4rem .65rem;border:1px solid var(--border-2);border-radius:var(--r-sm);font-size:.88rem;background:var(--surface);color:var(--text);transition:.15s}
+  select:focus,input[type=number]:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+  .controls label{font-size:.82rem;color:var(--text-2);display:flex;align-items:center;gap:.4rem}
+  .btn{padding:.42rem .9rem;border:none;border-radius:var(--r-sm);font-size:.88rem;cursor:pointer;font-weight:600;transition:.15s}
+  .btn-primary{background:var(--navy-m);color:#fff}
+  .btn-primary:hover{background:#1e4a7a}
+  .btn-sm{padding:.28rem .6rem;font-size:.8rem}
+  /* Frame detect */
+  #img-wrap{background:#0f172a;border-radius:var(--r-sm);overflow:hidden;margin-top:.9rem;text-align:center;min-height:120px;display:flex;align-items:center;justify-content:center}
+  #img-wrap img{max-width:100%;display:block}
+  #img-wrap .placeholder{color:var(--text-3);font-size:.9rem;padding:2.5rem}
+  .result-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem}
+  @media(max-width:600px){.result-grid{grid-template-columns:1fr}}
+  .result-box{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-sm);padding:.85rem}
+  .result-box h3{font-size:.75rem;font-weight:700;margin-bottom:.6rem;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3)}
+  .detection-item{display:flex;align-items:center;justify-content:space-between;padding:.28rem 0;border-bottom:1px solid var(--border);font-size:.85rem}
+  .detection-item:last-child{border-bottom:none}
+  .conf-badge{background:var(--navy-m);color:#fff;border-radius:10px;padding:.1rem .5rem;font-size:.73rem;font-weight:600}
+  .conf-badge.low{background:var(--amber)}
+  .conf-badge.ok{background:var(--green)}
+  .empty{color:var(--text-3);font-size:.84rem;font-style:italic}
+  #status{font-size:.83rem;color:var(--text-2);margin-top:.5rem;min-height:1.2em}
+  .hint-box{background:#fef9c3;border:1px solid #fcd34d;border-radius:var(--r-sm);padding:.75rem 1rem;font-size:.83rem;line-height:1.6;margin-top:1rem}
+  .hint-box strong{color:#92400e}
+  .legend{display:flex;gap:1rem;flex-wrap:wrap;font-size:.78rem;margin-top:.6rem;color:var(--text-2)}
+  .legend span{display:flex;align-items:center;gap:.3rem}
+  .dot{width:12px;height:4px;border-radius:2px;display:inline-block}
+  /* Timeline */
+  .timeline-card{background:var(--surface);border-radius:var(--r);box-shadow:var(--sh);padding:1rem 1.1rem;margin-bottom:1rem}
+  .timeline-card-head{font-size:.75rem;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.65rem;display:flex;align-items:center;gap:.4rem}
+  #audio-timeline{display:block;width:100%;border-radius:var(--r-sm);cursor:crosshair}
+  .timeline-legend{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.74rem;color:var(--text-2);margin-top:.45rem}
+  .timeline-legend span{display:flex;align-items:center;gap:.3rem}
+  .tl-dot{width:20px;height:3px;display:inline-block;border-radius:2px}
+  /* Analyse layout */
+  .analyze-layout{display:grid;grid-template-columns:340px 1fr;gap:1rem;align-items:start}
+  @media(max-width:900px){.analyze-layout{grid-template-columns:1fr}}
+  /* Segment panel */
+  .segment-panel{background:var(--surface);border-radius:var(--r);box-shadow:var(--sh);overflow:hidden}
+  .segment-panel-header{padding:.6rem 1rem;background:var(--surface-2);border-bottom:1px solid var(--border);font-size:.75rem;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em}
+  .segment-list{max-height:580px;overflow-y:auto}
+  .segment-row{padding:.6rem 1rem;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s;display:flex;align-items:flex-start;gap:.75rem}
+  .segment-row:last-child{border-bottom:none}
+  .segment-row:hover{background:var(--surface-2)}
+  .segment-row.selected{background:#dbeafe;border-left:3px solid var(--navy-m)}
+  .segment-row.no-vehicle{background:#fffbeb}
+  .segment-row.no-vehicle:hover{background:#fef3c7}
+  .seg-idx{font-size:.72rem;color:var(--text-3);font-weight:700;min-width:22px;padding-top:.15rem}
+  .seg-body{flex:1;min-width:0}
+  .seg-time{font-size:.84rem;font-weight:600;color:var(--navy-m)}
+  .seg-dur{font-size:.73rem;color:var(--text-3);margin-left:.35rem}
+  .seg-vehicles{margin-top:.25rem;display:flex;flex-wrap:wrap;gap:.25rem}
+  .vtype-badge{font-size:.72rem;padding:.1rem .4rem;border-radius:10px;font-weight:600}
+  .vtype-car{background:#dcfce7;color:#166534}
+  .vtype-truck{background:#dbeafe;color:#1e40af}
+  .vtype-bus{background:#fce7f3;color:#9d174d}
+  .vtype-moto{background:#fff7ed;color:#9a3412}
+  .vtype-unknown{background:var(--surface-2);color:var(--text-2)}
+  .no-veh-badge{font-size:.72rem;padding:.1rem .45rem;border-radius:10px;background:#fef9c3;color:#92400e;font-weight:600}
+  .seg-count{font-size:.73rem;font-weight:700;min-width:38px;text-align:right;padding-top:.15rem}
+  .seg-count.has-v{color:var(--green)}
+  .seg-count.no-v{color:var(--amber)}
+  /* Video panel */
+  .video-panel{background:var(--surface);border-radius:var(--r);box-shadow:var(--sh);padding:1rem}
+  #debug-video{width:100%;border-radius:var(--r-sm);background:#000;display:block;max-height:380px}
+  .nav-bar{display:flex;align-items:center;gap:.4rem;margin-top:.6rem;flex-wrap:wrap}
+  .btn-nav{background:var(--surface-2);border:1px solid var(--border-2);color:var(--text);border-radius:var(--r-sm);padding:.28rem .65rem;font-size:.82rem;cursor:pointer;font-weight:600;transition:.12s}
+  .btn-nav:hover{background:var(--border)}
+  #time-display{font-size:.84rem;color:var(--text-2);font-variant-numeric:tabular-nums;flex:1;text-align:center}
+  .analyze-btn{width:100%;margin-top:.6rem}
+  #yolo-result{margin-top:.75rem}
+  #yolo-img{width:100%;border-radius:var(--r-sm);display:block}
+  .yolo-detections{margin-top:.5rem;font-size:.82rem;display:flex;flex-wrap:wrap;gap:.3rem}
+  /* Summary bar */
+  .summary-bar{display:flex;gap:1.5rem;flex-wrap:wrap;padding:.75rem 1rem;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-sm);margin-bottom:1rem;font-size:.84rem}
+  .summary-item strong{color:var(--navy-m)}
+  #analyze-status{font-size:.83rem;color:var(--text-2);margin-top:.5rem;min-height:1.2em}
   </style>
 </head>
 <body>
-<header>
-  <h1>🔍 Débogage</h1>
-  <a class="btn-back" href="/">← Tableau de bord</a>
+<header class="app-header">
+  <div class="header-inner">
+    <div class="brand">
+      <div class="brand-icon">🔍</div>
+      <div>
+        <div class="brand-name">Débogage</div>
+        <div class="brand-sub">Comptage véhicules</div>
+      </div>
+    </div>
+    <div class="hdr-spacer"></div>
+    <a class="hdr-link" href="/">← Tableau de bord</a>
+  </div>
 </header>
+
 <main>
-  <div class="tabs">
+  <div class="tab-nav">
     <button class="tab-btn active" onclick="switchTab('detect')">Test de détection</button>
     <button class="tab-btn" onclick="switchTab('analyse')">Analyse d'un fichier traité</button>
   </div>
 
-  <!-- ═══════════════════════════════════════════════════════════════════ -->
-  <!-- ONGLET 1 — Test de détection frame -->
-  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- ═══ ONGLET 1 — Test de détection ═══ -->
   <div id="tab-detect">
     <div class="card">
       <h2>Paramètres du test</h2>
@@ -129,11 +149,11 @@
           <select id="video-select" style="max-width:340px"><option>Chargement…</option></select>
         </label>
         <label>Seconde :
-          <input type="number" id="frame-sec" value="10" min="0" max="3600" style="width:70px">
+          <input type="number" id="frame-sec" value="10" min="0" max="3600" style="width:75px">
         </label>
         <label>Seuil confiance :
-          <input type="number" id="conf" value="0.15" min="0.05" max="0.95" step="0.05" style="width:70px">
-          <span style="font-size:.75rem;color:#888">(0.15 = très permissif)</span>
+          <input type="number" id="conf" value="0.15" min="0.05" max="0.95" step="0.05" style="width:75px">
+          <span style="font-size:.73rem;color:var(--text-3)">(0.15 = permissif)</span>
         </label>
         <button class="btn btn-primary" onclick="runDetect()">▶ Lancer</button>
       </div>
@@ -159,9 +179,7 @@
     <div class="hint-box" id="hint-box" style="display:none"></div>
   </div>
 
-  <!-- ═══════════════════════════════════════════════════════════════════ -->
-  <!-- ONGLET 2 — Analyse d'un fichier traité -->
-  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- ═══ ONGLET 2 — Analyse d'un fichier traité ═══ -->
   <div id="tab-analyse" style="display:none">
     <div class="card">
       <h2>Sélectionner un fichier traité</h2>
@@ -183,26 +201,26 @@
       <div class="summary-bar" id="analyze-summary"></div>
 
       <!-- Timeline audio -->
-      <div class="timeline-wrap">
-        <h3>Timeline audio — <span id="timeline-filename" style="font-weight:400;text-transform:none;letter-spacing:0;color:#1a3a5c"></span></h3>
+      <div class="timeline-card">
+        <div class="timeline-card-head">
+          Timeline audio —
+          <span id="timeline-filename" style="font-weight:400;font-size:.82rem;text-transform:none;letter-spacing:0;color:var(--navy-m)"></span>
+        </div>
         <canvas id="audio-timeline" height="90"></canvas>
         <div class="timeline-legend">
           <span><span class="tl-dot" style="background:#60a5fa"></span>Énergie (dBFS)</span>
-          <span><span class="tl-dot" style="background:#f87171;height:2px;border-top:2px dashed #f87171"></span>Seuil de détection</span>
+          <span><span class="tl-dot" style="background:#f87171;border-top:2px dashed #f87171;height:0"></span>Seuil</span>
           <span><span class="tl-dot" style="background:rgba(22,163,74,.4)"></span>Segment actif</span>
-          <span><span class="tl-dot" style="background:#fbbf24"></span>Segment sélectionné</span>
+          <span><span class="tl-dot" style="background:#fbbf24"></span>Sélectionné</span>
         </div>
       </div>
 
       <div class="analyze-layout">
-
-        <!-- Segment list -->
         <div class="segment-panel">
           <div class="segment-panel-header">Segments audio détectés</div>
           <div class="segment-list" id="segment-list"></div>
         </div>
 
-        <!-- Video + YOLO -->
         <div class="video-panel">
           <video id="debug-video" controls preload="metadata">
             Votre navigateur ne supporte pas la lecture vidéo.
@@ -222,7 +240,6 @@
             <div class="yolo-detections" id="yolo-detections"></div>
           </div>
         </div>
-
       </div>
     </div>
   </div>
@@ -230,15 +247,13 @@
 </main>
 
 <script>
-// ─── State ───────────────────────────────────────────────────────────────────
 let currentAnalyzeFile = null;
-let timelineData = null;      // { energy_db, window_sec, threshold_db, duration_sec, segments }
-let selectedSegIdx = -1;      // segment sélectionné dans la timeline
-let tlBg = null;              // ImageData du fond pré-rendu (sans curseur)
-let tlW = 0;                  // largeur utilisée pour tlBg
-let rafPending = false;       // throttle rAF sur timeupdate
+let timelineData = null;
+let selectedSegIdx = -1;
+let tlBg = null;
+let tlW = 0;
+let rafPending = false;
 
-// ─── Tabs ─────────────────────────────────────────────────────────────────────
 function switchTab(name) {
   document.getElementById('tab-detect').style.display  = name === 'detect'  ? '' : 'none';
   document.getElementById('tab-analyse').style.display = name === 'analyse' ? '' : 'none';
@@ -247,7 +262,6 @@ function switchTab(name) {
   });
 }
 
-// ─── Onglet 1 : liste des vidéos disponibles ──────────────────────────────────
 fetch('/calibration/api/videos').then(r => r.json()).then(data => {
   const sel = document.getElementById('video-select');
   sel.innerHTML = data.videos && data.videos.length
@@ -319,7 +333,6 @@ function buildDetectHint(data) {
   return hints.map(h => `<p style="margin-bottom:.4rem">${h}</p>`).join('');
 }
 
-// ─── Onglet 2 : liste des fichiers traités ────────────────────────────────────
 fetch('/debug/api/files').then(r => r.json()).then(data => {
   const sel = document.getElementById('file-select');
   if (!data.files || data.files.length === 0) {
@@ -366,7 +379,6 @@ async function analyzeFile() {
     return;
   }
 
-  // Pré-remplir le champ seuil avec la valeur utilisée (si pas déjà renseigné)
   if (!thresholdVal && data.threshold_db != null) {
     document.getElementById('threshold-input').placeholder = `auto (${data.threshold_db.toFixed(1)} dB)`;
   }
@@ -374,14 +386,13 @@ async function analyzeFile() {
   document.getElementById('analyze-status').textContent =
     `✅ ${data.total_segments} segments analysés · ${data.total_vehicles} véhicule(s) en DB · seuil ${data.threshold_db != null ? data.threshold_db.toFixed(1) + ' dB' : 'N/A'}`;
 
-  // Summary bar
   const fpCount = data.segments.filter(s => s.crossings.length === 0).length;
   const fpPct = data.total_segments > 0 ? Math.round(fpCount / data.total_segments * 100) : 0;
   document.getElementById('analyze-summary').innerHTML = `
     <div class="summary-item"><strong>${data.total_segments}</strong> segments audio</div>
     <div class="summary-item"><strong>${data.total_vehicles}</strong> véhicules détectés (YOLO/nuit)</div>
     <div class="summary-item" title="Segments audio sans aucun véhicule détecté dans la DB">
-      <strong style="color:${fpCount > 0 ? '#d97706' : '#16a34a'}">${fpCount}</strong>
+      <strong style="color:${fpCount > 0 ? '#d97706' : '#059669'}">${fpCount}</strong>
       segments sans véhicule (${fpPct}% — potentiels faux positifs audio)
     </div>
     ${data.unmatched_crossings > 0
@@ -389,15 +400,12 @@ async function analyzeFile() {
       : ''}
   `;
 
-  // Segment list
   renderSegments(data.segments, filename);
 
-  // Video player
   const video = document.getElementById('debug-video');
   video.src = `/debug/video/${encodeURIComponent(filename)}`;
   video.load();
 
-  // Timeline
   timelineData = {
     energy_db:    data.energy_db,
     window_sec:   data.window_sec,
@@ -449,9 +457,6 @@ function fmtTime(sec) {
   return `${m}:${String(s).padStart(2, '0')}.${ms}`;
 }
 
-// ─── Timeline canvas ──────────────────────────────────────────────────────────
-// Pré-rendu du fond (courbe + seuil + segments) — appelé une fois après analyse
-// ou quand la sélection change. Stocké en ImageData pour putImageData rapide.
 function buildTimelineBackground() {
   if (!timelineData) return;
   const canvas = document.getElementById('audio-timeline');
@@ -459,7 +464,6 @@ function buildTimelineBackground() {
   if (W < 10) return;
   const H = canvas.height;
 
-  // Redimensionner seulement si nécessaire (évite le reflow)
   if (canvas.width !== W) canvas.width = W;
   tlW = W;
 
@@ -467,7 +471,6 @@ function buildTimelineBackground() {
   const { energy_db, window_sec, threshold_db, duration_sec, segments } = timelineData;
   if (!energy_db || energy_db.length === 0) return;
 
-  // min/max sans spread (évite stack overflow sur grands tableaux)
   let minDb = energy_db[0], maxDb = energy_db[0];
   for (let i = 1; i < energy_db.length; i++) {
     if (energy_db[i] < minDb) minDb = energy_db[i];
@@ -479,18 +482,15 @@ function buildTimelineBackground() {
   const toX = sec => (sec / duration_sec) * W;
   const toY = db  => H - ((db - minDb) / (maxDb - minDb)) * H;
 
-  // Fond
   ctx.fillStyle = '#1a2535';
   ctx.fillRect(0, 0, W, H);
 
-  // Segments (vert, sélectionné en jaune)
   segments.forEach((seg, i) => {
     const x1 = toX(seg.start), x2 = toX(seg.end);
     ctx.fillStyle = i === selectedSegIdx ? 'rgba(251,191,36,.35)' : 'rgba(22,163,74,.25)';
     ctx.fillRect(x1, 0, x2 - x1, H);
   });
 
-  // Remplissage sous la courbe
   ctx.beginPath();
   for (let i = 0; i < energy_db.length; i++) {
     const x = toX(i * window_sec), y = toY(energy_db[i]);
@@ -502,7 +502,6 @@ function buildTimelineBackground() {
   ctx.fillStyle = 'rgba(96,165,250,.18)';
   ctx.fill();
 
-  // Trait courbe
   ctx.beginPath();
   for (let i = 0; i < energy_db.length; i++) {
     const x = toX(i * window_sec), y = toY(energy_db[i]);
@@ -512,7 +511,6 @@ function buildTimelineBackground() {
   ctx.lineWidth = 1.2;
   ctx.stroke();
 
-  // Ligne de seuil
   if (threshold_db != null) {
     const ty = toY(threshold_db);
     ctx.beginPath();
@@ -528,11 +526,9 @@ function buildTimelineBackground() {
     ctx.fillText(`${threshold_db.toFixed(1)} dB`, 4, Math.max(12, ty - 3));
   }
 
-  // Snapshot du fond sans curseur
   tlBg = ctx.getImageData(0, 0, W, H);
 }
 
-// Mise à jour rapide : restore le fond + dessine uniquement le curseur
 function drawTimeline(currentTimeSec) {
   if (!tlBg || !timelineData) return;
   const canvas = document.getElementById('audio-timeline');
@@ -550,7 +546,6 @@ function drawTimeline(currentTimeSec) {
   }
 }
 
-// Clic sur timeline → seek vidéo
 document.getElementById('audio-timeline').addEventListener('click', function(e) {
   if (!timelineData) return;
   const rect = this.getBoundingClientRect();
@@ -562,18 +557,15 @@ document.getElementById('audio-timeline').addEventListener('click', function(e) 
 
 function seekToSegment(startSec, idx) {
   const video = document.getElementById('debug-video');
-  // On recule de 2s pour voir l'approche
   video.currentTime = Math.max(0, startSec - 2);
   video.play().catch(() => {});
 
   selectedSegIdx = idx;
 
-  // Highlight la ligne sélectionnée
   document.querySelectorAll('.segment-row').forEach((el, i) => {
     el.classList.toggle('selected', i === idx);
   });
 
-  // Rebâtir le fond (couleur segment sélectionné change) puis curseur
   buildTimelineBackground();
   drawTimeline(video.currentTime);
 }
@@ -583,7 +575,6 @@ function seekRel(delta) {
   if (video.src) video.currentTime = Math.max(0, video.currentTime + delta);
 }
 
-// Sync time display + timeline cursor (throttlé par rAF — max 60fps)
 document.getElementById('debug-video').addEventListener('timeupdate', function() {
   document.getElementById('time-display').textContent = fmtTime(this.currentTime) + ' / ' + fmtTime(this.duration || 0);
   if (!rafPending) {
@@ -612,7 +603,7 @@ async function analyzeCurrentFrame() {
         const cls = d.conf > 0.5 ? 'ok' : d.conf > 0.3 ? '' : 'low';
         return `<span class="conf-badge ${cls}">${d.name} ${(d.conf*100).toFixed(0)}%</span>`;
       }).join('')
-    : '<span style="color:#999;font-style:italic">Aucun véhicule détecté</span>';
+    : '<span style="color:var(--text-3);font-style:italic">Aucun véhicule détecté</span>';
 
   document.getElementById('yolo-result').style.display = '';
 }
