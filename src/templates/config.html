@@ -5,400 +5,505 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Configuration — Comptage de véhicules</title>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, sans-serif; background: #f4f6f9; color: #222; }
-    header { background: #1a3a5c; color: #fff; padding: .75rem 1.5rem; display: flex; align-items: center; gap: 1rem; }
-    header h1 { font-size: 1.1rem; flex: 1; }
-    .btn-back { background: #2e6da4; color: #fff; border: none; border-radius: 4px; padding: .35rem .8rem; font-size: .82rem; cursor: pointer; text-decoration: none; }
-    .btn-back:hover { background: #3a7fc1; }
-    main { max-width: 780px; margin: 1.5rem auto; padding: 0 1rem 3rem; }
-    .card { background: #fff; border-radius: 6px; padding: 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 1.25rem; }
-    .card h2 { font-size: .95rem; color: #1a3a5c; margin-bottom: 1rem; padding-bottom: .5rem; border-bottom: 1px solid #e8edf3; }
-    .field { margin-bottom: .9rem; }
-    .field label { display: block; font-size: .82rem; font-weight: 600; color: #444; margin-bottom: .3rem; }
-    .field .hint { font-size: .75rem; color: #888; margin-top: .2rem; }
-    input[type=text], input[type=number], select { width: 100%; padding: .45rem .65rem; border: 1px solid #ccc; border-radius: 4px; font-size: .9rem; }
-    input[type=range] { width: 100%; margin: .25rem 0; }
-    .range-row { display: flex; align-items: center; gap: .75rem; }
-    .range-row input[type=number] { width: 80px; flex-shrink: 0; }
-    .checkboxes { display: flex; gap: .75rem; flex-wrap: wrap; margin-top: .3rem; }
-    .checkboxes label { display: flex; align-items: center; gap: .3rem; font-weight: normal; font-size: .9rem; cursor: pointer; }
-    .toggle-row { display: flex; align-items: center; gap: .75rem; }
-    .toggle { position: relative; display: inline-block; width: 40px; height: 22px; flex-shrink: 0; }
-    .toggle input { opacity: 0; width: 0; height: 0; }
-    .slider { position: absolute; inset: 0; background: #ccc; border-radius: 22px; transition: .3s; cursor: pointer; }
-    .slider:before { content: ''; position: absolute; width: 16px; height: 16px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: .3s; }
-    input:checked + .slider { background: #1a3a5c; }
-    input:checked + .slider:before { transform: translateX(18px); }
-    .readonly-field { background: #f7f8fa; border: 1px solid #ddd; border-radius: 4px; padding: .45rem .65rem; font-size: .85rem; color: #666; font-family: monospace; }
-    .actions { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; margin-top: 1.5rem; }
-    .btn { padding: .55rem 1.2rem; border: none; border-radius: 4px; font-size: .9rem; cursor: pointer; font-weight: 600; }
-    .btn-save         { background: #1a3a5c; color: #fff; }
-    .btn-save:hover   { background: #2a5080; }
-    .btn-restart      { background: #b45309; color: #fff; }
-    .btn-restart:hover{ background: #92400e; }
-    .btn-manual-restart { background: none; color: #6b7280; border: 1px solid #d1d5db; font-size: .78rem; padding: .3rem .7rem; font-weight: 400; }
-    .btn-manual-restart:hover { background: #f3f4f6; }
-    #msg { font-size: .85rem; padding: .4rem .8rem; border-radius: 4px; }
-    #msg.ok   { background: #dcfce7; color: #166534; }
-    #msg.err  { background: #fee2e2; color: #991b1b; }
-    #msg.warn { background: #fef9c3; color: #854d0e; }
-    /* Estimate box */
-    .estimate-box { border-radius: 6px; padding: .75rem 1rem; background: #f8fafc; border: 1px solid #e2e8f0; margin-top: .4rem; }
-    .estimate-row { display: flex; align-items: center; gap: .75rem; margin-bottom: .4rem; }
-    .estimate-value { font-size: 1.4rem; font-weight: 700; color: #1a3a5c; min-width: 70px; }
-    .estimate-detail { font-size: .78rem; color: #64748b; flex: 1; }
-    .estimate-bar-wrap { background: #e5e7eb; border-radius: 4px; height: 8px; overflow: hidden; margin-bottom: .35rem; }
-    .estimate-bar-fill { height: 100%; border-radius: 4px; transition: width .4s, background .4s; }
-    .estimate-hint { font-size: .78rem; font-weight: 600; }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:#eef2f7;color:#1e293b;line-height:1.5;-webkit-font-smoothing:antialiased}
+  :root{
+    --navy:#0d2340;--navy-m:#1a3a5c;--blue:#2563eb;
+    --surface:#fff;--surface-2:#f8fafc;
+    --border:#e2e8f0;--border-2:#cbd5e1;
+    --text:#1e293b;--text-2:#64748b;--text-3:#94a3b8;
+    --green:#059669;--amber:#d97706;--red:#dc2626;
+    --r:12px;--r-sm:6px;
+    --sh:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+    --sh-md:0 4px 14px rgba(0,0,0,.09);
+    --sh-lg:0 20px 40px rgba(0,0,0,.16)
+  }
+  /* Header */
+  .app-header{background:linear-gradient(135deg,#0d2340 0%,#1a3a5c 100%);position:sticky;top:0;z-index:100;box-shadow:0 2px 20px rgba(0,0,0,.3)}
+  .header-inner{max-width:860px;margin:0 auto;padding:.65rem 1.5rem;display:flex;align-items:center;gap:1rem}
+  .brand{display:flex;align-items:center;gap:.7rem;flex-shrink:0}
+  .brand-icon{width:36px;height:36px;background:rgba(255,255,255,.13);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:1.15rem;flex-shrink:0}
+  .brand-name{font-size:.95rem;font-weight:700;letter-spacing:-.01em;color:#fff}
+  .brand-sub{font-size:.72rem;color:rgba(255,255,255,.5)}
+  .hdr-spacer{flex:1}
+  .hdr-link{display:inline-flex;align-items:center;gap:.3rem;padding:.35rem .72rem;border-radius:6px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.82);font-size:.8rem;text-decoration:none;transition:.15s;white-space:nowrap}
+  .hdr-link:hover{background:rgba(255,255,255,.18);color:#fff}
+  /* Layout */
+  main{max-width:860px;margin:1.5rem auto;padding:0 1rem 4rem}
+  /* Section cards */
+  .s-card{background:var(--surface);border-radius:var(--r);box-shadow:var(--sh);margin-bottom:1.25rem;overflow:hidden}
+  .s-card-head{display:flex;align-items:center;gap:.7rem;padding:1rem 1.25rem .85rem;border-bottom:1px solid var(--border)}
+  .s-card-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0}
+  .s-card-icon.blue{background:#dbeafe}
+  .s-card-icon.green{background:#dcfce7}
+  .s-card-icon.amber{background:#fef3c7}
+  .s-card-icon.purple{background:#ede9fe}
+  .s-card-icon.night{background:#1e1b4b;color:#a5b4fc}
+  .s-card-icon.red{background:#fee2e2}
+  .s-card-title{font-size:.9rem;font-weight:700;color:var(--text)}
+  .s-card-body{padding:1.1rem 1.25rem}
+  /* Fields */
+  .field{margin-bottom:1rem}
+  .field:last-child{margin-bottom:0}
+  .field>label,.field>.field-label{display:block;font-size:.82rem;font-weight:600;color:var(--text-2);margin-bottom:.35rem}
+  .hint{font-size:.75rem;color:var(--text-3);margin-top:.3rem;line-height:1.55}
+  /* Inputs */
+  input[type=text],input[type=number],select{width:100%;padding:.44rem .7rem;border:1px solid var(--border-2);border-radius:var(--r-sm);font-size:.88rem;background:var(--surface);color:var(--text);transition:.15s}
+  input[type=text]:focus,input[type=number]:focus,select:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+  input[type=range]{width:100%;margin:.3rem 0;accent-color:var(--navy-m)}
+  .range-row{display:flex;align-items:center;gap:.75rem}
+  .range-row input[type=number]{width:80px;flex-shrink:0}
+  /* Toggle */
+  .toggle-row{display:flex;align-items:center;gap:.75rem}
+  .toggle{position:relative;display:inline-block;width:40px;height:22px;flex-shrink:0}
+  .toggle input{opacity:0;width:0;height:0}
+  .slider{position:absolute;inset:0;background:var(--border-2);border-radius:22px;transition:.25s;cursor:pointer}
+  .slider:before{content:'';position:absolute;width:16px;height:16px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.25s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+  input:checked+.slider{background:var(--navy-m)}
+  input:checked+.slider:before{transform:translateX(18px)}
+  .toggle-label{font-size:.84rem;color:var(--text-2)}
+  /* Readonly */
+  .readonly-field{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-sm);padding:.44rem .7rem;font-size:.84rem;color:var(--text-3);font-family:monospace}
+  /* Radio group */
+  .radio-group{display:flex;flex-direction:column;gap:.5rem;margin-top:.15rem}
+  .radio-item{display:flex;align-items:baseline;gap:.5rem;font-weight:normal;cursor:pointer;font-size:.87rem;color:var(--text)}
+  .radio-item input[type=radio]{margin-top:.15rem;accent-color:var(--navy-m);flex-shrink:0}
+  .radio-badge{font-size:.74rem;font-weight:600;padding:.05rem .45rem;border-radius:10px;background:#dcfce7;color:#166534}
+  /* Checkboxes */
+  .checkboxes{display:flex;gap:.75rem;flex-wrap:wrap;margin-top:.3rem}
+  .checkboxes label{display:flex;align-items:center;gap:.35rem;font-weight:normal;font-size:.88rem;cursor:pointer;color:var(--text)}
+  .checkboxes input[type=checkbox]{accent-color:var(--navy-m)}
+  /* Inline fields row */
+  .fields-row{display:flex;gap:1rem;flex-wrap:wrap}
+  .fields-row .field{flex:1;min-width:100px}
+  /* Estimate box */
+  .estimate-box{border-radius:var(--r-sm);padding:.85rem 1rem;background:var(--surface-2);border:1px solid var(--border);margin-top:.4rem}
+  .estimate-row{display:flex;align-items:center;gap:.75rem;margin-bottom:.5rem}
+  .estimate-value{font-size:1.5rem;font-weight:800;color:var(--navy-m);min-width:70px}
+  .estimate-detail{font-size:.78rem;color:var(--text-2);flex:1}
+  .estimate-bar-wrap{background:var(--border);border-radius:4px;height:8px;overflow:hidden;margin-bottom:.4rem}
+  .estimate-bar-fill{height:100%;border-radius:4px;transition:width .4s,background .4s}
+  .estimate-hint{font-size:.78rem;font-weight:600}
+  /* Actions */
+  .actions{display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;margin-top:1.5rem;padding-bottom:1rem}
+  .btn{padding:.55rem 1.2rem;border:none;border-radius:var(--r-sm);font-size:.9rem;cursor:pointer;font-weight:600;transition:.15s}
+  .btn-save{background:var(--navy-m);color:#fff}
+  .btn-save:hover{background:#1e4a7a}
+  .btn-restart{background:#b45309;color:#fff}
+  .btn-restart:hover{background:#92400e}
+  .btn-ghost{background:none;color:var(--text-2);border:1px solid var(--border-2);font-size:.82rem;padding:.35rem .8rem;font-weight:400}
+  .btn-ghost:hover{background:var(--surface-2)}
+  #msg{font-size:.84rem;padding:.4rem .8rem;border-radius:var(--r-sm)}
+  #msg.ok{background:#dcfce7;color:#166534}
+  #msg.err{background:#fee2e2;color:#991b1b}
+  #msg.warn{background:#fef3c7;color:#854d0e}
+  /* Section dividers */
+  .s-divider{height:1px;background:var(--border);margin:.85rem 0}
   </style>
 </head>
 <body>
-<header>
-  <h1>⚙️ Configuration</h1>
-  <a class="btn-back" href="/">← Tableau de bord</a>
+<header class="app-header">
+  <div class="header-inner">
+    <div class="brand">
+      <div class="brand-icon">⚙️</div>
+      <div>
+        <div class="brand-name">Configuration</div>
+        <div class="brand-sub">Comptage véhicules</div>
+      </div>
+    </div>
+    <div class="hdr-spacer"></div>
+    <a class="hdr-link" href="/">← Tableau de bord</a>
+  </div>
 </header>
+
 <main>
 
   <!-- VIDÉOS -->
-  <div class="card">
-    <h2>📁 Dossier des vidéos</h2>
-    <div class="field">
-      <label>Chemin dans le conteneur</label>
-      <div class="readonly-field">/video</div>
-      <div class="hint">Fixé par le volume Docker — correspond à <strong>/volume2/surveillance/Interphone</strong> sur le NAS.</div>
+  <div class="s-card">
+    <div class="s-card-head">
+      <div class="s-card-icon blue">📁</div>
+      <div class="s-card-title">Dossier des vidéos</div>
     </div>
-    <div class="field">
-      <label for="filename_datetime_format">Format du nom de fichier</label>
-      <input type="text" id="filename_datetime_format" placeholder="Interphone-%Y%m%d-%H%M%S">
-      <div class="hint">Codes : %Y=année, %m=mois, %d=jour, %H=heure, %M=minute, %S=seconde. Le suffixe variable est ignoré automatiquement.</div>
-    </div>
-    <div class="field">
-      <label for="timezone">Fuseau horaire</label>
-      <select id="timezone">
-        <option value="Europe/Paris">Europe/Paris</option>
-        <option value="Europe/London">Europe/London</option>
-        <option value="Europe/Berlin">Europe/Berlin</option>
-        <option value="Europe/Madrid">Europe/Madrid</option>
-        <option value="Europe/Rome">Europe/Rome</option>
-        <option value="UTC">UTC</option>
-      </select>
+    <div class="s-card-body">
+      <div class="field">
+        <label>Chemin dans le conteneur</label>
+        <div class="readonly-field">/video</div>
+        <div class="hint">Fixé par le volume Docker — correspond à <strong>/volume2/surveillance/Interphone</strong> sur le NAS.</div>
+      </div>
+      <div class="field">
+        <label for="filename_datetime_format">Format du nom de fichier</label>
+        <input type="text" id="filename_datetime_format" placeholder="Interphone-%Y%m%d-%H%M%S">
+        <div class="hint">Codes : %Y=année, %m=mois, %d=jour, %H=heure, %M=minute, %S=seconde. Le suffixe variable est ignoré automatiquement.</div>
+      </div>
+      <div class="field">
+        <label for="timezone">Fuseau horaire</label>
+        <select id="timezone">
+          <option value="Europe/Paris">Europe/Paris</option>
+          <option value="Europe/London">Europe/London</option>
+          <option value="Europe/Berlin">Europe/Berlin</option>
+          <option value="Europe/Madrid">Europe/Madrid</option>
+          <option value="Europe/Rome">Europe/Rome</option>
+          <option value="UTC">UTC</option>
+        </select>
+      </div>
     </div>
   </div>
 
   <!-- PLANIFICATION -->
-  <div class="card">
-    <h2>⏱ Planification</h2>
-    <div class="field">
-      <label for="file_stable_delay_seconds">Délai de stabilité de taille avant traitement (secondes)</label>
-      <div class="range-row">
-        <input type="range" id="file_stable_delay_range" min="30" max="300" step="10"
-               oninput="sync('file_stable_delay_seconds', this.value)">
-        <input type="number" id="file_stable_delay_seconds" min="30" max="300"
-               oninput="sync('file_stable_delay_range', this.value)">
-      </div>
-      <div class="hint">Traite un fichier seulement quand sa taille n'a pas changé depuis X secondes. Détecte automatiquement si la caméra est encore en train d'écrire le fichier. <strong>120 s recommandé.</strong></div>
+  <div class="s-card">
+    <div class="s-card-head">
+      <div class="s-card-icon amber">⏱</div>
+      <div class="s-card-title">Planification</div>
     </div>
-    <div class="field">
-      <label for="scan_interval_seconds">Intervalle de scan du dossier (secondes)</label>
-      <div class="range-row">
-        <input type="range" id="scan_interval_range" min="10" max="300" step="10" oninput="sync('scan_interval_seconds', this.value)">
-        <input type="number" id="scan_interval_seconds" min="10" max="300" oninput="sync('scan_interval_range', this.value)">
+    <div class="s-card-body">
+      <div class="field">
+        <label for="file_stable_delay_seconds">Délai de stabilité avant traitement (secondes)</label>
+        <div class="range-row">
+          <input type="range" id="file_stable_delay_range" min="30" max="300" step="10" oninput="sync('file_stable_delay_seconds', this.value)">
+          <input type="number" id="file_stable_delay_seconds" min="30" max="300" oninput="sync('file_stable_delay_range', this.value)">
+        </div>
+        <div class="hint">Traite un fichier seulement quand sa taille n'a pas changé depuis X secondes. Détecte automatiquement si la caméra est encore en train d'écrire. <strong>120 s recommandé.</strong></div>
       </div>
-      <div class="hint">Fréquence à laquelle l'app vérifie s'il y a de nouvelles vidéos.</div>
-    </div>
-    <div class="field">
-      <label for="max_recent_files">Limite de fichiers à analyser par cycle (0 = aucune limite)</label>
-      <div class="range-row">
-        <input type="range" id="max_recent_files_range" min="0" max="50" step="1" oninput="sync('max_recent_files', this.value)">
-        <input type="number" id="max_recent_files" min="0" max="200" oninput="sync('max_recent_files_range', this.value)">
+      <div class="s-divider"></div>
+      <div class="field">
+        <label for="scan_interval_seconds">Intervalle de scan du dossier (secondes)</label>
+        <div class="range-row">
+          <input type="range" id="scan_interval_range" min="10" max="300" step="10" oninput="sync('scan_interval_seconds', this.value)">
+          <input type="number" id="scan_interval_seconds" min="10" max="300" oninput="sync('scan_interval_range', this.value)">
+        </div>
+        <div class="hint">Fréquence à laquelle l'app vérifie s'il y a de nouvelles vidéos.</div>
       </div>
-      <div class="hint">À <strong>0</strong> (recommandé), tous les fichiers sont traités. Une valeur positive ignore définitivement les fichiers trop anciens et ne garde que les N plus récents.</div>
+      <div class="s-divider"></div>
+      <div class="field">
+        <label for="max_recent_files">Limite de fichiers par cycle (0 = aucune limite)</label>
+        <div class="range-row">
+          <input type="range" id="max_recent_files_range" min="0" max="50" step="1" oninput="sync('max_recent_files', this.value)">
+          <input type="number" id="max_recent_files" min="0" max="200" oninput="sync('max_recent_files_range', this.value)">
+        </div>
+        <div class="hint">À <strong>0</strong> (recommandé), tous les fichiers sont traités.</div>
+      </div>
     </div>
   </div>
 
   <!-- DÉTECTION IA -->
-  <div class="card">
-    <h2>🤖 Détection IA</h2>
-    <div class="field">
-      <label for="detector_sample_fps">Images analysées par seconde (IA)</label>
-      <div class="range-row">
-        <input type="range" id="detector_sample_fps_range" min="0.5" max="6" step="0.5"
-               oninput="sync('detector_sample_fps', this.value); updateEstimate()">
-        <input type="number" id="detector_sample_fps" min="0.5" max="6" step="0.5"
-               oninput="sync('detector_sample_fps_range', this.value); updateEstimate()">
-      </div>
-      <div class="hint"><strong>2 recommandé.</strong> Plus élevé = plus précis mais plus lent. Ce paramètre a un impact fort sur la durée de traitement.</div>
+  <div class="s-card">
+    <div class="s-card-head">
+      <div class="s-card-icon purple">🤖</div>
+      <div class="s-card-title">Détection IA</div>
     </div>
-    <div class="field">
-      <label>🧠 Modèle de détection</label>
-      <div style="display:flex;flex-direction:column;gap:.45rem;margin-top:.25rem">
-        <label style="display:flex;align-items:baseline;gap:.5rem;font-weight:normal;cursor:pointer">
-          <input type="radio" name="model_name" value="yolo11n" style="margin-top:.15rem">
-          <span><strong>YOLO11n</strong> <span style="color:#16a34a;font-size:.8rem">● recommandé</span> — nano, le plus récent, précision supérieure à v8n pour la même vitesse</span>
-        </label>
-        <label style="display:flex;align-items:baseline;gap:.5rem;font-weight:normal;cursor:pointer">
-          <input type="radio" name="model_name" value="yolov8n" style="margin-top:.15rem">
-          <span><strong>YOLOv8n</strong> — nano, robuste et bien éprouvé</span>
-        </label>
-        <label style="display:flex;align-items:baseline;gap:.5rem;font-weight:normal;cursor:pointer">
-          <input type="radio" name="model_name" value="yolov8s" style="margin-top:.15rem">
-          <span><strong>YOLOv8s</strong> — small, +10–15 % de précision, ~2× plus lent</span>
-        </label>
-        <label style="display:flex;align-items:baseline;gap:.5rem;font-weight:normal;cursor:pointer">
-          <input type="radio" name="model_name" value="yolo11s" style="margin-top:.15rem">
-          <span><strong>YOLO11s</strong> — small nouvelle génération, meilleur rapport précision/vitesse</span>
-        </label>
-      </div>
-      <div class="hint">⚠️ Changer de modèle déclenche un re-export OpenVINO (~2–5 min) et un retraitement de tous les fichiers.</div>
-    </div>
-    <div class="field">
-      <label for="imgsz">⚡ Taille d'entrée YOLO (pixels)</label>
-      <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
-        <label style="display:flex;align-items:center;gap:.4rem;font-weight:normal;cursor:pointer">
-          <input type="radio" name="imgsz" id="imgsz_320" value="320"> 320 px — <strong>rapide</strong> (~4× plus vite)
-        </label>
-        <label style="display:flex;align-items:center;gap:.4rem;font-weight:normal;cursor:pointer">
-          <input type="radio" name="imgsz" id="imgsz_640" value="640"> 640 px — <strong>précis</strong>
-        </label>
-      </div>
-      <div class="hint">⚠️ Changer ce paramètre supprime le modèle OpenVINO en cache et force un re-export au prochain démarrage (~2 min).</div>
-    </div>
-    <div class="field">
-      <label>⚡ Recadrage ROI avant inférence</label>
-      <div class="toggle-row">
-        <label class="toggle">
-          <input type="checkbox" id="roi_crop">
-          <span class="slider"></span>
-        </label>
-        <span style="font-size:.85rem;color:#666">Analyse uniquement la zone de comptage — réduit les pixels traités (2–5× selon ROI)</span>
-      </div>
-    </div>
-    <div class="field">
-      <label for="confidence_threshold">Seuil de confiance (0.0–1.0)</label>
-      <div class="range-row">
-        <input type="range" id="confidence_threshold_range" min="0.1" max="0.9" step="0.05" oninput="sync('confidence_threshold', this.value)">
-        <input type="number" id="confidence_threshold" min="0.1" max="0.9" step="0.05" oninput="sync('confidence_threshold_range', this.value)">
-      </div>
-      <div class="hint">Augmenter pour moins de faux positifs. Diminuer si des véhicules ne sont pas détectés.</div>
-    </div>
-    <div class="field">
-      <label>🌙 Mode nuit — seuil de confiance (0.0–1.0)</label>
-      <div class="range-row">
-        <input type="range" id="night_confidence_threshold_range" min="0.05" max="0.5" step="0.01" oninput="sync('night_confidence_threshold', this.value)">
-        <input type="number" id="night_confidence_threshold" min="0.05" max="0.5" step="0.01" oninput="sync('night_confidence_threshold_range', this.value)">
-      </div>
-      <div class="hint">Seuil abaissé automatiquement la nuit. Valeur recommandée : 0.18.</div>
-    </div>
-    <div class="field">
-      <label>Rehaussement de contraste CLAHE</label>
-      <div class="toggle-row">
-        <label class="toggle">
-          <input type="checkbox" id="night_enhance">
-          <span class="slider"></span>
-        </label>
-        <span style="font-size:.85rem;color:#666">Applique CLAHE sur toutes les frames avant l'inférence — améliore la détection de jour comme de nuit (recommandé)</span>
-      </div>
-    </div>
-    <div class="field">
-      <label>📍 Localisation (lever/coucher du soleil automatiques)</label>
-      <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
-        <label style="font-size:.85rem;color:#555">Latitude <input type="number" id="latitude" step="0.01" style="width:90px;padding:.3rem;border:1px solid #ccc;border-radius:4px;font-size:.9rem"></label>
-        <label style="font-size:.85rem;color:#555">Longitude <input type="number" id="longitude" step="0.01" style="width:90px;padding:.3rem;border:1px solid #ccc;border-radius:4px;font-size:.9rem"></label>
-        <label style="font-size:.85rem;color:#555">Fuseau UTC<input type="number" id="timezone_offset" min="-12" max="14" style="width:60px;padding:.3rem;border:1px solid #ccc;border-radius:4px;font-size:.9rem"></label>
-      </div>
-      <div class="hint">Le mode nuit s'active automatiquement entre le coucher et le lever du soleil. Launaguet : 43.67 / 1.42 / UTC+1 (UTC+2 en été).</div>
-    </div>
-    <div class="field">
-      <label>Types de véhicules à compter</label>
-      <div class="checkboxes" id="vehicle_classes">
-        <label><input type="checkbox" value="car"> Voiture</label>
-        <label><input type="checkbox" value="truck"> Camion</label>
-        <label><input type="checkbox" value="bus"> Bus</label>
-        <label><input type="checkbox" value="motorcycle"> Moto</label>
-      </div>
-    </div>
-    <div class="field" id="field_min_presence_frames">
-      <label for="min_presence_frames">Présence minimale (images)</label>
-      <div class="range-row">
-        <input type="range" id="min_presence_frames_range" min="1" max="10" step="1" oninput="sync('min_presence_frames', this.value)">
-        <input type="number" id="min_presence_frames" min="1" max="20" oninput="sync('min_presence_frames_range', this.value)">
-      </div>
-      <div class="hint">Nombre d'images minimum pour qu'un track soit compté. <strong>2 recommandé</strong> — élimine les faux positifs sans manquer de passages.</div>
-    </div>
-    <div class="field">
-      <label>Compter le sens de circulation</label>
-      <div class="toggle-row">
-        <label class="toggle">
-          <input type="checkbox" id="count_direction">
-          <span class="slider"></span>
-        </label>
-        <span style="font-size:.85rem;color:#666">Déduit le sens (gauche→droite / droite→gauche) du déplacement de chaque véhicule — sans ligne de comptage</span>
-      </div>
-    </div>
-
-    <!-- Estimation du temps de traitement -->
-    <div class="field" style="margin-top:1.1rem">
-      <label>⏱ Temps de traitement estimé — vidéo de 30 min</label>
-      <div class="estimate-box">
-        <div class="estimate-row">
-          <div class="estimate-value" id="est-total">—</div>
-          <div class="estimate-detail" id="est-detail">—</div>
+    <div class="s-card-body">
+      <div class="field">
+        <label for="detector_sample_fps">Images analysées par seconde (IA)</label>
+        <div class="range-row">
+          <input type="range" id="detector_sample_fps_range" min="0.5" max="6" step="0.5" oninput="sync('detector_sample_fps', this.value); updateEstimate()">
+          <input type="number" id="detector_sample_fps" min="0.5" max="6" step="0.5" oninput="sync('detector_sample_fps_range', this.value); updateEstimate()">
         </div>
-        <div class="estimate-bar-wrap">
-          <div class="estimate-bar-fill" id="est-bar" style="width:0%"></div>
-        </div>
-        <div class="estimate-hint" id="est-hint"></div>
+        <div class="hint"><strong>2 recommandé.</strong> Plus élevé = plus précis mais plus lent.</div>
       </div>
-      <div class="hint" style="margin-top:.35rem">Objectif : rester sous <strong>30 min</strong> pour traiter en temps réel. Constantes calibrées pour DS218+ avec OpenVINO.</div>
+      <div class="s-divider"></div>
+      <div class="field">
+        <div class="field-label">Modèle de détection</div>
+        <div class="radio-group">
+          <label class="radio-item">
+            <input type="radio" name="model_name" value="yolo11n">
+            <span><strong>YOLO11n</strong> <span class="radio-badge">recommandé</span> — nano, le plus récent, précision supérieure à v8n pour la même vitesse</span>
+          </label>
+          <label class="radio-item">
+            <input type="radio" name="model_name" value="yolov8n">
+            <span><strong>YOLOv8n</strong> — nano, robuste et bien éprouvé</span>
+          </label>
+          <label class="radio-item">
+            <input type="radio" name="model_name" value="yolov8s">
+            <span><strong>YOLOv8s</strong> — small, +10–15 % de précision, ~2× plus lent</span>
+          </label>
+          <label class="radio-item">
+            <input type="radio" name="model_name" value="yolo11s">
+            <span><strong>YOLO11s</strong> — small nouvelle génération, meilleur rapport précision/vitesse</span>
+          </label>
+        </div>
+        <div class="hint">⚠️ Changer de modèle déclenche un re-export OpenVINO (~2–5 min) et un retraitement de tous les fichiers.</div>
+      </div>
+      <div class="s-divider"></div>
+      <div class="field">
+        <div class="field-label">Taille d'entrée YOLO (pixels)</div>
+        <div style="display:flex;gap:1.5rem;flex-wrap:wrap;margin-top:.2rem">
+          <label class="radio-item"><input type="radio" name="imgsz" id="imgsz_320" value="320"> 320 px — <strong>rapide</strong> (~4× plus vite)</label>
+          <label class="radio-item"><input type="radio" name="imgsz" id="imgsz_640" value="640"> 640 px — <strong>précis</strong></label>
+        </div>
+        <div class="hint">⚠️ Changer ce paramètre supprime le modèle OpenVINO en cache (~2 min pour re-export).</div>
+      </div>
+      <div class="s-divider"></div>
+      <div class="field">
+        <div class="field-label">Recadrage ROI avant inférence</div>
+        <div class="toggle-row">
+          <label class="toggle"><input type="checkbox" id="roi_crop"><span class="slider"></span></label>
+          <span class="toggle-label">Analyse uniquement la zone de comptage — réduit les pixels traités (2–5× selon ROI)</span>
+        </div>
+      </div>
+      <div class="s-divider"></div>
+      <div class="field">
+        <label for="confidence_threshold">Seuil de confiance (0.0–1.0)</label>
+        <div class="range-row">
+          <input type="range" id="confidence_threshold_range" min="0.1" max="0.9" step="0.05" oninput="sync('confidence_threshold', this.value)">
+          <input type="number" id="confidence_threshold" min="0.1" max="0.9" step="0.05" oninput="sync('confidence_threshold_range', this.value)">
+        </div>
+        <div class="hint">Augmenter pour moins de faux positifs. Diminuer si des véhicules ne sont pas détectés.</div>
+      </div>
+      <div class="s-divider"></div>
+      <div class="field">
+        <div class="field-label">Seuil de confiance — mode nuit (0.0–1.0)</div>
+        <div class="range-row">
+          <input type="range" id="night_confidence_threshold_range" min="0.05" max="0.5" step="0.01" oninput="sync('night_confidence_threshold', this.value)">
+          <input type="number" id="night_confidence_threshold" min="0.05" max="0.5" step="0.01" oninput="sync('night_confidence_threshold_range', this.value)">
+        </div>
+        <div class="hint">Seuil abaissé automatiquement la nuit. Valeur recommandée : 0.18.</div>
+      </div>
+      <div class="s-divider"></div>
+      <div class="field">
+        <div class="field-label">Rehaussement de contraste CLAHE</div>
+        <div class="toggle-row">
+          <label class="toggle"><input type="checkbox" id="night_enhance"><span class="slider"></span></label>
+          <span class="toggle-label">Applique CLAHE sur toutes les frames avant l'inférence — améliore la détection de jour comme de nuit (recommandé)</span>
+        </div>
+      </div>
+      <div class="s-divider"></div>
+      <div class="field">
+        <div class="field-label">Localisation (lever/coucher du soleil automatiques)</div>
+        <div class="fields-row" style="margin-top:.4rem">
+          <div class="field">
+            <label for="latitude" style="font-size:.78rem">Latitude</label>
+            <input type="number" id="latitude" step="0.01">
+          </div>
+          <div class="field">
+            <label for="longitude" style="font-size:.78rem">Longitude</label>
+            <input type="number" id="longitude" step="0.01">
+          </div>
+          <div class="field" style="max-width:100px">
+            <label for="timezone_offset" style="font-size:.78rem">Fuseau UTC</label>
+            <input type="number" id="timezone_offset" min="-12" max="14">
+          </div>
+        </div>
+        <div class="hint">Launaguet : 43.67 / 1.42 / UTC+1 (UTC+2 en été).</div>
+      </div>
+      <div class="s-divider"></div>
+      <div class="field">
+        <div class="field-label">Types de véhicules à compter</div>
+        <div class="checkboxes" id="vehicle_classes">
+          <label><input type="checkbox" value="car"> Voiture</label>
+          <label><input type="checkbox" value="truck"> Camion</label>
+          <label><input type="checkbox" value="bus"> Bus</label>
+          <label><input type="checkbox" value="motorcycle"> Moto</label>
+        </div>
+      </div>
+      <div class="s-divider"></div>
+      <div class="field" id="field_min_presence_frames">
+        <label for="min_presence_frames">Présence minimale (images)</label>
+        <div class="range-row">
+          <input type="range" id="min_presence_frames_range" min="1" max="10" step="1" oninput="sync('min_presence_frames', this.value)">
+          <input type="number" id="min_presence_frames" min="1" max="20" oninput="sync('min_presence_frames_range', this.value)">
+        </div>
+        <div class="hint"><strong>2 recommandé</strong> — élimine les faux positifs sans manquer de passages.</div>
+      </div>
+      <div class="s-divider"></div>
+      <div class="field">
+        <div class="field-label">Compter le sens de circulation</div>
+        <div class="toggle-row">
+          <label class="toggle"><input type="checkbox" id="count_direction"><span class="slider"></span></label>
+          <span class="toggle-label">Déduit le sens (gauche→droite / droite→gauche) du déplacement de chaque véhicule</span>
+        </div>
+      </div>
+      <div class="s-divider"></div>
+      <!-- Estimation temps de traitement -->
+      <div class="field">
+        <div class="field-label">Temps de traitement estimé — vidéo de 30 min</div>
+        <div class="estimate-box">
+          <div class="estimate-row">
+            <div class="estimate-value" id="est-total">—</div>
+            <div class="estimate-detail" id="est-detail">—</div>
+          </div>
+          <div class="estimate-bar-wrap">
+            <div class="estimate-bar-fill" id="est-bar" style="width:0%"></div>
+          </div>
+          <div class="estimate-hint" id="est-hint"></div>
+        </div>
+        <div class="hint" style="margin-top:.35rem">Objectif : rester sous <strong>30 min</strong> pour traiter en temps réel. Constantes calibrées pour DS218+ avec OpenVINO.</div>
+      </div>
     </div>
   </div>
 
   <!-- FILTRE AUDIO -->
-  <div class="card">
-    <h2>🔊 Filtre audio</h2>
-    <div class="field">
-      <label>Activer la détection audio</label>
-      <div class="toggle-row">
-        <label class="toggle">
-          <input type="checkbox" id="audio_filter_enabled">
-          <span class="slider"></span>
-        </label>
-        <span style="font-size:.85rem;color:#666">Détecte les segments audio avec activité véhicule pour cibler l'analyse IA et réduire le temps de traitement</span>
-      </div>
+  <div class="s-card">
+    <div class="s-card-head">
+      <div class="s-card-icon green">🔊</div>
+      <div class="s-card-title">Filtre audio</div>
     </div>
-    <div class="field">
-      <label for="audio_sigma_factor">Facteur sigma (sensibilité du seuil)</label>
-      <div class="range-row">
-        <input type="range" id="audio_sigma_factor_range" min="1.0" max="5.0" step="0.1" oninput="sync('audio_sigma_factor', this.value)">
-        <input type="number" id="audio_sigma_factor" min="1.0" max="5.0" step="0.1" oninput="sync('audio_sigma_factor_range', this.value)">
+    <div class="s-card-body">
+      <div class="field">
+        <div class="field-label">Activer la détection audio</div>
+        <div class="toggle-row">
+          <label class="toggle"><input type="checkbox" id="audio_filter_enabled"><span class="slider"></span></label>
+          <span class="toggle-label">Détecte les segments audio avec activité véhicule pour cibler l'analyse IA et réduire le temps de traitement</span>
+        </div>
       </div>
-      <div class="hint">Seuil = médiane + σ × sigma_factor. Valeur haute = moins sensible. <strong>2.0 recommandé.</strong></div>
-    </div>
-    <div class="field">
-      <label for="audio_min_energy_db">Énergie minimale de jour (dB)</label>
-      <div class="range-row">
-        <input type="range" id="audio_min_energy_db_range" min="-80" max="-30" step="1" oninput="sync('audio_min_energy_db', this.value)">
-        <input type="number" id="audio_min_energy_db" min="-80" max="-30" step="1" oninput="sync('audio_min_energy_db_range', this.value)">
+      <div class="s-divider"></div>
+      <div class="field">
+        <label for="audio_sigma_factor">Facteur sigma (sensibilité du seuil)</label>
+        <div class="range-row">
+          <input type="range" id="audio_sigma_factor_range" min="1.0" max="5.0" step="0.1" oninput="sync('audio_sigma_factor', this.value)">
+          <input type="number" id="audio_sigma_factor" min="1.0" max="5.0" step="0.1" oninput="sync('audio_sigma_factor_range', this.value)">
+        </div>
+        <div class="hint">Seuil = médiane + σ × sigma_factor. Valeur haute = moins sensible. <strong>2.0 recommandé.</strong></div>
       </div>
-      <div class="hint">Énergie minimale absolue pour qu'un segment soit considéré actif (jour). <strong>-60 dB recommandé.</strong></div>
-    </div>
-    <div class="field">
-      <label for="audio_night_min_energy_db">Énergie minimale de nuit (dB)</label>
-      <div class="range-row">
-        <input type="range" id="audio_night_min_energy_db_range" min="-80" max="-30" step="1" oninput="sync('audio_night_min_energy_db', this.value)">
-        <input type="number" id="audio_night_min_energy_db" min="-80" max="-30" step="1" oninput="sync('audio_night_min_energy_db_range', this.value)">
+      <div class="s-divider"></div>
+      <div class="fields-row">
+        <div class="field">
+          <label for="audio_min_energy_db">Énergie minimale de jour (dB)</label>
+          <div class="range-row">
+            <input type="range" id="audio_min_energy_db_range" min="-80" max="-30" step="1" oninput="sync('audio_min_energy_db', this.value)">
+            <input type="number" id="audio_min_energy_db" min="-80" max="-30" step="1" oninput="sync('audio_min_energy_db_range', this.value)">
+          </div>
+          <div class="hint"><strong>-60 dB recommandé.</strong></div>
+        </div>
+        <div class="field">
+          <label for="audio_night_min_energy_db">Énergie minimale de nuit (dB)</label>
+          <div class="range-row">
+            <input type="range" id="audio_night_min_energy_db_range" min="-80" max="-30" step="1" oninput="sync('audio_night_min_energy_db', this.value)">
+            <input type="number" id="audio_night_min_energy_db" min="-80" max="-30" step="1" oninput="sync('audio_night_min_energy_db_range', this.value)">
+          </div>
+          <div class="hint"><strong>-70 dB recommandé.</strong></div>
+        </div>
       </div>
-      <div class="hint">Seuil abaissé la nuit pour capter les sons faibles. <strong>-70 dB recommandé.</strong></div>
-    </div>
-    <div class="field">
-      <label for="audio_segment_padding">Marge autour des segments audio (secondes)</label>
-      <div class="range-row">
-        <input type="range" id="audio_segment_padding_range" min="0" max="10" step="0.5" oninput="sync('audio_segment_padding', this.value)">
-        <input type="number" id="audio_segment_padding" min="0" max="10" step="0.5" oninput="sync('audio_segment_padding_range', this.value)">
+      <div class="s-divider"></div>
+      <div class="fields-row">
+        <div class="field">
+          <label for="audio_segment_padding">Marge autour des segments (secondes)</label>
+          <div class="range-row">
+            <input type="range" id="audio_segment_padding_range" min="0" max="10" step="0.5" oninput="sync('audio_segment_padding', this.value)">
+            <input type="number" id="audio_segment_padding" min="0" max="10" step="0.5" oninput="sync('audio_segment_padding_range', this.value)">
+          </div>
+          <div class="hint"><strong>2.5 s recommandé.</strong></div>
+        </div>
+        <div class="field">
+          <label for="audio_calibration_files">Fichiers de calibration du bruit de fond</label>
+          <input type="number" id="audio_calibration_files" min="1" max="50">
+          <div class="hint"><strong>10 recommandé.</strong></div>
+        </div>
       </div>
-      <div class="hint">Durée ajoutée avant et après chaque segment actif. <strong>2.5 s recommandé.</strong></div>
-    </div>
-    <div class="field">
-      <label for="audio_calibration_files">Fichiers de calibration du bruit de fond</label>
-      <input type="number" id="audio_calibration_files" min="1" max="50">
-      <div class="hint">Nombre de fichiers récents utilisés pour calibrer le seuil de bruit de fond. <strong>10 recommandé.</strong></div>
     </div>
   </div>
 
   <!-- DÉTECTION NUIT -->
-  <div class="card">
-    <h2>🌙 Détection nuit</h2>
-    <div class="field">
-      <label>Activer la détection automatique nuit/jour</label>
-      <div class="toggle-row">
-        <label class="toggle">
-          <input type="checkbox" id="night_detection_enabled">
-          <span class="slider"></span>
-        </label>
-        <span style="font-size:.85rem;color:#666">Détecte la luminosité et les phares — active le mode nuit dynamiquement selon le contenu de la vidéo</span>
-      </div>
+  <div class="s-card">
+    <div class="s-card-head">
+      <div class="s-card-icon night">🌙</div>
+      <div class="s-card-title">Détection nuit</div>
     </div>
-    <div class="field">
-      <label for="night_brightness_threshold">Seuil de luminosité nuit (0–255)</label>
-      <div class="range-row">
-        <input type="range" id="night_brightness_threshold_range" min="10" max="80" step="1" oninput="sync('night_brightness_threshold', this.value)">
-        <input type="number" id="night_brightness_threshold" min="10" max="80" oninput="sync('night_brightness_threshold_range', this.value)">
+    <div class="s-card-body">
+      <div class="field">
+        <div class="field-label">Activer la détection automatique nuit/jour</div>
+        <div class="toggle-row">
+          <label class="toggle"><input type="checkbox" id="night_detection_enabled"><span class="slider"></span></label>
+          <span class="toggle-label">Détecte la luminosité et les phares — active le mode nuit dynamiquement selon le contenu de la vidéo</span>
+        </div>
       </div>
-      <div class="hint">Luminosité moyenne en dessous de laquelle l'image est classée nuit. <strong>40 recommandé.</strong></div>
-    </div>
-    <div class="field">
-      <label for="night_twilight_threshold">Seuil de crépuscule (0–255)</label>
-      <div class="range-row">
-        <input type="range" id="night_twilight_threshold_range" min="10" max="100" step="1" oninput="sync('night_twilight_threshold', this.value)">
-        <input type="number" id="night_twilight_threshold" min="10" max="100" oninput="sync('night_twilight_threshold_range', this.value)">
+      <div class="s-divider"></div>
+      <div class="fields-row">
+        <div class="field">
+          <label for="night_brightness_threshold">Seuil de luminosité nuit (0–255)</label>
+          <div class="range-row">
+            <input type="range" id="night_brightness_threshold_range" min="10" max="80" step="1" oninput="sync('night_brightness_threshold', this.value)">
+            <input type="number" id="night_brightness_threshold" min="10" max="80" oninput="sync('night_brightness_threshold_range', this.value)">
+          </div>
+          <div class="hint"><strong>40 recommandé.</strong></div>
+        </div>
+        <div class="field">
+          <label for="night_twilight_threshold">Seuil de crépuscule (0–255)</label>
+          <div class="range-row">
+            <input type="range" id="night_twilight_threshold_range" min="10" max="100" step="1" oninput="sync('night_twilight_threshold', this.value)">
+            <input type="number" id="night_twilight_threshold" min="10" max="100" oninput="sync('night_twilight_threshold_range', this.value)">
+          </div>
+          <div class="hint"><strong>55 recommandé.</strong></div>
+        </div>
       </div>
-      <div class="hint">Zone intermédiaire entre nuit et jour (crépuscule/aube). <strong>55 recommandé.</strong></div>
-    </div>
-    <div class="field">
-      <label for="night_flash_sigma">Sensibilité détection de phares (sigma)</label>
-      <div class="range-row">
-        <input type="range" id="night_flash_sigma_range" min="1.0" max="5.0" step="0.1" oninput="sync('night_flash_sigma', this.value)">
-        <input type="number" id="night_flash_sigma" min="1.0" max="5.0" step="0.1" oninput="sync('night_flash_sigma_range', this.value)">
+      <div class="s-divider"></div>
+      <div class="fields-row">
+        <div class="field">
+          <label for="night_flash_sigma">Sensibilité détection phares (sigma)</label>
+          <div class="range-row">
+            <input type="range" id="night_flash_sigma_range" min="1.0" max="5.0" step="0.1" oninput="sync('night_flash_sigma', this.value)">
+            <input type="number" id="night_flash_sigma" min="1.0" max="5.0" step="0.1" oninput="sync('night_flash_sigma_range', this.value)">
+          </div>
+          <div class="hint"><strong>2.5 recommandé.</strong></div>
+        </div>
+        <div class="field">
+          <label for="night_min_flash_sep_sec">Séparation minimale entre phares (s)</label>
+          <div class="range-row">
+            <input type="range" id="night_min_flash_sep_range" min="0.2" max="5.0" step="0.1" oninput="sync('night_min_flash_sep_sec', this.value)">
+            <input type="number" id="night_min_flash_sep_sec" min="0.2" max="5.0" step="0.1" oninput="sync('night_min_flash_sep_range', this.value)">
+          </div>
+          <div class="hint"><strong>1.0 s recommandé.</strong></div>
+        </div>
       </div>
-      <div class="hint">Écart-type pour la détection de pics de luminosité (phares). <strong>2.5 recommandé.</strong></div>
-    </div>
-    <div class="field">
-      <label for="night_min_flash_sep_sec">Séparation minimale entre deux phares (secondes)</label>
-      <div class="range-row">
-        <input type="range" id="night_min_flash_sep_range" min="0.2" max="5.0" step="0.1" oninput="sync('night_min_flash_sep_sec', this.value)">
-        <input type="number" id="night_min_flash_sep_sec" min="0.2" max="5.0" step="0.1" oninput="sync('night_min_flash_sep_range', this.value)">
+      <div class="s-divider"></div>
+      <div class="field">
+        <label for="night_merge_window_sec">Fenêtre de fusion des phares (secondes)</label>
+        <div class="range-row">
+          <input type="range" id="night_merge_window_range" min="1.0" max="10.0" step="0.5" oninput="sync('night_merge_window_sec', this.value)">
+          <input type="number" id="night_merge_window_sec" min="1.0" max="10.0" step="0.5" oninput="sync('night_merge_window_range', this.value)">
+        </div>
+        <div class="hint">Deux phares dans cette fenêtre sont fusionnés (avant + arrière du même véhicule). <strong>4.0 s recommandé.</strong></div>
       </div>
-      <div class="hint">Durée minimale entre deux détections de phares. <strong>1.0 s recommandé.</strong></div>
-    </div>
-    <div class="field">
-      <label for="night_merge_window_sec">Fenêtre de fusion des phares (secondes)</label>
-      <div class="range-row">
-        <input type="range" id="night_merge_window_range" min="1.0" max="10.0" step="0.5" oninput="sync('night_merge_window_sec', this.value)">
-        <input type="number" id="night_merge_window_sec" min="1.0" max="10.0" step="0.5" oninput="sync('night_merge_window_range', this.value)">
-      </div>
-      <div class="hint">Deux phares détectés dans cette fenêtre sont fusionnés (avant + arrière du même véhicule). <strong>4.0 s recommandé.</strong></div>
     </div>
   </div>
 
   <!-- INTERFACE -->
-  <div class="card">
-    <h2>📊 Interface</h2>
-    <div class="field">
-      <label for="default_days">Nombre de jours affichés par défaut (vue quotidienne)</label>
-      <input type="number" id="default_days" min="1" max="365">
+  <div class="s-card">
+    <div class="s-card-head">
+      <div class="s-card-icon blue">📊</div>
+      <div class="s-card-title">Interface & sécurité</div>
     </div>
-    <div class="field">
-      <label for="dashboard_username">Identifiant de connexion</label>
-      <input type="text" id="dashboard_username" autocomplete="off">
-      <div class="hint">Laisser vide pour désactiver l'authentification.</div>
-    </div>
-    <div class="field">
-      <label for="dashboard_password">Mot de passe</label>
-      <input type="text" id="dashboard_password" autocomplete="new-password">
-      <div class="hint">Laisser vide pour désactiver l'authentification.</div>
-    </div>
-    <div class="field">
-      <label for="data_retention_days">Rétention des données (jours, 0 = illimitée)</label>
-      <input type="number" id="data_retention_days" min="0" max="3650">
-      <div class="hint">Supprime automatiquement les enregistrements plus anciens que N jours. <strong>0</strong> = conserver toutes les données.</div>
-    </div>
-    <div class="field">
-      <label for="log_level">Niveau de journalisation</label>
-      <select id="log_level">
-        <option value="DEBUG">DEBUG (très verbeux)</option>
-        <option value="INFO">INFO (normal)</option>
-        <option value="WARNING">WARNING (erreurs uniquement)</option>
-        <option value="ERROR">ERROR (problèmes graves)</option>
-      </select>
+    <div class="s-card-body">
+      <div class="fields-row">
+        <div class="field">
+          <label for="default_days">Jours affichés par défaut (vue quotidienne)</label>
+          <input type="number" id="default_days" min="1" max="365">
+        </div>
+        <div class="field">
+          <label for="data_retention_days">Rétention des données (jours, 0 = illimitée)</label>
+          <input type="number" id="data_retention_days" min="0" max="3650">
+          <div class="hint"><strong>0</strong> = conserver toutes les données.</div>
+        </div>
+      </div>
+      <div class="s-divider"></div>
+      <div class="fields-row">
+        <div class="field">
+          <label for="dashboard_username">Identifiant de connexion</label>
+          <input type="text" id="dashboard_username" autocomplete="off">
+          <div class="hint">Laisser vide pour désactiver l'authentification.</div>
+        </div>
+        <div class="field">
+          <label for="dashboard_password">Mot de passe</label>
+          <input type="text" id="dashboard_password" autocomplete="new-password">
+        </div>
+      </div>
+      <div class="s-divider"></div>
+      <div class="field">
+        <label for="log_level">Niveau de journalisation</label>
+        <select id="log_level">
+          <option value="DEBUG">DEBUG (très verbeux)</option>
+          <option value="INFO">INFO (normal)</option>
+          <option value="WARNING">WARNING (erreurs uniquement)</option>
+          <option value="ERROR">ERROR (problèmes graves)</option>
+        </select>
+      </div>
     </div>
   </div>
 
   <!-- ACTIONS -->
   <div class="actions">
-    <button id="btn-save"         class="btn btn-save"    onclick="saveConfig()">💾 Enregistrer</button>
+    <button id="btn-save" class="btn btn-save" onclick="saveConfig()">💾 Enregistrer</button>
     <button id="btn-save-restart" class="btn btn-restart" onclick="saveAndRestart()" style="display:none">💾 Enregistrer et redémarrer</button>
-    <button class="btn btn-manual-restart" onclick="manualRestart()" title="Forcer le redémarrage du service sans sauvegarder">↺ Redémarrer</button>
+    <button class="btn btn-ghost" onclick="manualRestart()" title="Forcer le redémarrage du service sans sauvegarder">↺ Redémarrer</button>
     <span id="msg"></span>
   </div>
 
@@ -415,7 +520,6 @@ function setVal(id, val) {
   el.value = val;
 }
 
-/* ── Estimation du temps de traitement ── */
 async function updateEstimate() {
   try {
     const res  = await fetch('/config/api/estimate');
@@ -425,8 +529,7 @@ async function updateEstimate() {
     const detectMin = data.detect_contribution_min;
 
     document.getElementById('est-total').textContent = `~${totalMin} min`;
-    document.getElementById('est-detail').textContent =
-      `Audio : ${audioMin} min  +  IA : ${detectMin} min`;
+    document.getElementById('est-detail').textContent = `Audio : ${audioMin} min  +  IA : ${detectMin} min`;
 
     const bar  = document.getElementById('est-bar');
     const hint = document.getElementById('est-hint');
@@ -466,10 +569,8 @@ async function loadConfig() {
 
   setVal('detector_sample_fps',       data.detector?.sample_fps);
   setVal('detector_sample_fps_range', data.detector?.sample_fps);
-  // model_name radio
   const modelName = data.detector?.model_name || 'yolo11n';
   document.querySelectorAll('input[name=model_name]').forEach(r => { r.checked = r.value === modelName; });
-  // imgsz radio
   const imgsz = data.detector?.imgsz || 320;
   document.getElementById('imgsz_320').checked = imgsz !== 640;
   document.getElementById('imgsz_640').checked = imgsz === 640;
@@ -499,7 +600,6 @@ async function loadConfig() {
     cb.checked = classes.includes(cb.value);
   });
 
-  // Audio filter
   document.getElementById('audio_filter_enabled').checked = data.audio_filter?.enabled !== false;
   setVal('audio_sigma_factor',        data.audio_filter?.sigma_factor);
   setVal('audio_sigma_factor_range',  data.audio_filter?.sigma_factor);
@@ -511,7 +611,6 @@ async function loadConfig() {
   setVal('audio_segment_padding_range', data.audio_filter?.segment_padding);
   setVal('audio_calibration_files', data.audio_filter?.calibration_files);
 
-  // Night detection
   document.getElementById('night_detection_enabled').checked = data.night_detection?.enabled !== false;
   setVal('night_brightness_threshold',       data.night_detection?.brightness_threshold);
   setVal('night_brightness_threshold_range', data.night_detection?.brightness_threshold);
@@ -553,21 +652,18 @@ async function saveConfig() {
     vehicle_classes:               classes,
     count_direction:          document.getElementById('count_direction').checked,
     min_presence_frames:      parseInt(document.getElementById('min_presence_frames').value),
-    // Audio filter
     audio_filter_enabled:     document.getElementById('audio_filter_enabled').checked,
     audio_sigma_factor:       parseFloat(document.getElementById('audio_sigma_factor').value),
     audio_min_energy_db:      parseFloat(document.getElementById('audio_min_energy_db').value),
     audio_night_min_energy_db: parseFloat(document.getElementById('audio_night_min_energy_db').value),
     audio_segment_padding:    parseFloat(document.getElementById('audio_segment_padding').value),
     audio_calibration_files:  parseInt(document.getElementById('audio_calibration_files').value),
-    // Night detection
     night_detection_enabled:      document.getElementById('night_detection_enabled').checked,
     night_brightness_threshold:   parseInt(document.getElementById('night_brightness_threshold').value),
     night_twilight_threshold:     parseInt(document.getElementById('night_twilight_threshold').value),
     night_flash_sigma:            parseFloat(document.getElementById('night_flash_sigma').value),
     night_min_flash_sep_sec:      parseFloat(document.getElementById('night_min_flash_sep_sec').value),
     night_merge_window_sec:       parseFloat(document.getElementById('night_merge_window_sec').value),
-    // Interface
     default_days:             document.getElementById('default_days').value,
     dashboard_username:       document.getElementById('dashboard_username').value,
     dashboard_password:       document.getElementById('dashboard_password').value,
@@ -579,7 +675,7 @@ async function saveConfig() {
   const data = await res.json();
   if (data.ok) {
     showMsg('✅ Paramètres enregistrés — pris en compte au prochain scan.', 'ok');
-    _snapshotInitialValues(); // reset baseline after save
+    _snapshotInitialValues();
     updateActionButtons();
   } else {
     showMsg('❌ ' + data.error, 'err');
@@ -608,11 +704,8 @@ function showMsg(text, type) {
   el.className   = type;
 }
 
-// ── Boutons dynamiques ─────────────────────────────────────────────
-// Champs dont le changement nécessite un redémarrage (re-export OpenVINO).
 const RESTART_REQUIRED_IDS    = new Set([]);
 const RESTART_REQUIRED_RADIOS = new Set(['model_name', 'imgsz']);
-
 let _initialValues = {};
 
 function _snapshotInitialValues() {
@@ -648,7 +741,6 @@ function updateActionButtons() {
   document.getElementById('btn-save-restart').style.display = restart ? ''     : 'none';
 }
 
-// Attach listeners to restart-required fields
 RESTART_REQUIRED_IDS.forEach(id => {
   const el = document.getElementById(id);
   if (el) el.addEventListener('change', updateActionButtons);
