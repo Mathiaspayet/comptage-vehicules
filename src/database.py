@@ -647,6 +647,56 @@ class Database:
             rows = conn.execute(query, {"from": date_from, "to": date_to, "tzmod": tzmod}).fetchall()
         return [{"date": r["day"], "count": r["count"]} for r in rows]
 
+    def get_heatmap_stats(self, days: int = 30, vehicle_type: str = "all") -> list[dict]:
+        """Returns avg passages per (weekday 0=Mon…6=Sun, hour 0-23) over the last N days."""
+        tzmod = self._tz_mod()
+        type_filter = "" if vehicle_type == "all" else "AND vehicle_type = :vtype"
+        query = f"""
+            SELECT
+                (CAST(strftime('%w', datetime(timestamp, :tzmod)) AS INTEGER) + 6) % 7 AS weekday,
+                CAST(strftime('%H', datetime(timestamp, :tzmod)) AS INTEGER) AS hour,
+                COUNT(*) AS total_count,
+                COUNT(DISTINCT date(datetime(timestamp, :tzmod))) AS days_with_data
+            FROM crossings
+            WHERE date(datetime(timestamp, :tzmod)) >= date(datetime('now', :tzmod), :offset)
+            {type_filter}
+            GROUP BY weekday, hour
+        """
+        params = {"offset": f"-{days} days", "vtype": vehicle_type, "tzmod": tzmod}
+        with self._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+        return [
+            {
+                "weekday": r["weekday"],
+                "hour": r["hour"],
+                "avg_count": round(r["total_count"] / r["days_with_data"], 1),
+                "total_count": r["total_count"],
+            }
+            for r in rows
+        ]
+
+    def get_type_evolution(self, days: int = 30) -> list[dict]:
+        """Returns per-day, per-vehicle-type counts for the last N days."""
+        tzmod = self._tz_mod()
+        query = """
+            SELECT
+                date(datetime(timestamp, :tzmod)) AS day,
+                vehicle_type,
+                COUNT(*) AS count
+            FROM crossings
+            WHERE date(datetime(timestamp, :tzmod)) >= date(datetime('now', :tzmod), :offset)
+            GROUP BY day, vehicle_type
+            ORDER BY day
+        """
+        params = {"offset": f"-{days} days", "tzmod": tzmod}
+        with self._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+        from collections import defaultdict
+        by_day: dict = defaultdict(lambda: {"car": 0, "truck": 0, "bus": 0, "motorcycle": 0})
+        for r in rows:
+            by_day[r["day"]][r["vehicle_type"]] = r["count"]
+        return [{"date": d, **by_day[d]} for d in sorted(by_day)]
+
     def get_crossings_detail(self, day: str, hour: int | None = None) -> list[dict]:
         """Returns individual crossings for a day (and optionally an hour)."""
         with self._connect() as conn:
