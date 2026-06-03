@@ -65,11 +65,21 @@
     .dir-bar-wrap { display:flex; height:16px; border-radius:8px; overflow:hidden; margin:.5rem 0; }
     .dir-bar-ltr { background:#2563eb; transition:width .4s; }
     .dir-bar-rtl { background:#16a34a; transition:width .4s; }
-    /* Trends tab */
+    /* Analytics tiles (always-visible) */
+    .analytics-section { margin-bottom:1.5rem; }
+    .a-tile { background:#fff; border-radius:8px; padding:1.1rem 1.25rem; box-shadow:0 1px 4px rgba(0,0,0,.1); margin-bottom:1rem; }
+    .a-tile h2 { font-size:.9rem; font-weight:700; color:#1a3a5c; margin:0; }
+    .a-tile-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:.8rem; flex-wrap:wrap; gap:.5rem; }
+    .a-2col { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+    @media (max-width:680px) { .a-2col { grid-template-columns:1fr; } }
+    .a-controls { display:flex; flex-wrap:wrap; gap:.3rem; align-items:center; }
+    .tpgrp { display:flex; border:1px solid #cbd5e1; border-radius:4px; overflow:hidden; }
+    .tpgrp .tpbtn { border:none; border-radius:0; border-right:1px solid #cbd5e1; }
+    .tpgrp .tpbtn:last-child { border-right:none; }
+    /* Heatmap */
     .heatmap-wrap { position:relative; overflow:hidden; }
     #heatmap-canvas { display:block; width:100%; cursor:crosshair; }
     .heatmap-tooltip { position:absolute; background:rgba(15,23,42,.85); color:#fff; font-size:.75rem; padding:.3rem .6rem; border-radius:4px; pointer-events:none; display:none; white-space:nowrap; z-index:10; }
-    .trend-controls { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin-bottom:.9rem; }
     .tpbtn { padding:.3rem .65rem; border:1px solid #cbd5e1; border-radius:4px; background:#fff; cursor:pointer; font-size:.82rem; }
     .tpbtn:hover { background:#f1f5f9; }
     .tpbtn.active { background:#1a3a5c; color:#fff; border-color:#1a3a5c; }
@@ -88,6 +98,80 @@
 </header>
 
 <main>
+  <!-- ══════════════ ANALYTICS ══════════════ -->
+  <div class="analytics-section">
+    <div class="a-tile">
+      <div class="a-tile-header">
+        <h2>Trafic par créneau horaire</h2>
+        <div class="a-controls">
+          <div class="tpgrp">
+            <button class="tpbtn active" id="hm-mode-avg" onclick="setHmMode('avg')">Moyenne</button>
+            <button class="tpbtn" id="hm-mode-week" onclick="setHmMode('week')">Semaine</button>
+          </div>
+          <span id="hm-period-ctrl" class="a-controls">
+            <button class="tpbtn hm-btn active" onclick="setHeatmapPeriod(7,this)">7j</button>
+            <button class="tpbtn hm-btn" onclick="setHeatmapPeriod(14,this)">14j</button>
+            <button class="tpbtn hm-btn" onclick="setHeatmapPeriod(30,this)">30j</button>
+            <button class="tpbtn hm-btn" onclick="setHeatmapPeriod(90,this)">90j</button>
+          </span>
+          <span id="hm-week-ctrl" class="a-controls" style="display:none">
+            <button class="tpbtn" onclick="hmWeekPrev()">‹</button>
+            <span id="hm-week-label" style="font-size:.82rem;color:#555;min-width:160px;text-align:center">—</span>
+            <button class="tpbtn" onclick="hmWeekNext()">›</button>
+          </span>
+          <select id="heatmap-type" onchange="loadHeatmap()" style="padding:.25rem .45rem;border:1px solid #ccc;border-radius:4px;font-size:.82rem">
+            <option value="all">Tous</option>
+            <option value="car">Voiture</option>
+            <option value="truck">Camion</option>
+            <option value="bus">Bus</option>
+            <option value="motorcycle">Moto</option>
+          </select>
+        </div>
+      </div>
+      <div class="heatmap-wrap">
+        <canvas id="heatmap-canvas"></canvas>
+        <div class="heatmap-tooltip" id="heatmap-tooltip"></div>
+      </div>
+      <div style="display:flex;gap:1rem;margin-top:.5rem;font-size:.75rem;color:#888;align-items:center">
+        <span>Intensité :</span>
+        <div style="display:flex;align-items:center;gap:.4rem">
+          <div style="width:80px;height:10px;background:linear-gradient(to right,#f8fafc,hsl(48,88%,63%),hsl(24,88%,55%),hsl(0,88%,45%));border-radius:2px;border:1px solid #e2e8f0"></div>
+          <span>faible → fort</span>
+        </div>
+      </div>
+    </div>
+    <div class="a-2col">
+      <div class="a-tile">
+        <div class="a-tile-header">
+          <h2>Évolution des types</h2>
+          <div class="a-controls">
+            <button class="tpbtn evo-btn active" onclick="setEvoPeriod(14,this)">14j</button>
+            <button class="tpbtn evo-btn" onclick="setEvoPeriod(30,this)">30j</button>
+            <button class="tpbtn evo-btn" onclick="setEvoPeriod(60,this)">60j</button>
+            <button class="tpbtn evo-btn" onclick="setEvoPeriod(90,this)">90j</button>
+          </div>
+        </div>
+        <canvas id="chart-type-evo" height="160"></canvas>
+      </div>
+      <div class="a-tile">
+        <div class="a-tile-header">
+          <h2>Comparaison de périodes</h2>
+          <div class="a-controls">
+            <button class="tpbtn cmp-btn active" onclick="setCmpPeriod(7,this)">7j</button>
+            <button class="tpbtn cmp-btn" onclick="setCmpPeriod(14,this)">14j</button>
+            <button class="tpbtn cmp-btn" onclick="setCmpPeriod(30,this)">30j</button>
+          </div>
+        </div>
+        <canvas id="chart-comparison" height="160"></canvas>
+        <div style="font-size:.72rem;color:#888;margin-top:.4rem">
+          Moy. journalière par jour de semaine —
+          <span style="display:inline-block;width:12px;height:3px;background:#1a3a5c;vertical-align:middle;border-radius:2px"></span> Récente &nbsp;
+          <span style="display:inline-block;width:12px;height:3px;background:#94a3b8;vertical-align:middle;border-radius:2px"></span> Précédente
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="tab-bar">
     <button class="active" onclick="showTab('hourly', this)">Vue horaire</button>
     <button onclick="showTab('daily', this)">Vue quotidienne</button>
@@ -95,7 +179,6 @@
     <button onclick="showTab('files', this)">📁 Fichiers</button>
     <button onclick="showTab('journal', this)">📋 Journal</button>
     <button onclick="showTab('audio', this)">🔊 Audio</button>
-    <button onclick="showTab('trends', this)">📊 Tendances</button>
   </div>
 
   <!-- ══════════════ HORAIRE ══════════════ -->
@@ -457,73 +540,6 @@
     </div>
   </div>
 
-  <!-- ══════════════ TENDANCES ══════════════ -->
-  <div id="tab-trends" style="display:none">
-
-    <!-- Heatmap -->
-    <div class="chart-box">
-      <h2>Trafic moyen par créneau horaire et jour de semaine</h2>
-      <div class="trend-controls">
-        <span style="font-size:.83rem;color:#555">Période :</span>
-        <button class="tpbtn hm-btn active" onclick="setHeatmapPeriod(7,this)">7 j</button>
-        <button class="tpbtn hm-btn" onclick="setHeatmapPeriod(14,this)">14 j</button>
-        <button class="tpbtn hm-btn" onclick="setHeatmapPeriod(30,this)">30 j</button>
-        <button class="tpbtn hm-btn" onclick="setHeatmapPeriod(90,this)">90 j</button>
-        <label style="font-size:.83rem;color:#555;margin-left:.5rem">Véhicule :
-          <select id="heatmap-type" onchange="loadHeatmap()" style="padding:.25rem .45rem;border:1px solid #ccc;border-radius:4px;font-size:.83rem">
-            <option value="all">Tous</option>
-            <option value="car">Voiture</option>
-            <option value="truck">Camion</option>
-            <option value="bus">Bus</option>
-            <option value="motorcycle">Moto</option>
-          </select>
-        </label>
-      </div>
-      <div class="heatmap-wrap">
-        <canvas id="heatmap-canvas"></canvas>
-        <div class="heatmap-tooltip" id="heatmap-tooltip"></div>
-      </div>
-      <div style="display:flex;gap:1rem;margin-top:.5rem;font-size:.75rem;color:#888;align-items:center">
-        <span>Intensité (passages moyens / créneau) :</span>
-        <div style="display:flex;align-items:center;gap:.4rem">
-          <div style="width:80px;height:10px;background:linear-gradient(to right,#e8f0fa,#1a3a5c);border-radius:2px;border:1px solid #dde3ec"></div>
-          <span>faible → fort</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Évolution des types -->
-    <div class="chart-box">
-      <h2>Évolution des types de véhicules</h2>
-      <div class="trend-controls">
-        <span style="font-size:.83rem;color:#555">Période :</span>
-        <button class="tpbtn evo-btn active" onclick="setEvoPeriod(14,this)">14 j</button>
-        <button class="tpbtn evo-btn" onclick="setEvoPeriod(30,this)">30 j</button>
-        <button class="tpbtn evo-btn" onclick="setEvoPeriod(60,this)">60 j</button>
-        <button class="tpbtn evo-btn" onclick="setEvoPeriod(90,this)">90 j</button>
-      </div>
-      <canvas id="chart-type-evo" height="100"></canvas>
-    </div>
-
-    <!-- Comparaison de périodes -->
-    <div class="chart-box">
-      <h2>Comparaison de deux périodes</h2>
-      <div class="trend-controls">
-        <span style="font-size:.83rem;color:#555">Comparer les</span>
-        <button class="tpbtn cmp-btn active" onclick="setCmpPeriod(7,this)">7 j</button>
-        <button class="tpbtn cmp-btn" onclick="setCmpPeriod(14,this)">14 j</button>
-        <button class="tpbtn cmp-btn" onclick="setCmpPeriod(30,this)">30 j</button>
-        <span style="font-size:.83rem;color:#555">récents vs la période précédente identique</span>
-      </div>
-      <canvas id="chart-comparison" height="80"></canvas>
-      <div style="font-size:.75rem;color:#888;margin-top:.4rem">
-        Moy. journalière par jour de semaine —
-        <span style="display:inline-block;width:14px;height:3px;background:#1a3a5c;vertical-align:middle;border-radius:2px"></span> Période récente &nbsp;
-        <span style="display:inline-block;width:14px;height:3px;background:#94a3b8;vertical-align:middle;border-radius:2px"></span> Période précédente
-      </div>
-    </div>
-  </div>
-
   <div id="crossing-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center">
     <div style="background:#fff;border-radius:8px;padding:1.5rem;max-width:560px;width:90%;max-height:80vh;display:flex;flex-direction:column;gap:.75rem">
       <div style="display:flex;justify-content:space-between;align-items:center">
@@ -544,6 +560,8 @@ let chartHourly = null, chartDaily = null;
 let chartTypeEvo = null, chartComparison = null;
 let heatmapDays = 7, evoDays = 14, cmpDays = 7;
 let heatmapRawData = null;
+let hmMode = 'avg', hmModeData = 'avg';
+let hmWeekDate = new Date();
 let allLogLines = [];
 let journalTimer = null, journalTimer2 = null;
 let filesTimer  = null;
@@ -557,7 +575,7 @@ let filesSortDir = 'desc';
 function showTab(name, btn) {
   document.querySelectorAll('.tab-bar button').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  ['hourly','daily','calendar','files','journal','audio','trends'].forEach(t =>
+  ['hourly','daily','calendar','files','journal','audio'].forEach(t =>
     document.getElementById('tab-'+t).style.display = name === t ? '' : 'none'
   );
   clearInterval(journalTimer);
@@ -579,7 +597,6 @@ function showTab(name, btn) {
     filesTimer = setInterval(() => { loadPending(); loadFilesProgress(); }, 15000);
   }
   if (name === 'audio') loadAudioCalibration();
-  if (name === 'trends') loadTrends();
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -1375,6 +1392,9 @@ function calClickDay(dateStr) {
    Init
 ───────────────────────────────────────────────────────────── */
 loadHourly();
+loadHeatmap();
+loadTypeEvolution();
+loadComparison();
 loadVersion();
 checkStatus();
 setInterval(checkStatus, 60000);
@@ -1572,10 +1592,8 @@ async function resetThreshold() {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Tendances
+   Analytics — heatmap, évolution, comparaison
 ───────────────────────────────────────────────────────────── */
-function loadTrends() { loadHeatmap(); loadTypeEvolution(); loadComparison(); }
-
 function setHeatmapPeriod(days, btn) {
   heatmapDays = days;
   document.querySelectorAll('.hm-btn').forEach(b => b.classList.remove('active'));
@@ -1595,22 +1613,75 @@ function setCmpPeriod(days, btn) {
   loadComparison();
 }
 
-async function loadHeatmap() {
-  const vtype = document.getElementById('heatmap-type').value;
-  const res = await fetch(`/api/stats/heatmap?days=${heatmapDays}&vehicle_type=${vtype}`);
-  const data = await res.json();
-  if (data.error) return;
-  heatmapRawData = data.data;
-  requestAnimationFrame(() => drawHeatmap(data.data));
+function getWeekStart(d) {
+  const wd = (d.getDay() + 6) % 7;
+  const mon = new Date(d);
+  mon.setDate(d.getDate() - wd);
+  return mon;
 }
 
-function drawHeatmap(data) {
+function updateHmWeekLabel() {
+  const mon = getWeekStart(hmWeekDate);
+  const sun = new Date(mon.getTime() + 6 * 86400000);
+  const fmt = d => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+  document.getElementById('hm-week-label').textContent = `Lun ${fmt(mon)} – Dim ${fmt(sun)}`;
+}
+
+function hmWeekPrev() { hmWeekDate = new Date(hmWeekDate.getTime() - 7*86400000); loadHeatmap(); }
+function hmWeekNext() { hmWeekDate = new Date(hmWeekDate.getTime() + 7*86400000); loadHeatmap(); }
+
+function setHmMode(mode) {
+  hmMode = mode;
+  document.getElementById('hm-mode-avg').classList.toggle('active', mode === 'avg');
+  document.getElementById('hm-mode-week').classList.toggle('active', mode === 'week');
+  document.getElementById('hm-period-ctrl').style.display = mode === 'avg' ? '' : 'none';
+  document.getElementById('hm-week-ctrl').style.display = mode === 'week' ? '' : 'none';
+  loadHeatmap();
+}
+
+async function loadHeatmap() {
+  const vtype = document.getElementById('heatmap-type').value;
+  if (hmMode === 'avg') {
+    const res = await fetch(`/api/stats/heatmap?days=${heatmapDays}&vehicle_type=${vtype}`);
+    const data = await res.json();
+    if (data.error) return;
+    heatmapRawData = data.data;
+    hmModeData = 'avg';
+    requestAnimationFrame(() => drawHeatmap(data.data, 'avg'));
+  } else {
+    const mon = getWeekStart(hmWeekDate);
+    const pad = n => String(n).padStart(2,'0');
+    const dateStr = `${mon.getFullYear()}-${pad(mon.getMonth()+1)}-${pad(mon.getDate())}`;
+    const res = await fetch(`/api/stats/week_heatmap?date=${dateStr}&vehicle_type=${vtype}`);
+    const data = await res.json();
+    if (data.error) return;
+    heatmapRawData = data.data;
+    hmModeData = 'week';
+    updateHmWeekLabel();
+    requestAnimationFrame(() => drawHeatmap(data.data, 'week'));
+  }
+}
+
+function hmColor(val, maxVal) {
+  if (val < 0.5 || maxVal === 0) return '#f8fafc';
+  const t = Math.sqrt(val / maxVal);
+  const hue = Math.round(48 * (1 - t));
+  const lig = Math.round(88 - t * 50);
+  return `hsl(${hue},88%,${lig}%)`;
+}
+
+function hmTextColor(val, maxVal) {
+  if (maxVal === 0 || val < 0.5) return '#7c2d12';
+  return Math.sqrt(val / maxVal) > 0.58 ? '#fff' : '#7c2d12';
+}
+
+function drawHeatmap(data, mode) {
   const canvas = document.getElementById('heatmap-canvas');
   const W = canvas.offsetWidth || canvas.parentElement.clientWidth;
   if (W < 100) return;
 
-  const DAYS_SHORT = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
-  const DAYS_LONG  = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+  const DAYS_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+  const DAYS_LONG  = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
   const LABEL_W = 36, HEADER_H = 22, CELL_H = 30;
   const CELL_W = (W - LABEL_W) / 24;
   const H = CELL_H * 7 + HEADER_H + 4;
@@ -1620,15 +1691,14 @@ function drawHeatmap(data) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, W, H);
 
-  // Matrix
   const matrix = Array.from({length: 7}, () => new Float32Array(24));
   let maxVal = 0;
   data.forEach(d => {
-    matrix[d.weekday][d.hour] = d.avg_count;
-    if (d.avg_count > maxVal) maxVal = d.avg_count;
+    const val = mode === 'week' ? d.count : d.avg_count;
+    matrix[d.weekday][d.hour] = val;
+    if (val > maxVal) maxVal = val;
   });
 
-  // Hour header
   ctx.font = '10px system-ui';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -1638,7 +1708,6 @@ function drawHeatmap(data) {
   }
 
   for (let d = 0; d < 7; d++) {
-    // Day label
     ctx.fillStyle = '#555';
     ctx.textAlign = 'right';
     ctx.font = '11px system-ui';
@@ -1646,32 +1715,18 @@ function drawHeatmap(data) {
 
     for (let h = 0; h < 24; h++) {
       const val = matrix[d][h];
-      const intensity = maxVal > 0 ? val / maxVal : 0;
       const x = LABEL_W + h * CELL_W, y = HEADER_H + d * CELL_H;
-
-      // Color: #e8f0fa (light) → #1a3a5c (dark)
-      if (intensity < 0.01) {
-        ctx.fillStyle = '#f1f5f9';
-      } else {
-        const r = Math.round(232 - intensity * (232 - 26));
-        const g = Math.round(240 - intensity * (240 - 58));
-        const b = Math.round(250 - intensity * (250 - 92));
-        ctx.fillStyle = `rgb(${r},${g},${b})`;
-      }
+      ctx.fillStyle = hmColor(val, maxVal);
       ctx.fillRect(x + 1, y + 1, CELL_W - 2, CELL_H - 2);
-
-      // Value label
       if (val > 0) {
-        ctx.fillStyle = intensity > 0.55 ? '#fff' : '#1a3a5c';
+        ctx.fillStyle = hmTextColor(val, maxVal);
         ctx.font = `${CELL_W > 28 ? 10 : 9}px system-ui`;
         ctx.textAlign = 'center';
-        const label = val % 1 === 0 ? String(val) : val.toFixed(1);
+        const label = mode === 'week' ? String(val) : (val % 1 === 0 ? String(val) : val.toFixed(1));
         ctx.fillText(label, x + CELL_W / 2, y + CELL_H / 2);
       }
     }
   }
-
-  // Store DAYS_LONG on canvas for tooltip
   canvas._daysLong = DAYS_LONG;
 }
 
@@ -1689,12 +1744,13 @@ function drawHeatmap(data) {
     const DAYS = this._daysLong || ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
     if (d >= 0 && d < 7 && h >= 0 && h < 24) {
       const cell = heatmapRawData.find(x => x.weekday === d && x.hour === h);
-      const avg = cell ? cell.avg_count : 0;
-      tooltip.textContent = `${DAYS[d]} ${h}h–${h+1}h : ${avg > 0 ? avg.toFixed(1) + ' passages (moy.)' : 'aucun passage'}`;
+      const val = cell ? (hmModeData === 'week' ? cell.count : cell.avg_count) : 0;
+      const suffix = hmModeData === 'week' ? ' passages' : ' passages (moy.)';
+      const valStr = val > 0 ? (hmModeData === 'week' ? String(val) : val.toFixed(1)) + suffix : 'aucun passage';
+      tooltip.textContent = `${DAYS[d]} ${h}h–${h+1}h : ${valStr}`;
       tooltip.style.display = 'block';
-      const tipX = mx + 12, tipY = my - 32;
-      tooltip.style.left = tipX + 'px';
-      tooltip.style.top  = tipY + 'px';
+      tooltip.style.left = (mx + 12) + 'px';
+      tooltip.style.top  = (my - 32) + 'px';
     } else {
       tooltip.style.display = 'none';
     }
@@ -1723,6 +1779,7 @@ async function loadTypeEvolution() {
     },
     options: {
       responsive: true,
+      maintainAspectRatio: true,
       plugins: {
         legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
         tooltip: { mode: 'index' },
@@ -1743,11 +1800,10 @@ async function loadComparison() {
 
   const all = data.daily;
   const mid = Math.floor(all.length / 2);
-  const periodA = all.slice(mid);    // plus récents
-  const periodB = all.slice(0, mid); // plus anciens
+  const periodA = all.slice(mid);
+  const periodB = all.slice(0, mid);
 
-  // Groupe par jour de semaine (0=Lun, 6=Dim) et moyenne
-  const DAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+  const DAYS = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
   function weekdayAvg(arr) {
     const sums = new Array(7).fill(0), cnts = new Array(7).fill(0);
     arr.forEach(d => {
@@ -1774,6 +1830,7 @@ async function loadComparison() {
     },
     options: {
       responsive: true,
+      maintainAspectRatio: true,
       plugins: {
         legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
         tooltip: {
