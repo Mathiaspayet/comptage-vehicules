@@ -83,7 +83,10 @@ class Database:
     def _connect(self) -> Generator[sqlite3.Connection, None, None]:
         conn = sqlite3.connect(self.db_path, timeout=30)
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
+        # Cache SQLite en mémoire (32 MB) + stockage des tables temp en RAM
+        conn.execute("PRAGMA cache_size = -32000")
+        conn.execute("PRAGMA temp_store = MEMORY")
+        conn.execute("PRAGMA mmap_size = 134217728")
         try:
             yield conn
             conn.commit()
@@ -332,12 +335,13 @@ class Database:
                 date(datetime(timestamp, :tzmod)) AS day,
                 COUNT(*) AS count
             FROM crossings
-            WHERE date(datetime(timestamp, :tzmod)) >= date(datetime('now', :tzmod), :offset)
+            WHERE timestamp >= datetime('now', :prefilter)
+              AND date(datetime(timestamp, :tzmod)) >= date(datetime('now', :tzmod), :offset)
             {type_filter}
             GROUP BY day
             ORDER BY day
         """
-        params = {"offset": f"-{days} days", "vtype": vehicle_type, "tzmod": tzmod}
+        params = {"offset": f"-{days} days", "prefilter": f"-{days + 1} days", "vtype": vehicle_type, "tzmod": tzmod}
         with self._connect() as conn:
             rows = conn.execute(query, params).fetchall()
         return [{"date": r["day"], "count": r["count"]} for r in rows]
@@ -658,11 +662,12 @@ class Database:
                 COUNT(*) AS total_count,
                 COUNT(DISTINCT date(datetime(timestamp, :tzmod))) AS days_with_data
             FROM crossings
-            WHERE date(datetime(timestamp, :tzmod)) >= date(datetime('now', :tzmod), :offset)
+            WHERE timestamp >= datetime('now', :prefilter)
+              AND date(datetime(timestamp, :tzmod)) >= date(datetime('now', :tzmod), :offset)
             {type_filter}
             GROUP BY weekday, hour
         """
-        params = {"offset": f"-{days} days", "vtype": vehicle_type, "tzmod": tzmod}
+        params = {"offset": f"-{days} days", "prefilter": f"-{days + 1} days", "vtype": vehicle_type, "tzmod": tzmod}
         with self._connect() as conn:
             rows = conn.execute(query, params).fetchall()
         return [
@@ -706,11 +711,12 @@ class Database:
                 vehicle_type,
                 COUNT(*) AS count
             FROM crossings
-            WHERE date(datetime(timestamp, :tzmod)) >= date(datetime('now', :tzmod), :offset)
+            WHERE timestamp >= datetime('now', :prefilter)
+              AND date(datetime(timestamp, :tzmod)) >= date(datetime('now', :tzmod), :offset)
             GROUP BY day, vehicle_type
             ORDER BY day
         """
-        params = {"offset": f"-{days} days", "tzmod": tzmod}
+        params = {"offset": f"-{days} days", "prefilter": f"-{days + 1} days", "tzmod": tzmod}
         with self._connect() as conn:
             rows = conn.execute(query, params).fetchall()
         from collections import defaultdict

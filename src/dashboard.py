@@ -3,6 +3,7 @@ import csv
 import io
 import json
 import logging
+import time
 from datetime import date, datetime
 from pathlib import Path
 
@@ -18,6 +19,23 @@ from .progress import tracker as progress_tracker
 logger = logging.getLogger(__name__)
 
 VERSION_FILE = Path("/app/version.json")
+
+# ── Cache API simple (clé → (payload, timestamp)) ───────────────────────────
+_cache: dict[str, tuple] = {}
+
+def _cache_get(key: str, ttl: int) -> "dict | None":
+    entry = _cache.get(key)
+    if entry and time.monotonic() - entry[1] < ttl:
+        return entry[0]
+    return None
+
+def _cache_set(key: str, data: dict) -> None:
+    _cache[key] = (data, time.monotonic())
+    # Nettoyage si trop d'entrées (évite fuite mémoire sur longue durée)
+    if len(_cache) > 500:
+        cutoff = time.monotonic() - 3600
+        for k in [k for k, (_, ts) in list(_cache.items()) if ts < cutoff]:
+            _cache.pop(k, None)
 
 # Maps filename → (size, timestamp when size was first seen at this value).
 _pending_size_cache: dict[str, tuple[int, float]] = {}
@@ -124,6 +142,11 @@ def create_app(config: Config, db: Database, audio=None) -> Flask:
     def api_hourly():
         day = request.args.get("date", date.today().isoformat())
         vehicle_type = request.args.get("vehicle_type", "all")
+        # TTL court pour aujourd'hui (données en cours), long pour les jours passés
+        ttl = 60 if day == date.today().isoformat() else 600
+        ck = f"hourly:{day}:{vehicle_type}"
+        if cached := _cache_get(ck, ttl):
+            return jsonify(cached)
         try:
             hourly    = db.get_hourly_stats(day, vehicle_type)
             summary   = db.get_summary(day, vehicle_type)
@@ -132,46 +155,60 @@ def create_app(config: Config, db: Database, audio=None) -> Flask:
         except Exception as e:
             logger.error("Erreur stats horaires : %s", e)
             return jsonify({"error": str(e)}), 500
-        return jsonify({"date": day, "hourly": hourly, "summary": summary, "breakdown": breakdown, "direction": direction})
+        payload = {"date": day, "hourly": hourly, "summary": summary, "breakdown": breakdown, "direction": direction}
+        _cache_set(ck, payload)
+        return jsonify(payload)
 
     @app.route("/api/stats/calendar")
     def api_calendar():
         import calendar as _cal
         year  = int(request.args.get("year",  date.today().year))
         month = int(request.args.get("month", date.today().month))
+        today = date.today()
+        ttl = 60 if (year == today.year and month == today.month) else 3600
+        ck = f"calendar:{year}:{month}"
+        if cached := _cache_get(ck, ttl):
+            return jsonify(cached)
         try:
             days = db.get_calendar_stats(year, month)
         except Exception as e:
             return jsonify({"error": str(e)}), 500
-        first_weekday = _cal.monthrange(year, month)[0]  # 0 = Monday
+        first_weekday = _cal.monthrange(year, month)[0]
         last_day      = _cal.monthrange(year, month)[1]
-        return jsonify({
-            "year": year, "month": month,
-            "first_weekday": first_weekday,
-            "last_day": last_day,
-            "days": days,
-        })
+        payload = {"year": year, "month": month, "first_weekday": first_weekday, "last_day": last_day, "days": days}
+        _cache_set(ck, payload)
+        return jsonify(payload)
 
     @app.route("/api/stats/daily")
     def api_daily():
         days = int(request.args.get("days", config.default_days))
         vehicle_type = request.args.get("vehicle_type", "all")
+        ck = f"daily:{days}:{vehicle_type}"
+        if cached := _cache_get(ck, 120):
+            return jsonify(cached)
         try:
             daily = db.get_daily_stats(days, vehicle_type)
         except Exception as e:
             logger.error("Erreur stats quotidiennes : %s", e)
             return jsonify({"error": str(e)}), 500
-        return jsonify({"days": days, "daily": daily})
+        payload = {"days": days, "daily": daily}
+        _cache_set(ck, payload)
+        return jsonify(payload)
 
     @app.route("/api/stats/heatmap")
     def api_heatmap():
         days = max(1, min(int(request.args.get("days", 30)), 365))
         vehicle_type = request.args.get("vehicle_type", "all")
+        ck = f"heatmap:{days}:{vehicle_type}"
+        if cached := _cache_get(ck, 300):
+            return jsonify(cached)
         try:
             data = db.get_heatmap_stats(days, vehicle_type)
         except Exception as e:
             return jsonify({"error": str(e)}), 500
-        return jsonify({"days": days, "data": data})
+        payload = {"days": days, "data": data}
+        _cache_set(ck, payload)
+        return jsonify(payload)
 
     @app.route("/api/stats/week_heatmap")
     def api_week_heatmap():
@@ -181,19 +218,34 @@ def create_app(config: Config, db: Database, audio=None) -> Flask:
         try:
             d = date.fromisoformat(date_str)
             week_start = (d - timedelta(days=d.weekday())).isoformat()
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        today_week = (date.today() - timedelta(days=date.today().weekday())).isoformat()
+        ttl = 120 if week_start == today_week else 3600
+        ck = f"week_heatmap:{week_start}:{vehicle_type}"
+        if cached := _cache_get(ck, ttl):
+            return jsonify(cached)
+        try:
             data = db.get_week_heatmap_stats(week_start, vehicle_type)
         except Exception as e:
             return jsonify({"error": str(e)}), 500
-        return jsonify({"week_start": week_start, "data": data})
+        payload = {"week_start": week_start, "data": data}
+        _cache_set(ck, payload)
+        return jsonify(payload)
 
     @app.route("/api/stats/type_evolution")
     def api_type_evolution():
         days = max(1, min(int(request.args.get("days", 30)), 365))
+        ck = f"type_evolution:{days}"
+        if cached := _cache_get(ck, 300):
+            return jsonify(cached)
         try:
             data = db.get_type_evolution(days)
         except Exception as e:
             return jsonify({"error": str(e)}), 500
-        return jsonify({"days": days, "data": data})
+        payload = {"days": days, "data": data}
+        _cache_set(ck, payload)
+        return jsonify(payload)
 
     @app.route("/api/dates")
     def api_dates():
