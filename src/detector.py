@@ -379,26 +379,27 @@ class VehicleDetector:
                 seg_idx += 1
                 inside_segment = False
 
-        # Direction : ligne virtuelle (si configurée) ou déplacement centroïde (fallback).
+        # Direction : franchissement de ligne en priorité, déplacement centroïde en fallback.
+        # Les deux méthodes se complètent : la ligne est précise mais nécessite d'observer
+        # le franchissement entre deux frames analysées (peut être manqué si le pas est grand).
+        # Le centroïde prend le relais pour les véhicules qui n'ont pas franchi la ligne.
         if self.config.count_direction:
-            if dir_line is not None:
-                # Franchissement de ligne : chaque crossing hérite de la direction
-                # détectée pendant le tracking.
-                for tid, ev in track_event.items():
+            min_disp = max(20.0, 0.04 * frame_w)
+            for tid, ev in track_event.items():
+                # 1. Franchissement de ligne (si ligne configurée)
+                if dir_line is not None:
                     d = track_crossing_dir.get(tid)
                     if d:
                         ev.direction = d
-            else:
-                # Fallback : déplacement net du centroïde horizontal.
-                min_disp = max(20.0, 0.04 * frame_w)
-                for tid, ev in track_event.items():
-                    first = track_first_cx.get(tid)
-                    last = track_last_cx.get(tid)
-                    if first is None or last is None:
                         continue
-                    delta = last - first
-                    if abs(delta) >= min_disp:
-                        ev.direction = "left_to_right" if delta > 0 else "right_to_left"
+                # 2. Fallback : déplacement net du centroïde horizontal
+                first = track_first_cx.get(tid)
+                last = track_last_cx.get(tid)
+                if first is None or last is None:
+                    continue
+                delta = last - first
+                if abs(delta) >= min_disp:
+                    ev.direction = "left_to_right" if delta > 0 else "right_to_left"
 
         logger.info(
             "%s → %d véhicule(s) | %d frames analysées | %d/%d segments",
