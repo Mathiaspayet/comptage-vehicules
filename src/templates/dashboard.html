@@ -670,14 +670,14 @@ async function loadHourly() {
   document.getElementById('card-peak').textContent  = `${summary.peak_hour}h (${summary.peak_count})`;
   document.getElementById('card-avg').textContent   = summary.avg_per_active_hour;
 
-  const dir = hourly_dir || [];
-  const hasDir = dir.some(h => h.left_to_right > 0 || h.right_to_left > 0);
-  const hasUnknown = dir.some(h => h.unknown > 0);
+  const hdir = hourly_dir || [];
+  const hasDir = hdir.some(h => h.left_to_right > 0 || h.right_to_left > 0);
+  const hasUnknown = hdir.some(h => h.unknown > 0);
   const labels = hourly.map(h => `${h.hour}h`);
   const datasets = hasDir ? [
-    { label: '→', data: dir.map(h => h.left_to_right), backgroundColor: '#2563ebcc', borderColor: '#2563eb', borderWidth: 1, stack: 'dir' },
-    { label: '←', data: dir.map(h => h.right_to_left), backgroundColor: '#f59e0bcc', borderColor: '#f59e0b', borderWidth: 1, stack: 'dir' },
-    ...(hasUnknown ? [{ label: '?', data: dir.map(h => h.unknown), backgroundColor: '#94a3b866', borderColor: '#94a3b8', borderWidth: 1, stack: 'dir' }] : []),
+    { label: '→', data: hdir.map(h => h.left_to_right), backgroundColor: '#2563ebcc', borderColor: '#2563eb', borderWidth: 1, stack: 'dir' },
+    { label: '←', data: hdir.map(h => h.right_to_left), backgroundColor: '#f59e0bcc', borderColor: '#f59e0b', borderWidth: 1, stack: 'dir' },
+    ...(hasUnknown ? [{ label: '?', data: hdir.map(h => h.unknown), backgroundColor: '#94a3b866', borderColor: '#94a3b8', borderWidth: 1, stack: 'dir' }] : []),
   ] : [
     { label: 'Passages', data: hourly.map(h => h.count), backgroundColor: '#2563eb99', borderColor: '#2563eb', borderWidth: 1 },
   ];
