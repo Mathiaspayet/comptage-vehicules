@@ -74,6 +74,7 @@ def create_calibration_blueprint(config: Config) -> Blueprint:
     def api_current_config():
         return jsonify({
             "roi_polygon": config.roi_polygon,
+            "direction_line": config.direction_line,
         })
 
     @bp.route("/api/save", methods=["POST"])
@@ -83,6 +84,7 @@ def create_calibration_blueprint(config: Config) -> Blueprint:
             return jsonify({"error": "Données manquantes"}), 400
 
         roi_polygon = data.get("roi_polygon", [])
+        direction_line = data.get("direction_line")
 
         if not roi_polygon or len(roi_polygon) < 3:
             return jsonify({"error": "Le polygone ROI doit avoir au moins 3 points."}), 400
@@ -97,13 +99,20 @@ def create_calibration_blueprint(config: Config) -> Blueprint:
         cfg.setdefault("counting", {})
         cfg["counting"]["roi_polygon"] = [[int(p[0]), int(p[1])] for p in roi_polygon]
 
+        cfg.setdefault("detector", {})
+        if direction_line and len(direction_line) == 4:
+            cfg["detector"]["direction_line"] = [int(v) for v in direction_line]
+            cfg["detector"]["count_direction"] = True
+        elif direction_line is None and "direction_line" in cfg.get("detector", {}):
+            cfg["detector"].pop("direction_line")
+
         try:
             with open(config_path, "w", encoding="utf-8") as f:
                 yaml.dump(cfg, f, allow_unicode=True, default_flow_style=False)
         except IOError as e:
             return jsonify({"error": f"Impossible d'écrire config.yaml : {e}"}), 500
 
-        logger.info("ROI enregistré → %d points", len(roi_polygon))
+        logger.info("ROI enregistré → %d points | ligne direction : %s", len(roi_polygon), direction_line)
         return jsonify({"ok": True, "saved_to": config_path})
 
     return bp

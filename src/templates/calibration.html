@@ -17,7 +17,6 @@
     --sh:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
     --sh-md:0 4px 14px rgba(0,0,0,.09)
   }
-  /* Header */
   .app-header{background:linear-gradient(135deg,#0d2340 0%,#1a3a5c 100%);position:sticky;top:0;z-index:100;box-shadow:0 2px 20px rgba(0,0,0,.3)}
   .header-inner{max-width:1060px;margin:0 auto;padding:.65rem 1.5rem;display:flex;align-items:center;gap:1rem}
   .brand{display:flex;align-items:center;gap:.7rem;flex-shrink:0}
@@ -27,9 +26,7 @@
   .hdr-spacer{flex:1}
   .hdr-link{display:inline-flex;align-items:center;gap:.3rem;padding:.35rem .72rem;border-radius:6px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.82);font-size:.8rem;text-decoration:none;transition:.15s;white-space:nowrap}
   .hdr-link:hover{background:rgba(255,255,255,.18);color:#fff}
-  /* Layout */
   main{max-width:1060px;margin:1.5rem auto;padding:0 1rem 3rem}
-  /* Steps guide */
   .steps-guide{background:var(--surface);border-radius:var(--r);box-shadow:var(--sh);padding:1.1rem 1.25rem;margin-bottom:1.25rem}
   .steps-guide-title{font-size:.75rem;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.85rem}
   .steps-list{display:flex;gap:0;counter-reset:step;overflow-x:auto;padding-bottom:.1rem}
@@ -38,13 +35,11 @@
   .step-num{width:22px;height:22px;border-radius:50%;background:var(--navy-m);color:#fff;font-size:.72rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:.1rem}
   .step-text{font-size:.82rem;color:var(--text-2);line-height:1.45;max-width:160px}
   .step-text strong{color:var(--text)}
-  /* Section cards */
   .s-card{background:var(--surface);border-radius:var(--r);box-shadow:var(--sh);margin-bottom:1.1rem;overflow:hidden}
   .s-card-head{display:flex;align-items:center;gap:.65rem;padding:.85rem 1.25rem .75rem;border-bottom:1px solid var(--border)}
   .step-badge{width:26px;height:26px;border-radius:50%;background:var(--navy-m);color:#fff;font-size:.8rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
   .s-card-title{font-size:.9rem;font-weight:700;color:var(--text)}
   .s-card-body{padding:1rem 1.25rem}
-  /* Controls */
   .controls{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin-bottom:.85rem}
   select,input[type=range]{padding:.4rem .7rem;border:1px solid var(--border-2);border-radius:var(--r-sm);font-size:.88rem;background:var(--surface);color:var(--text);transition:.15s;cursor:pointer}
   select:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
@@ -56,27 +51,28 @@
   .btn-danger:hover{background:#b91c1c}
   .btn-success{background:var(--green);color:#fff;border-color:var(--green)}
   .btn-success:hover{background:#047857}
-  /* Zoom bar */
   .zoom-bar{display:flex;gap:.4rem;align-items:center;margin-bottom:.6rem;flex-wrap:wrap}
   .btn-zoom{padding:.28rem .65rem;font-size:.83rem;border:1px solid var(--border-2);border-radius:var(--r-sm);background:var(--surface);cursor:pointer;color:var(--text);transition:.12s}
   .btn-zoom:hover{background:var(--surface-2)}
   .zoom-lbl{font-size:.8rem;color:var(--text-2);min-width:3.5rem;text-align:center;font-variant-numeric:tabular-nums}
-  /* Canvas */
   #canvas-outer{overflow:auto;border:2px solid var(--border-2);border-radius:var(--r-sm);background:#111;width:100%}
   #canvas-wrap{display:inline-block;transform-origin:top left}
   canvas{display:block;cursor:crosshair}
-  /* Coords */
   #coords{font-family:monospace;font-size:.82rem;background:var(--surface-2);border:1px solid var(--border);padding:.75rem;border-radius:var(--r-sm);margin-top:.75rem;white-space:pre-wrap;color:var(--text)}
-  /* Messages */
   #msg{padding:.45rem .8rem;font-size:.84rem;border-radius:var(--r-sm);margin-top:.6rem}
   #msg.ok{background:#dcfce7;color:#166534}
   #msg.err{background:#fee2e2;color:#991b1b}
-  /* Load status */
   #load-status{font-size:.83rem;color:var(--text-2);margin-top:.35rem;min-height:1.1em}
-  /* Legend */
-  .legend{display:flex;gap:1rem;font-size:.8rem;margin-bottom:.6rem;color:var(--text-2)}
+  .legend{display:flex;gap:1rem;font-size:.8rem;margin-bottom:.6rem;color:var(--text-2);flex-wrap:wrap}
   .legend span{display:flex;align-items:center;gap:.35rem}
   .dot-sq{width:12px;height:12px;border-radius:3px;display:inline-block}
+  /* Mode toggle */
+  .mode-toggle{display:flex;gap:0;border:1px solid var(--border-2);border-radius:var(--r-sm);overflow:hidden;margin-bottom:.85rem;width:fit-content}
+  .mode-btn{padding:.38rem .85rem;font-size:.85rem;font-weight:600;border:none;background:var(--surface-2);color:var(--text-2);cursor:pointer;transition:.15s;border-right:1px solid var(--border-2)}
+  .mode-btn:last-child{border-right:none}
+  .mode-btn.active{background:var(--navy-m);color:#fff}
+  /* Direction line hint */
+  .line-hint{font-size:.82rem;color:var(--text-2);background:#fef9ec;border:1px solid #fde68a;border-radius:var(--r-sm);padding:.5rem .75rem;margin-bottom:.75rem}
   </style>
 </head>
 <body>
@@ -85,8 +81,8 @@
     <div class="brand">
       <div class="brand-icon">🎯</div>
       <div>
-        <div class="brand-name">Calibration ROI</div>
-        <div class="brand-sub">Comptage véhicules</div>
+        <div class="brand-name">Calibration</div>
+        <div class="brand-sub">ROI &amp; Ligne de direction</div>
       </div>
     </div>
     <div class="hdr-spacer"></div>
@@ -106,11 +102,11 @@
       </div>
       <div class="step-item">
         <div class="step-num">2</div>
-        <div class="step-text">Cliquez des <strong>points</strong> pour délimiter la zone route.</div>
+        <div class="step-text">Mode <strong>ROI</strong> : cliquez pour délimiter la zone, double-clic pour fermer.</div>
       </div>
       <div class="step-item">
         <div class="step-num">3</div>
-        <div class="step-text"><strong>Double-clic</strong> pour fermer le polygone.</div>
+        <div class="step-text">Mode <strong>Ligne</strong> : 2 clics pour placer la ligne de comptage directionnelle.</div>
       </div>
       <div class="step-item">
         <div class="step-num">4</div>
@@ -139,19 +135,30 @@
     </div>
   </div>
 
-  <!-- 2. Dessin ROI -->
+  <!-- 2. Dessin ROI + Ligne -->
   <div class="s-card">
     <div class="s-card-head">
       <div class="step-badge">2</div>
-      <div class="s-card-title">Dessin de la zone d'intérêt</div>
+      <div class="s-card-title">Zone d'intérêt &amp; ligne de direction</div>
     </div>
     <div class="s-card-body">
-      <div class="legend">
-        <span>
-          <span class="dot-sq" style="background:#00ff00;border:1px solid rgba(0,0,0,.2)"></span>
-          Zone d'intérêt (ROI) — cliquez pour ajouter des points, double-clic pour fermer
-        </span>
+
+      <!-- Mode toggle -->
+      <div class="mode-toggle">
+        <button class="mode-btn active" id="mode-roi" onclick="setMode('roi')">🟩 Zone ROI</button>
+        <button class="mode-btn" id="mode-line" onclick="setMode('line')">🟡 Ligne de direction</button>
       </div>
+
+      <div class="legend">
+        <span><span class="dot-sq" style="background:#00ff00;border:1px solid rgba(0,0,0,.2)"></span>Zone d'intérêt (ROI)</span>
+        <span><span class="dot-sq" style="background:#f59e0b;border:1px solid rgba(0,0,0,.2)"></span>Ligne de comptage directionnelle</span>
+      </div>
+
+      <div id="line-hint" class="line-hint" style="display:none">
+        Cliquez un premier point (<strong>A</strong>), puis un second point (<strong>B</strong>) pour tracer la ligne.
+        Un véhicule qui passe de gauche à droite (vu de A vers B) est compté <strong>→</strong>.
+      </div>
+
       <div class="zoom-bar">
         <button class="btn-zoom" onclick="zoom(-0.25)">−</button>
         <span id="zoom-label" class="zoom-lbl">100%</span>
@@ -164,8 +171,9 @@
           <canvas id="canvas" width="640" height="360"></canvas>
         </div>
       </div>
-      <div style="margin-top:.75rem">
-        <button class="btn btn-danger" onclick="resetRoi()">Effacer le polygone</button>
+      <div style="margin-top:.75rem;display:flex;gap:.5rem;flex-wrap:wrap">
+        <button class="btn btn-danger" id="btn-reset-roi" onclick="resetRoi()">Effacer le polygone ROI</button>
+        <button class="btn btn-danger" id="btn-reset-line" onclick="resetLine()" style="display:none">Effacer la ligne</button>
       </div>
     </div>
   </div>
@@ -191,10 +199,23 @@
 const BASE = '/calibration';
 let img = null, imgW = 640, imgH = 360;
 let roiPts = [], roiClosed = false;
+let linePts = [];          // 0, 1 ou 2 points {x,y}
+let drawMode = 'roi';      // 'roi' | 'line'
 let zoomLevel = 1.0;
 const canvas = document.getElementById('canvas');
 const ctx    = canvas.getContext('2d');
 
+/* ---- Mode toggle ---- */
+function setMode(m) {
+  drawMode = m;
+  document.getElementById('mode-roi').classList.toggle('active', m === 'roi');
+  document.getElementById('mode-line').classList.toggle('active', m === 'line');
+  document.getElementById('line-hint').style.display = m === 'line' ? '' : 'none';
+  document.getElementById('btn-reset-roi').style.display  = m === 'roi'  ? '' : 'none';
+  document.getElementById('btn-reset-line').style.display = m === 'line' ? '' : 'none';
+}
+
+/* ---- Zoom ---- */
 function applyZoom() {
   const wrap = document.getElementById('canvas-wrap');
   wrap.style.transform = `scale(${zoomLevel})`;
@@ -204,24 +225,15 @@ function applyZoom() {
   outer.style.height = Math.ceil(imgH * zoomLevel) + 'px';
   document.getElementById('zoom-label').textContent = Math.round(zoomLevel * 100) + '%';
 }
-
-function zoom(delta) {
-  zoomLevel = Math.max(0.1, Math.min(4, zoomLevel + delta));
-  applyZoom();
-}
-
+function zoom(delta) { zoomLevel = Math.max(0.1, Math.min(4, zoomLevel + delta)); applyZoom(); }
 function zoomFit() {
   const outer = document.getElementById('canvas-outer');
-  const availW = outer.clientWidth;
-  zoomLevel = Math.min(1, availW / imgW);
+  zoomLevel = Math.min(1, outer.clientWidth / imgW);
   applyZoom();
 }
+function zoomReset() { zoomLevel = 1.0; applyZoom(); }
 
-function zoomReset() {
-  zoomLevel = 1.0;
-  applyZoom();
-}
-
+/* ---- Load videos ---- */
 fetch(`${BASE}/api/videos`).then(r=>r.json()).then(data=>{
   const sel = document.getElementById('video-select');
   sel.innerHTML = data.videos.map(v=>`<option value="${v}">${v}</option>`).join('') || '<option>Aucune vidéo trouvée</option>';
@@ -231,6 +243,7 @@ document.getElementById('frame-sec').addEventListener('input', function(){
   document.getElementById('frame-sec-val').textContent = this.value;
 });
 
+/* ---- Load frame ---- */
 async function loadFrame() {
   const video = document.getElementById('video-select').value;
   const sec   = document.getElementById('frame-sec').value;
@@ -246,6 +259,7 @@ async function loadFrame() {
   document.getElementById('load-status').textContent = `✅ Image extraite de "${data.source}"`;
 }
 
+/* ---- Load current config ---- */
 async function loadCurrentConfig() {
   const res  = await fetch(`${BASE}/api/current-config`);
   const data = await res.json();
@@ -253,31 +267,48 @@ async function loadCurrentConfig() {
     roiPts = data.roi_polygon.map(p => ({x: p[0], y: p[1]}));
     roiClosed = true;
   }
+  if (data.direction_line && data.direction_line.length === 4) {
+    const [x1,y1,x2,y2] = data.direction_line;
+    linePts = [{x:x1,y:y1},{x:x2,y:y2}];
+  }
   draw(); updateCoords();
 }
 
+/* ---- Canvas clicks ---- */
 canvas.addEventListener('click', function(e) {
-  if (!img || roiClosed) return;
+  if (!img) return;
   const rect = canvas.getBoundingClientRect();
   const x = Math.round((e.clientX - rect.left) * imgW / rect.width);
   const y = Math.round((e.clientY - rect.top)  * imgH / rect.height);
-  roiPts.push({x, y});
+
+  if (drawMode === 'roi') {
+    if (roiClosed) return;
+    roiPts.push({x, y});
+  } else {
+    if (linePts.length >= 2) return;
+    linePts.push({x, y});
+  }
   draw(); updateCoords();
 });
 
 canvas.addEventListener('dblclick', function() {
-  if (roiPts.length >= 3) { roiClosed = true; draw(); updateCoords(); }
+  if (drawMode === 'roi' && roiPts.length >= 3) {
+    roiClosed = true; draw(); updateCoords();
+  }
 });
 
+/* ---- Draw ---- */
 function draw() {
   ctx.clearRect(0, 0, imgW, imgH);
   if (img) ctx.drawImage(img, 0, 0, imgW, imgH);
+
+  // ROI polygon
   if (roiPts.length > 0) {
     ctx.beginPath(); ctx.moveTo(roiPts[0].x, roiPts[0].y);
     roiPts.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
     if (roiClosed) ctx.closePath();
     ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2; ctx.stroke();
-    ctx.fillStyle = 'rgba(0,255,0,0.12)'; if (roiClosed) ctx.fill();
+    ctx.fillStyle = 'rgba(0,255,0,0.10)'; if (roiClosed) ctx.fill();
     roiPts.forEach((p, i) => {
       ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
       ctx.fillStyle = '#00ff00'; ctx.fill();
@@ -285,27 +316,77 @@ function draw() {
       ctx.fillText(i + 1, p.x + 7, p.y - 5);
     });
   }
-}
 
-function updateCoords() {
-  if (roiPts.length === 0) {
-    document.getElementById('coords').textContent = 'roi_polygon: (non défini — cliquez sur l\'image pour ajouter des points)';
-    return;
+  // Direction line
+  if (linePts.length > 0) {
+    const A = linePts[0];
+    ctx.beginPath(); ctx.arc(A.x, A.y, 7, 0, Math.PI * 2);
+    ctx.fillStyle = '#f59e0b'; ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif';
+    ctx.fillText('A', A.x + 9, A.y - 5);
+
+    if (linePts.length === 2) {
+      const B = linePts[1];
+      // Line
+      ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y);
+      ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 3;
+      ctx.setLineDash([8, 4]); ctx.stroke(); ctx.setLineDash([]);
+      // Arrow at B
+      const angle = Math.atan2(B.y - A.y, B.x - A.x);
+      const aLen = 14;
+      ctx.beginPath();
+      ctx.moveTo(B.x, B.y);
+      ctx.lineTo(B.x - aLen * Math.cos(angle - 0.4), B.y - aLen * Math.sin(angle - 0.4));
+      ctx.moveTo(B.x, B.y);
+      ctx.lineTo(B.x - aLen * Math.cos(angle + 0.4), B.y - aLen * Math.sin(angle + 0.4));
+      ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 2; ctx.stroke();
+      // Point B
+      ctx.beginPath(); ctx.arc(B.x, B.y, 7, 0, Math.PI * 2);
+      ctx.fillStyle = '#f59e0b'; ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif';
+      ctx.fillText('B', B.x + 9, B.y - 5);
+    }
   }
-  const status = roiClosed ? '✅ polygone fermé' : '  (double-cliquez pour fermer)';
-  const pts = roiPts.map(p => `  - [${p.x}, ${p.y}]`).join('\n');
-  document.getElementById('coords').textContent = `roi_polygon:\n${pts}\n${status}`;
 }
 
-function resetRoi() { roiPts = []; roiClosed = false; draw(); updateCoords(); }
+/* ---- Coords display ---- */
+function updateCoords() {
+  let txt = '';
+  if (roiPts.length === 0) {
+    txt += 'roi_polygon: (non défini)\n';
+  } else {
+    const status = roiClosed ? '✅ fermé' : '(double-clic pour fermer)';
+    txt += `roi_polygon: ${status}\n` + roiPts.map(p=>`  [${p.x}, ${p.y}]`).join('\n') + '\n';
+  }
+  txt += '\n';
+  if (linePts.length < 2) {
+    txt += 'direction_line: (non définie — 2 clics en mode Ligne)';
+  } else {
+    const [A, B] = linePts;
+    txt += `direction_line: [${A.x}, ${A.y}, ${B.x}, ${B.y}]  ✅\ncount_direction: true (activé automatiquement)`;
+  }
+  document.getElementById('coords').textContent = txt;
+}
 
+/* ---- Reset ---- */
+function resetRoi() { roiPts = []; roiClosed = false; draw(); updateCoords(); }
+function resetLine() { linePts = []; draw(); updateCoords(); }
+
+/* ---- Save ---- */
 async function saveConfig() {
   if (!roiClosed || roiPts.length < 3) {
     showMsg("Définissez et fermez le polygone ROI (au moins 3 points, double-cliquez pour fermer).", 'err');
     return;
   }
-  const payload = { roi_polygon: roiPts.map(p => [p.x, p.y]) };
-  const res  = await fetch(`${BASE}/api/save`, { method: 'POST', headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'}, body: JSON.stringify(payload) });
+  const payload = {
+    roi_polygon: roiPts.map(p => [p.x, p.y]),
+    direction_line: linePts.length === 2 ? [linePts[0].x, linePts[0].y, linePts[1].x, linePts[1].y] : null,
+  };
+  const res  = await fetch(`${BASE}/api/save`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
+    body: JSON.stringify(payload)
+  });
   const data = await res.json();
   if (data.ok) showMsg(`✅ Enregistré dans ${data.saved_to}. Redémarrez le conteneur pour appliquer.`, 'ok');
   else showMsg('❌ ' + data.error, 'err');
