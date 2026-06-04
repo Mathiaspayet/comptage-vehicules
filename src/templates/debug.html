@@ -152,8 +152,12 @@
           <input type="number" id="frame-sec" value="10" min="0" max="3600" style="width:75px">
         </label>
         <label>Seuil confiance :
-          <input type="number" id="conf" value="0.15" min="0.05" max="0.95" step="0.05" style="width:75px">
-          <span style="font-size:.73rem;color:var(--text-3)">(0.15 = permissif)</span>
+          <input type="number" id="conf" placeholder="auto" min="0.05" max="0.95" step="0.05" style="width:75px">
+          <span style="font-size:.73rem;color:var(--text-3)">(vide = seuil du pipeline)</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:.35rem;cursor:pointer">
+          <input type="checkbox" id="pipeline-toggle" checked style="accent-color:var(--navy-m)">
+          Pipeline réel (contre-jour + CLAHE + ROI)
         </label>
         <button class="btn btn-primary" onclick="runDetect()">▶ Lancer</button>
       </div>
@@ -162,6 +166,11 @@
         <span><span class="dot" style="background:#00ff00"></span> ROI (zone d'intérêt)</span>
         <span><span class="dot" style="background:#00c800"></span> Véhicule détecté</span>
         <span><span class="dot" style="background:#888"></span> Autre objet (ignoré)</span>
+      </div>
+      <div style="font-size:.76rem;color:var(--text-2);margin-top:.5rem;line-height:1.5">
+        <strong>Pipeline réel coché</strong> = image traitée exactement comme lors du comptage
+        (soleil neutralisé, contraste CLAHE, recadrage ROI, seuil selon jour/nuit). Décoche pour
+        voir YOLO sur l'image brute et comparer.
       </div>
       <div id="img-wrap"><div class="placeholder">L'image annotée apparaîtra ici après le test.</div></div>
     </div>
@@ -272,14 +281,17 @@ fetch('/calibration/api/videos').then(r => r.json()).then(data => {
 async function runDetect() {
   const video = document.getElementById('video-select').value;
   const sec   = document.getElementById('frame-sec').value;
-  const conf  = document.getElementById('conf').value;
+  const conf  = document.getElementById('conf').value.trim();
+  const pipeline = document.getElementById('pipeline-toggle').checked ? '1' : '0';
 
   document.getElementById('status').textContent = '⏳ Analyse en cours…';
   document.getElementById('results').style.display = 'none';
   document.getElementById('hint-box').style.display = 'none';
   document.getElementById('img-wrap').innerHTML = '<div class="placeholder">⏳ Chargement…</div>';
 
-  const res  = await fetch(`/debug/api/detect?video=${encodeURIComponent(video)}&second=${sec}&conf=${conf}`);
+  let url = `/debug/api/detect?video=${encodeURIComponent(video)}&second=${sec}&pipeline=${pipeline}`;
+  if (conf) url += `&conf=${conf}`;
+  const res  = await fetch(url);
   const data = await res.json();
 
   if (data.error) {
@@ -312,8 +324,12 @@ async function runDetect() {
     document.getElementById('hint-box').style.display = '';
   }
 
+  const tags = [];
+  tags.push(data.pipeline ? '🛠 pipeline réel' : '🔬 YOLO brut');
+  if (data.pipeline && data.night) tags.push('🌙 nuit');
+  if (data.pipeline && data.roi_cropped) tags.push('✂️ ROI');
   document.getElementById('status').textContent =
-    `✅ ${data.vehicles.length} véhicule(s) sur cette frame (seuil ${(data.conf_used*100).toFixed(0)}%) — ${data.source}`;
+    `✅ ${data.vehicles.length} véhicule(s) — seuil ${(data.conf_used*100).toFixed(0)}% — ${tags.join(' · ')} — ${data.source}`;
 }
 
 function buildDetectHint(data) {
@@ -588,22 +604,29 @@ async function analyzeCurrentFrame() {
   if (!currentAnalyzeFile) return;
   const video = document.getElementById('debug-video');
   const sec = video.currentTime.toFixed(1);
-  const conf = 0.15;
 
   document.getElementById('yolo-result').style.display = 'none';
 
-  const res  = await fetch(`/debug/api/detect?video=${encodeURIComponent(currentAnalyzeFile)}&second=${sec}&conf=${conf}`);
+  // Frame analysée exactement comme le pipeline réel (contre-jour + CLAHE + ROI + seuil mode)
+  const res  = await fetch(`/debug/api/detect?video=${encodeURIComponent(currentAnalyzeFile)}&second=${sec}&pipeline=1`);
   const data = await res.json();
   if (data.error) { alert('Erreur YOLO : ' + data.error); return; }
 
   document.getElementById('yolo-img').src = data.image;
   const det = document.getElementById('yolo-detections');
-  det.innerHTML = data.vehicles.length
-    ? data.vehicles.map(d => {
-        const cls = d.conf > 0.5 ? 'ok' : d.conf > 0.3 ? '' : 'low';
-        return `<span class="conf-badge ${cls}">${d.name} ${(d.conf*100).toFixed(0)}%</span>`;
-      }).join('')
-    : '<span style="color:var(--text-3);font-style:italic">Aucun véhicule détecté</span>';
+  const tags = [];
+  tags.push(data.pipeline ? '🛠 pipeline réel' : '🔬 brut');
+  if (data.night) tags.push('🌙 nuit');
+  if (data.roi_cropped) tags.push('✂️ ROI');
+  tags.push(`seuil ${(data.conf_used*100).toFixed(0)}%`);
+  det.innerHTML =
+    `<div style="width:100%;font-size:.72rem;color:var(--text-3);margin-bottom:.3rem">${tags.join(' · ')}</div>` +
+    (data.vehicles.length
+      ? data.vehicles.map(d => {
+          const cls = d.conf > 0.5 ? 'ok' : d.conf > 0.3 ? '' : 'low';
+          return `<span class="conf-badge ${cls}">${d.name} ${(d.conf*100).toFixed(0)}%</span>`;
+        }).join('')
+      : '<span style="color:var(--text-3);font-style:italic">Aucun véhicule détecté</span>');
 
   document.getElementById('yolo-result').style.display = '';
 }

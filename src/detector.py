@@ -28,6 +28,66 @@ COCO_VEHICLE_CLASSES = {
 }
 
 
+# ------------------------------------------------------------------ #
+# Pré-traitements partagés (pipeline réel ET page debug)              #
+# ------------------------------------------------------------------ #
+
+def suppress_glare(frame: np.ndarray, threshold: int = 240) -> np.ndarray:
+    """Neutralise les pixels surexposés (soleil rasant dans le viseur).
+
+    Au coucher de soleil, le soleil et son halo créent des zones brûlées mobiles
+    (reflets, flare) que ByteTrack confond avec des véhicules → comptage gonflé.
+    On remplace ces pixels par un gris neutre : YOLO n'y détecte rien et le
+    tracker ne fragmente plus ses identifiants dessus.
+    """
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    mask = gray >= threshold
+    if not mask.any():
+        return frame
+    mask_u8 = cv2.dilate(mask.astype(np.uint8), np.ones((5, 5), np.uint8), iterations=1)
+    out = frame.copy()
+    out[mask_u8 > 0] = (127, 127, 127)
+    return out
+
+
+def enhance_frame(frame: np.ndarray, night: bool = False, clahe=None) -> np.ndarray:
+    """CLAHE sur le canal L (+ correction gamma la nuit). `clahe` réutilisable
+    en option (perf pipeline) ; créé à la volée si absent (debug)."""
+    lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+    if clahe is None:
+        clahe = cv2.createCLAHE(clipLimit=4.0 if night else 2.0, tileGridSize=(8, 8))
+    l = clahe.apply(l)
+    frame = cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
+    if night:
+        gamma = 0.5
+        lut = np.array([((i / 255.0) ** gamma) * 255 for i in range(256)], dtype=np.uint8)
+        frame = lut[frame]
+    return frame
+
+
+def sunrise_sunset_local(lat: float, lon: float, tz_offset: float, dt: datetime) -> "tuple[float, float]":
+    """(heure_lever, heure_coucher) en heure locale pour la date `dt`."""
+    n = dt.timetuple().tm_yday
+    b = math.radians(360 / 365 * (n - 81))
+    decl = math.radians(23.45 * math.sin(b))
+    lat_r = math.radians(lat)
+    cos_ha = max(-1.0, min(1.0, -math.tan(lat_r) * math.tan(decl)))
+    ha = math.degrees(math.acos(cos_ha))
+    sunrise_utc = 12 - ha / 15 - lon / 15
+    sunset_utc = 12 + ha / 15 - lon / 15
+    return sunrise_utc + tz_offset, sunset_utc + tz_offset
+
+
+def is_night(config, dt: "datetime | None") -> bool:
+    """True si `dt` (heure locale) est hors de la plage jour pour la localisation."""
+    if dt is None:
+        return False
+    sunrise, sunset = sunrise_sunset_local(config.latitude, config.longitude, config.timezone_offset, dt)
+    h = dt.hour + dt.minute / 60
+    return h < sunrise or h >= sunset
+
+
 @dataclass
 class CrossingEvent:
     timestamp: datetime
@@ -326,63 +386,23 @@ class VehicleDetector:
 
     def _sunrise_sunset_local(self, dt: datetime) -> tuple[float, float]:
         """Returns (sunrise_hour, sunset_hour) in local time for the configured location."""
-        lat = self.config.latitude
-        lon = self.config.longitude
-        tz_offset = self.config.timezone_offset
-        n = dt.timetuple().tm_yday
-        b = math.radians(360 / 365 * (n - 81))
-        decl = math.radians(23.45 * math.sin(b))
-        lat_r = math.radians(lat)
-        cos_ha = -math.tan(lat_r) * math.tan(decl)
-        cos_ha = max(-1.0, min(1.0, cos_ha))
-        ha = math.degrees(math.acos(cos_ha))
-        sunrise_utc = 12 - ha / 15 - lon / 15
-        sunset_utc = 12 + ha / 15 - lon / 15
-        return sunrise_utc + tz_offset, sunset_utc + tz_offset
+        return sunrise_sunset_local(
+            self.config.latitude, self.config.longitude, self.config.timezone_offset, dt
+        )
 
     def _is_night(self, dt: datetime | None) -> bool:
-        if dt is None:
-            return False
-        sunrise, sunset = self._sunrise_sunset_local(dt)
-        h = dt.hour + dt.minute / 60
-        return h < sunrise or h >= sunset
+        return is_night(self.config, dt)
 
     def _suppress_glare(self, frame: np.ndarray) -> np.ndarray:
-        """Neutralise les pixels surexposés (soleil rasant dans le viseur).
-
-        Au coucher de soleil, le soleil et son halo créent des zones brûlées mobiles
-        (reflets, flare) que ByteTrack confond avec des véhicules → comptage gonflé.
-        On remplace ces pixels par un gris neutre : YOLO n'y détecte rien et le
-        tracker ne fragmente plus ses identifiants dessus.
-        """
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        thr = self.config.glare_threshold
-        mask = gray >= thr
-        if not mask.any():
-            return frame
-        # Dilatation légère pour couvrir le halo immédiat autour du disque solaire
-        mask_u8 = cv2.dilate(mask.astype(np.uint8), np.ones((5, 5), np.uint8), iterations=1)
-        out = frame.copy()
-        out[mask_u8 > 0] = (127, 127, 127)
-        return out
+        return suppress_glare(frame, self.config.glare_threshold)
 
     def _enhance_frame(self, frame: np.ndarray, night: bool = False) -> np.ndarray:
-        # CLAHE on L channel — normalise le contraste local, aide sur les scènes
-        # en contre-jour (matin/soir avec soleil rasant) et la nuit.
-        lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
-        l, a, b = cv2.split(lab)
+        # CLAHE objects mis en cache sur l'instance pour la perf (réutilisés par frame).
         if not hasattr(self, "_clahe"):
             self._clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         if not hasattr(self, "_clahe_night"):
             self._clahe_night = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
-        l = (self._clahe_night if night else self._clahe).apply(l)
-        frame = cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
-        if night:
-            # Correction gamma : remonte les pixels sombres pour la nuit
-            gamma = 0.5
-            lut = np.array([((i / 255.0) ** gamma) * 255 for i in range(256)], dtype=np.uint8)
-            frame = lut[frame]
-        return frame
+        return enhance_frame(frame, night=night, clahe=(self._clahe_night if night else self._clahe))
 
     def _analyze_frame(
         self,
