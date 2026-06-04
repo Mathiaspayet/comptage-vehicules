@@ -347,6 +347,25 @@ class VehicleDetector:
         h = dt.hour + dt.minute / 60
         return h < sunrise or h >= sunset
 
+    def _suppress_glare(self, frame: np.ndarray) -> np.ndarray:
+        """Neutralise les pixels surexposés (soleil rasant dans le viseur).
+
+        Au coucher de soleil, le soleil et son halo créent des zones brûlées mobiles
+        (reflets, flare) que ByteTrack confond avec des véhicules → comptage gonflé.
+        On remplace ces pixels par un gris neutre : YOLO n'y détecte rien et le
+        tracker ne fragmente plus ses identifiants dessus.
+        """
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        thr = self.config.glare_threshold
+        mask = gray >= thr
+        if not mask.any():
+            return frame
+        # Dilatation légère pour couvrir le halo immédiat autour du disque solaire
+        mask_u8 = cv2.dilate(mask.astype(np.uint8), np.ones((5, 5), np.uint8), iterations=1)
+        out = frame.copy()
+        out[mask_u8 > 0] = (127, 127, 127)
+        return out
+
     def _enhance_frame(self, frame: np.ndarray, night: bool = False) -> np.ndarray:
         # CLAHE on L channel — normalise le contraste local, aide sur les scènes
         # en contre-jour (matin/soir avec soleil rasant) et la nuit.
@@ -382,6 +401,9 @@ class VehicleDetector:
     ) -> list[CrossingEvent]:
         night = self._is_night(video_start_dt)
         conf = self.config.night_confidence_threshold if night else self.config.confidence_threshold
+        # Suppression du glare AVANT CLAHE — sinon CLAHE amplifierait le halo solaire.
+        if self.config.glare_suppression:
+            frame = self._suppress_glare(frame)
         # CLAHE appliqué sur toutes les frames (contre-jour, nuit, luminosité inégale).
         # La correction gamma supplémentaire est réservée à la nuit (night_enhance).
         if self.config.night_enhance:

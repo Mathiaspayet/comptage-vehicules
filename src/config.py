@@ -28,6 +28,8 @@ DEFAULTS = {
         "model_dir": "/app/data/models",
         "night_confidence_threshold": 0.12, # très permissif : la nuit les détections sont plus floues
         "night_enhance": True,
+        "glare_suppression": True,          # neutralise les pixels surexposés (soleil rasant) avant YOLO
+        "glare_threshold": 240,             # niveau de gris au-delà duquel un pixel est "brûlé"
         "roi_crop": True,
         "min_presence_frames": 2,           # nombre de frames minimum pour confirmer un véhicule
         "count_direction": False,           # déduit le sens du déplacement net du centroïde (sans ligne)
@@ -70,6 +72,8 @@ DEFAULTS = {
         "calibration_files": 10,        # fichiers requis avant d'utiliser le filtre
         "sigma_factor": 2.0,            # plus bas = plus de segments détectés (risque de bruit)
         "segment_padding": 2.5,         # contexte autour de chaque segment actif (secondes)
+        "trust_on_low_visibility": True, # condition difficile (contre-jour/nuit) + son présent mais 0 détection visuelle → compter le segment
+
         "min_energy_db": -60.0,         # plancher diurne — en dessous = silence complet
         "night_min_energy_db": -70.0,   # plancher nocturne plus bas (voitures lentes, électriques)
         "night_start_hour": 22,         # début plage nuit (heure locale)
@@ -81,6 +85,8 @@ DEFAULTS = {
         "enabled": True,
         "brightness_threshold": 40,    # nuit franche : luminosité médiane < 40 → mode nuit pur
         "twilight_threshold": 55,      # crépuscule : 40–55 (zone étroite autour du lever/coucher)
+        "roi_metering": True,          # mesure la luminosité dans le ROI (la route) plutôt que plein cadre — robuste au contre-jour
+        "glare_twilight_fraction": 0.10, # si >10% de pixels surexposés (soleil dans le viseur) → forcer au moins crépuscule
         "sample_fps": 5,               # échantillonnage luminosité (peu coûteux)
         "flash_sigma": 2.5,            # plus bas = plus sensible aux phares faibles (pluie, distance)
         "min_flash_sep_sec": 1.0,      # deux flashes séparés de moins de 1s = même véhicule
@@ -176,6 +182,14 @@ class Config:
         return bool(self.get("detector", "night_enhance"))
 
     @property
+    def glare_suppression(self) -> bool:
+        return bool(self.get("detector", "glare_suppression", default=True))
+
+    @property
+    def glare_threshold(self) -> int:
+        return int(self.get("detector", "glare_threshold", default=240))
+
+    @property
     def latitude(self) -> float:
         return float(self.get("location", "latitude"))
 
@@ -268,6 +282,10 @@ class Config:
         return float(self.get("audio_filter", "segment_padding", default=2.0))
 
     @property
+    def audio_trust_low_visibility(self) -> bool:
+        return bool(self.get("audio_filter", "trust_on_low_visibility", default=True))
+
+    @property
     def audio_min_energy_db(self) -> float:
         return float(self.get("audio_filter", "min_energy_db", default=-55.0))
 
@@ -310,6 +328,14 @@ class Config:
     @property
     def night_twilight_threshold(self) -> float:
         return float(self.get("night_detection", "twilight_threshold", default=100))
+
+    @property
+    def night_roi_metering(self) -> bool:
+        return bool(self.get("night_detection", "roi_metering", default=True))
+
+    @property
+    def glare_twilight_fraction(self) -> float:
+        return float(self.get("night_detection", "glare_twilight_fraction", default=0.10))
 
     @property
     def night_min_flash_sep_sec(self) -> float:
