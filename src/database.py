@@ -326,6 +326,36 @@ class Database:
         hourly = {r["hour"]: r["count"] for r in rows}
         return [{"hour": h, "count": hourly.get(h, 0)} for h in range(24)]
 
+    def get_hourly_stats_by_direction(self, date_str: str, vehicle_type: str = "all") -> list[dict]:
+        """Returns list of {hour, left_to_right, right_to_left, unknown} for a given date."""
+        tzmod = self._tz_mod()
+        type_filter = "" if vehicle_type == "all" else "AND vehicle_type = :vtype"
+        query = f"""
+            SELECT
+                CAST(strftime('%H', datetime(timestamp, :tzmod)) AS INTEGER) AS hour,
+                SUM(CASE WHEN direction = 'left_to_right' THEN 1 ELSE 0 END) AS ltr,
+                SUM(CASE WHEN direction = 'right_to_left' THEN 1 ELSE 0 END) AS rtl,
+                SUM(CASE WHEN direction IS NULL THEN 1 ELSE 0 END) AS unknown
+            FROM crossings
+            WHERE date(datetime(timestamp, :tzmod)) = :date
+            {type_filter}
+            GROUP BY hour
+            ORDER BY hour
+        """
+        params = {"date": date_str, "vtype": vehicle_type, "tzmod": tzmod}
+        with self._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+        by_hour = {r["hour"]: r for r in rows}
+        return [
+            {
+                "hour": h,
+                "left_to_right": by_hour[h]["ltr"] if h in by_hour else 0,
+                "right_to_left": by_hour[h]["rtl"] if h in by_hour else 0,
+                "unknown": by_hour[h]["unknown"] if h in by_hour else 0,
+            }
+            for h in range(24)
+        ]
+
     def get_daily_stats(self, days: int = 30, vehicle_type: str = "all") -> list[dict]:
         """Returns list of {date, count} for the last N days (dates in local time)."""
         tzmod = self._tz_mod()
