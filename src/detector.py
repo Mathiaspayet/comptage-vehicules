@@ -56,7 +56,7 @@ def enhance_frame(frame: np.ndarray, night: bool = False, clahe=None) -> np.ndar
     lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
     l, a, b = cv2.split(lab)
     if clahe is None:
-        clahe = cv2.createCLAHE(clipLimit=4.0 if night else 2.0, tileGridSize=(8, 8))
+        clahe = cv2.createCLAHE(clipLimit=3.0 if night else 2.0, tileGridSize=(8, 8))
     l = clahe.apply(l)
     frame = cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
     if night:
@@ -401,7 +401,7 @@ class VehicleDetector:
         if not hasattr(self, "_clahe"):
             self._clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         if not hasattr(self, "_clahe_night"):
-            self._clahe_night = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
+            self._clahe_night = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
         return enhance_frame(frame, night=night, clahe=(self._clahe_night if night else self._clahe))
 
     def _analyze_frame(
