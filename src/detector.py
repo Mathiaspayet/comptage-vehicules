@@ -243,9 +243,11 @@ class VehicleDetector:
         track_counted: set[int] = set()
         track_types: dict[int, str] = {}
         track_confs: dict[int, float] = {}
-        # Trajectory state for direction (first/last horizontal centroid per track)
+        # Trajectory state for direction (first/last centroid per track)
         track_first_cx: dict[int, float] = {}
         track_last_cx: dict[int, float] = {}
+        track_first_cy: dict[int, float] = {}
+        track_last_cy: dict[int, float] = {}
         track_event: dict[int, CrossingEvent] = {}
         # Line-crossing direction state
         track_prev_side: dict[int, int] = {}
@@ -349,6 +351,8 @@ class VehicleDetector:
                     track_counted,
                     track_first_cx,
                     track_last_cx,
+                    track_first_cy,
+                    track_last_cy,
                     track_event,
                     track_prev_side,
                     track_crossing_dir,
@@ -379,20 +383,31 @@ class VehicleDetector:
                 seg_idx += 1
                 inside_segment = False
 
-        # Direction : franchissement de ligne en priorité, déplacement centroïde en fallback.
-        # Les deux méthodes se complètent : la ligne est précise mais nécessite d'observer
-        # le franchissement entre deux frames analysées (peut être manqué si le pas est grand).
-        # Le centroïde prend le relais pour les véhicules qui n'ont pas franchi la ligne.
+        # Direction : 3 niveaux de détection, du plus précis au plus tolérant.
         if self.config.count_direction:
             min_disp = max(20.0, 0.04 * frame_w)
             for tid, ev in track_event.items():
-                # 1. Franchissement de ligne (si ligne configurée)
+                # 1. Franchissement inter-frames (crossing observé entre deux frames consécutives)
+                if dir_line is not None and track_crossing_dir.get(tid):
+                    ev.direction = track_crossing_dir[tid]
+                    continue
+
+                # 2. Premier vs dernier côté de la ligne (robuste au grand pas d'analyse)
                 if dir_line is not None:
-                    d = track_crossing_dir.get(tid)
-                    if d:
-                        ev.direction = d
-                        continue
-                # 2. Fallback : déplacement net du centroïde horizontal
+                    fcx, fcy = track_first_cx.get(tid), track_first_cy.get(tid)
+                    lcx, lcy = track_last_cx.get(tid), track_last_cy.get(tid)
+                    if all(v is not None for v in [fcx, fcy, lcx, lcy]):
+                        lx1, ly1, lx2, ly2 = dir_line
+                        sf = (lx2 - lx1) * (fcy - ly1) - (ly2 - ly1) * (fcx - lx1)
+                        sl = (lx2 - lx1) * (lcy - ly1) - (ly2 - ly1) * (lcx - lx1)
+                        if sf > 0 and sl < 0:
+                            ev.direction = "left_to_right"
+                            continue
+                        elif sf < 0 and sl > 0:
+                            ev.direction = "right_to_left"
+                            continue
+
+                # 3. Fallback : déplacement net du centroïde horizontal
                 first = track_first_cx.get(tid)
                 last = track_last_cx.get(tid)
                 if first is None or last is None:
@@ -441,6 +456,8 @@ class VehicleDetector:
         track_counted: set,
         track_first_cx: dict,
         track_last_cx: dict,
+        track_first_cy: dict,
+        track_last_cy: dict,
         track_event: dict,
         track_prev_side: "dict | None" = None,
         track_crossing_dir: "dict | None" = None,
@@ -490,10 +507,12 @@ class VehicleDetector:
             track_confs[tid] = max(track_confs.get(tid, 0.0), conf_val)
             track_types[tid] = _coco_id_to_name(cid)
 
-            # Record horizontal trajectory for direction (fallback centroid method).
+            # Record centroid trajectory (used for direction detection).
             if tid not in track_first_cx:
                 track_first_cx[tid] = cx
+                track_first_cy[tid] = cy
             track_last_cx[tid] = cx
+            track_last_cy[tid] = cy
 
             # Line-crossing direction: produit vectoriel pour déterminer le côté de la ligne.
             if dir_line is not None and track_prev_side is not None and track_crossing_dir is not None:
