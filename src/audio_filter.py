@@ -106,6 +106,13 @@ class AudioFilter:
             )
             return []
 
+        # Seuil adaptatif par fichier : évite que le bruit ambiant diurne
+        # (médiane souvent au-dessus du seuil global calibré sur le silence nocturne)
+        # fasse passer l'intégralité du fichier en "véhicule actif".
+        # On prend le plus strict (max dB) entre le seuil global et p10+sigma×std du fichier.
+        file_adaptive = stats["p10_db"] + self.config.audio_sigma_factor * stats["std_db"]
+        threshold = max(threshold, file_adaptive)
+
         segments = self._detect_segments(energy_db, threshold, duration_sec)
         total = sum(s.end_sec - s.start_sec for s in segments)
         logger.info(
