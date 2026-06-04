@@ -367,7 +367,7 @@ class VehicleDetector:
         # Pas de ligne nécessaire : le suivi ByteTrack suffit. Un déplacement trop
         # faible (véhicule à l'arrêt, bruit de tracking) reste sans direction.
         if self.config.count_direction:
-            min_disp = max(20.0, 0.08 * frame_w)
+            min_disp = max(20.0, 0.04 * frame_w)
             for tid, ev in track_event.items():
                 first = track_first_cx.get(tid)
                 last = track_last_cx.get(tid)
