@@ -174,8 +174,8 @@ class NightDetector:
                     logger.info("Arrêt demandé — interruption nuit après segment %d/%d.", seg_idx, total_segments)
                     break
 
-                times, brightness, centroids_x = self._segment_profile(cap, seg, fps, step, crop)
-                flashes = self._detect_flashes(times, brightness, centroids_x, baseline, threshold)
+                times, brightness, centroids_x, red_scores = self._segment_profile(cap, seg, fps, step, crop)
+                flashes = self._detect_flashes(times, brightness, centroids_x, red_scores, baseline, threshold)
 
                 for peak_t, peak_b, direction in flashes:
                     conf = min(1.0, (peak_b - baseline) / max(threshold - baseline, 1.0) * 0.5 + 0.4)
@@ -230,32 +230,36 @@ class NightDetector:
         return baseline, bg_std
 
     def _segment_profile(self, cap, seg: Segment, fps: float, step: int, crop):
-        """Retourne (times, brightness, centroids_x) échantillonnés dans le segment.
-        centroids_x = position horizontale (px, repère plein cadre) des phares,
-        ou NaN si pas de pixel brillant identifiable."""
+        """Retourne (times, brightness, centroids_x, red_scores) pour le segment.
+        centroids_x = position horizontale (px, repère plein cadre) des phares.
+        red_scores  = score (R-B)/(R+B+1) sur les pixels brillants :
+                      >0 rouge (feux arrière), <0 blanc/bleu (phares avant), NaN si vide."""
         start_f = int(seg.start_sec * fps)
         end_f = int(seg.end_sec * fps)
         cap.set(cv2.CAP_PROP_POS_FRAMES, start_f)
         times: list[float] = []
         brightness: list[float] = []
         centroids_x: list[float] = []
+        red_scores: list[float] = []
         f = start_f
         while f <= end_f:
             ret, frame = cap.read()
             if not ret:
                 break
             if (f - start_f) % step == 0:
-                b, cx = self._roi_brightness(frame, crop)
+                b, cx, rs = self._roi_brightness(frame, crop)
                 times.append(f / fps)
                 brightness.append(b)
                 centroids_x.append(cx)
+                red_scores.append(rs)
             f += 1
-        return times, brightness, centroids_x
+        return times, brightness, centroids_x, red_scores
 
     @staticmethod
-    def _roi_brightness(frame: np.ndarray, crop) -> "tuple[float, float]":
-        """Retourne (90e percentile de luminosité, centre horizontal des phares).
-        Le centroïde x est en repère plein cadre (offset ROI ajouté)."""
+    def _roi_brightness(frame: np.ndarray, crop) -> "tuple[float, float, float]":
+        """Retourne (90e percentile luminosité, centroïde X phares, score rouge).
+        score_rouge = mean((R-B)/(R+B+1)) sur les pixels brillants (top 1%) :
+          > 0.20 → feux arrière rouges | < 0.05 → phares blancs/bleus | NaN si vide."""
         x_off = 0
         if crop:
             x0, y0, x1, y1 = crop
@@ -263,28 +267,50 @@ class NightDetector:
             x_off = x0
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         p90 = float(np.percentile(gray, 90))
-        # Centroïde horizontal des pixels les plus brillants (phares)
         bright_thresh = float(np.percentile(gray, 99))
         ys, xs = np.where(gray >= bright_thresh)
-        cx = float(np.mean(xs)) + x_off if xs.size else float("nan")
-        return p90, cx
+        if xs.size:
+            cx = float(np.mean(xs)) + x_off
+            pix = frame[ys, xs].astype(np.float32)  # BGR, shape (N, 3)
+            r, b = pix[:, 2], pix[:, 0]
+            red_score = float(np.mean((r - b) / (r + b + 1.0)))
+        else:
+            cx = float("nan")
+            red_score = float("nan")
+        return p90, cx, red_score
 
-    def _detect_flashes(self, times, brightness, centroids_x, baseline, threshold):
+    def _detect_flashes(self, times, brightness, centroids_x, red_scores, baseline, threshold):
         """Détecte les régions au-dessus du seuil. Chaque région = 1 véhicule.
-        La direction vient du déplacement horizontal des phares pendant le flash.
+        Direction : (1) couleur des phares — rouge=feux arrière=L→R, blanc=phares=R→L ;
+                    (2) déplacement centroïde si couleur indéterminée.
         Retourne [(peak_time, peak_brightness, direction), ...]."""
         if not brightness:
             return []
         min_sep = self.config.night_min_flash_sep_sec
         flashes: list[tuple[float, float, "str | None"]] = []
 
+        def _color_direction(lo: int, hi: int) -> "str | None":
+            scores = [red_scores[k] for k in range(lo, hi) if not np.isnan(red_scores[k])]
+            if not scores:
+                return None
+            mean_s = float(np.mean(scores))
+            if mean_s > 0.20:    # rouge dominant → feux arrière → gauche→droite
+                return "left_to_right"
+            if mean_s < 0.05:    # blanc/bleu dominant → phares → droite→gauche
+                return "right_to_left"
+            return None          # ambigu, fallback centroïde
+
         def _direction(lo: int, hi: int) -> "str | None":
-            """Sens depuis le déplacement net du centroïde des phares sur [lo, hi]."""
+            # Priorité 1 : couleur des phares
+            d = _color_direction(lo, hi)
+            if d is not None:
+                return d
+            # Priorité 2 : déplacement net du centroïde
             xs = [centroids_x[k] for k in range(lo, hi) if not np.isnan(centroids_x[k])]
             if len(xs) < 2:
                 return None
             delta = xs[-1] - xs[0]
-            if abs(delta) < 5:   # déplacement négligeable → indéterminé
+            if abs(delta) < 5:
                 return None
             return "left_to_right" if delta > 0 else "right_to_left"
 
