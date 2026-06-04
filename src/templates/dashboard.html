@@ -665,23 +665,35 @@ async function loadHourly() {
   const data  = await res.json();
   if (data.error) return;
 
-  const { hourly, summary, breakdown } = data;
+  const { hourly, hourly_dir, summary, breakdown } = data;
   document.getElementById('card-total').textContent = summary.total;
   document.getElementById('card-peak').textContent  = `${summary.peak_hour}h (${summary.peak_count})`;
   document.getElementById('card-avg').textContent   = summary.avg_per_active_hour;
 
+  const dir = hourly_dir || [];
+  const hasDir = dir.some(h => h.left_to_right > 0 || h.right_to_left > 0);
+  const hasUnknown = dir.some(h => h.unknown > 0);
+  const labels = hourly.map(h => `${h.hour}h`);
+  const datasets = hasDir ? [
+    { label: '→', data: dir.map(h => h.left_to_right), backgroundColor: '#2563ebcc', borderColor: '#2563eb', borderWidth: 1, stack: 'dir' },
+    { label: '←', data: dir.map(h => h.right_to_left), backgroundColor: '#f59e0bcc', borderColor: '#f59e0b', borderWidth: 1, stack: 'dir' },
+    ...(hasUnknown ? [{ label: '?', data: dir.map(h => h.unknown), backgroundColor: '#94a3b866', borderColor: '#94a3b8', borderWidth: 1, stack: 'dir' }] : []),
+  ] : [
+    { label: 'Passages', data: hourly.map(h => h.count), backgroundColor: '#2563eb99', borderColor: '#2563eb', borderWidth: 1 },
+  ];
+
   if (chartHourly) chartHourly.destroy();
   chartHourly = new Chart(document.getElementById('chart-hourly'), {
     type: 'bar',
-    data: { labels: hourly.map(h=>`${h.hour}h`), datasets:[{ label:'Passages', data:hourly.map(h=>h.count), backgroundColor:'#2563eb99', borderColor:'#2563eb', borderWidth:1 }] },
+    data: { labels, datasets },
     options: {
       responsive: true,
-      plugins: { legend: { display: false } },
-      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+      plugins: { legend: { display: hasDir, position: 'top', labels: { boxWidth: 12, padding: 10 } } },
+      scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } } },
       onClick: (evt, elements) => {
         if (!elements.length) return;
         const idx  = elements[0].index;
-        const label = chartHourly.data.labels[idx]; // e.g. "7h"
+        const label = chartHourly.data.labels[idx];
         const hour = parseInt(label, 10);
         const day  = document.getElementById('date-picker')?.value || new Date().toISOString().slice(0,10);
         showCrossingsDetail(day, hour);

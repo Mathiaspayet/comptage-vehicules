@@ -148,14 +148,15 @@ def create_app(config: Config, db: Database, audio=None) -> Flask:
         if cached := _cache_get(ck, ttl):
             return jsonify(cached)
         try:
-            hourly    = db.get_hourly_stats(day, vehicle_type)
-            summary   = db.get_summary(day, vehicle_type)
-            breakdown = db.get_vehicle_type_breakdown(day)
-            direction = db.get_direction_stats(day)
+            hourly     = db.get_hourly_stats(day, vehicle_type)
+            hourly_dir = db.get_hourly_stats_by_direction(day, vehicle_type)
+            summary    = db.get_summary(day, vehicle_type)
+            breakdown  = db.get_vehicle_type_breakdown(day)
+            direction  = db.get_direction_stats(day)
         except Exception as e:
             logger.error("Erreur stats horaires : %s", e)
             return jsonify({"error": str(e)}), 500
-        payload = {"date": day, "hourly": hourly, "summary": summary, "breakdown": breakdown, "direction": direction}
+        payload = {"date": day, "hourly": hourly, "hourly_dir": hourly_dir, "summary": summary, "breakdown": breakdown, "direction": direction}
         _cache_set(ck, payload)
         return jsonify(payload)
 
