@@ -497,7 +497,7 @@ def _process_file(
         # reste un possible faux positif audio (porte, vent, voix) et n'est pas compté.
         visual_unreliable = (mode != "day") or (glare_frac >= night.config.glare_twilight_fraction)
         audio_trusted = 0
-        if config.audio_trust_low_visibility and visual_unreliable and segments:
+        if night.config.audio_trust_low_visibility and visual_unreliable and segments:
             synth = _synthesize_audio_crossings(segments, all_crossings, video_start_dt, filename)
             if synth:
                 all_crossings.extend(synth)
