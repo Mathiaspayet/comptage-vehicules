@@ -11,6 +11,7 @@ from flask import Blueprint, jsonify, render_template, request, send_file
 
 from .calibration import _extract_frame, _find_video_by_name, _find_latest_video
 from .config import Config
+from .detector import enhance_frame, is_night, suppress_glare
 
 logger = logging.getLogger(__name__)
 
@@ -52,12 +53,32 @@ def create_debug_blueprint(config: Config, db=None, audio_filter=None) -> Bluepr
     # API — test de détection sur une frame (onglet 1)                    #
     # ------------------------------------------------------------------ #
 
+    def _roi_crop_bbox():
+        """(x0,y0,x1,y1) du polygone ROI, ou None si crop désactivé/invalide."""
+        if not config.roi_crop:
+            return None
+        roi = config.roi_polygon
+        if not roi or len(roi) < 3:
+            return None
+        pts = np.array(roi)
+        x0, y0 = int(pts[:, 0].min()), int(pts[:, 1].min())
+        x1, y1 = int(pts[:, 0].max()), int(pts[:, 1].max())
+        if x1 <= x0 or y1 <= y0:
+            return None
+        return x0, y0, x1, y1
+
     @bp.route("/api/detect")
     def api_detect():
-        """Extract a frame, run YOLO detection, return annotated image."""
+        """Extract a frame, run YOLO detection, return annotated image.
+
+        Avec pipeline=1 (défaut), applique exactement les mêmes pré-traitements que
+        le pipeline réel : suppression du contre-jour, CLAHE, crop ROI et seuil de
+        confiance selon le mode jour/nuit. Avec pipeline=0, YOLO brut (frame entière).
+        """
         video_name = request.args.get("video")
         second = float(request.args.get("second", 5.0))
         conf_override = request.args.get("conf")
+        use_pipeline = request.args.get("pipeline", "1") != "0"
 
         folder = config.video_folder
         if video_name:
@@ -71,6 +92,25 @@ def create_debug_blueprint(config: Config, db=None, audio_filter=None) -> Bluepr
         frame = _extract_frame(video_file, second)
         if frame is None:
             return jsonify({"error": "Impossible d'extraire la frame."}), 500
+
+        # ── Reproduit les pré-traitements du pipeline réel ───────────────────
+        night = False
+        crop = None
+        x_off = y_off = 0
+        if use_pipeline:
+            video_start_dt = _parse_video_start(video_name or video_file.name, config)
+            night = is_night(config, video_start_dt)
+            if config.glare_suppression:
+                frame = suppress_glare(frame, config.glare_threshold)
+            if config.night_enhance:
+                frame = enhance_frame(frame, night=night)
+            crop = _roi_crop_bbox()
+            if crop:
+                x0, y0, x1, y1 = crop
+                x_off, y_off = x0, y0
+                frame = frame[y0:y1, x0:x1]
+
+        infer_frame = frame  # frame réellement envoyée à YOLO (== ce que voit le modèle)
 
         try:
             from ultralytics import YOLO
@@ -86,13 +126,18 @@ def create_debug_blueprint(config: Config, db=None, audio_filter=None) -> Bluepr
             else:
                 model = YOLO(f"{model_name}.pt")
 
-            conf = float(conf_override) if conf_override else 0.15
-            results = model(frame, conf=conf, verbose=False)
+            if conf_override:
+                conf = float(conf_override)
+            elif use_pipeline:
+                conf = config.night_confidence_threshold if night else config.confidence_threshold
+            else:
+                conf = 0.15
+            results = model(infer_frame, conf=conf, verbose=False)
 
         except Exception as e:
             return jsonify({"error": f"Erreur YOLO : {e}"}), 500
 
-        annotated = frame.copy()
+        annotated = infer_frame.copy()
         detections = []
 
         if results and results[0].boxes is not None:
@@ -109,10 +154,15 @@ def create_debug_blueprint(config: Config, db=None, audio_filter=None) -> Bluepr
                 label = f"{name} {conf_val:.0%}"
                 cv2.rectangle(annotated, (x1, y1 - 20), (x1 + len(label) * 9, y1), color if is_vehicle else (120, 120, 120), -1)
                 cv2.putText(annotated, label, (x1 + 2, y1 - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1)
-                detections.append({"name": name, "cid": cid, "conf": round(conf_val, 3), "is_vehicle": is_vehicle, "box": [x1, y1, x2, y2]})
+                # box en coordonnées plein cadre (réajoute l'offset du crop ROI)
+                detections.append({"name": name, "cid": cid, "conf": round(conf_val, 3),
+                                   "is_vehicle": is_vehicle,
+                                   "box": [x1 + x_off, y1 + y_off, x2 + x_off, y2 + y_off]})
 
+        # Trace le contour ROI : seulement en mode plein cadre (en mode crop la frame
+        # EST déjà la ROI). Évite des coordonnées hors image.
         roi = config.roi_polygon
-        if roi:
+        if roi and crop is None:
             pts = np.array(roi, dtype=np.int32)
             overlay = annotated.copy()
             cv2.fillPoly(overlay, [pts], (0, 255, 0))
@@ -121,7 +171,7 @@ def create_debug_blueprint(config: Config, db=None, audio_filter=None) -> Bluepr
 
         _, buf = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 88])
         b64 = base64.b64encode(buf.tobytes()).decode("ascii")
-        h, w = frame.shape[:2]
+        h, w = annotated.shape[:2]
         vehicles = [d for d in detections if d["is_vehicle"]]
         others   = [d for d in detections if not d["is_vehicle"]]
 
@@ -132,6 +182,9 @@ def create_debug_blueprint(config: Config, db=None, audio_filter=None) -> Bluepr
             "vehicles": vehicles,
             "other_detections": others,
             "conf_used": conf,
+            "pipeline": use_pipeline,
+            "night": night,
+            "roi_cropped": crop is not None,
         })
 
     # ------------------------------------------------------------------ #

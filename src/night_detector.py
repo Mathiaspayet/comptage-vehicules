@@ -29,34 +29,86 @@ from .motion_filter import Segment
 logger = logging.getLogger(__name__)
 
 
+def _roi_mask(shape, polygon) -> "np.ndarray | None":
+    """Construit un masque binaire du polygone ROI à la taille de l'image."""
+    if not polygon or len(polygon) < 3:
+        return None
+    h, w = shape[:2]
+    mask = np.zeros((h, w), dtype=np.uint8)
+    pts = np.array(polygon, dtype=np.int32)
+    # Clamp dans les bornes de l'image (ROI calibré sur une autre résolution)
+    pts[:, 0] = np.clip(pts[:, 0], 0, w - 1)
+    pts[:, 1] = np.clip(pts[:, 1], 0, h - 1)
+    cv2.fillPoly(mask, [pts], 255)
+    if int(mask.sum()) == 0:
+        return None
+    return mask
+
+
 def measure_scene_brightness(video_path: Path, n_samples: int = 10) -> float:
-    """Échantillonne n frames réparties sur la vidéo et retourne la luminosité
-    médiane (0-255). Sert à décider nuit/jour sur la luminosité réelle."""
+    """Compat : luminosité médiane plein cadre (0-255)."""
+    bright, _ = measure_scene_lighting(video_path, n_samples=n_samples)
+    return bright
+
+
+def measure_scene_lighting(
+    video_path: Path,
+    config: "Config | None" = None,
+    n_samples: int = 10,
+    glare_threshold: int = 240,
+) -> "tuple[float, float]":
+    """Échantillonne n frames et retourne (luminosité_médiane, fraction_surexposée).
+
+    - luminosité_médiane : mesurée dans le ROI (la route) si `config.night_roi_metering`,
+      sinon plein cadre. Le métering ROI est robuste au contre-jour : au coucher de
+      soleil le ciel est brûlé mais la route reste sombre.
+    - fraction_surexposée : proportion moyenne de pixels (plein cadre) au-dessus de
+      `glare_threshold` — signature d'un soleil directement dans le viseur.
+    """
+    roi_metering = bool(config.night_roi_metering) if config is not None else False
+    polygon = config.roi_polygon if (config is not None and roi_metering) else None
+    if config is not None:
+        glare_threshold = config.glare_threshold
+
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         cap.release()
-        return 128.0
+        return 128.0, 0.0
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     vals: list[float] = []
+    glare: list[float] = []
+
+    def _sample(frame):
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # Fraction surexposée sur le plein cadre (le soleil/ciel)
+        glare.append(float(np.count_nonzero(gray >= glare_threshold)) / gray.size)
+        # Luminosité : ROI si dispo, sinon plein cadre
+        region = gray
+        if polygon:
+            mask = _roi_mask(gray.shape, polygon)
+            if mask is not None:
+                region = gray[mask > 0]
+        vals.append(float(np.median(region)) if region.size else float(np.median(gray)))
+
     try:
         if total <= 0:
-            # Pas de comptage de frames fiable — lit quelques frames au fil de l'eau
             for _ in range(n_samples):
                 ret, frame = cap.read()
                 if not ret:
                     break
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                vals.append(float(np.median(gray)))
+                _sample(frame)
         else:
             for i in range(1, n_samples + 1):
                 cap.set(cv2.CAP_PROP_POS_FRAMES, total * i // (n_samples + 1))
                 ret, frame = cap.read()
                 if ret:
-                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                    vals.append(float(np.median(gray)))
+                    _sample(frame)
     finally:
         cap.release()
-    return float(np.median(vals)) if vals else 128.0
+
+    brightness = float(np.median(vals)) if vals else 128.0
+    glare_frac = float(np.median(glare)) if glare else 0.0
+    return brightness, glare_frac
 
 
 class NightDetector:

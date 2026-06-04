@@ -64,6 +64,11 @@ detector:
     - truck
   # Compter le sens de circulation (true/false)
   count_direction: false
+  # Suppression du contre-jour : neutralise les pixels surexposés (soleil rasant
+  # directement dans le viseur) avant YOLO, pour éviter que le halo solaire soit
+  # compté comme des véhicules. glare_threshold = niveau de gris « brûlé » (0–255).
+  glare_suppression: true
+  glare_threshold: 240
   # Dossier où stocker le modèle IA (dans le volume persistant)
   model_dir: "/app/data/models"
 

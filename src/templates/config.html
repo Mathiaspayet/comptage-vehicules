@@ -268,6 +268,40 @@
       </div>
       <div class="s-divider"></div>
       <div class="field">
+        <div class="field-label">☀️ Suppression du contre-jour (soleil dans le viseur)</div>
+        <div class="toggle-row">
+          <label class="toggle"><input type="checkbox" id="glare_suppression"><span class="slider"></span></label>
+          <span class="toggle-label">Neutralise les pixels surexposés avant YOLO — évite que le halo du soleil couchant soit compté comme des véhicules (recommandé)</span>
+        </div>
+      </div>
+      <div class="s-divider"></div>
+      <div class="field">
+        <label for="glare_threshold">Seuil de surexposition (0–255)</label>
+        <div class="range-row">
+          <input type="range" id="glare_threshold_range" min="200" max="255" step="1" oninput="sync('glare_threshold', this.value)">
+          <input type="number" id="glare_threshold" min="200" max="255" oninput="sync('glare_threshold_range', this.value)">
+        </div>
+        <div class="hint">Niveau de gris au-delà duquel un pixel est considéré « brûlé ». <strong>240 recommandé.</strong></div>
+      </div>
+      <div class="s-divider"></div>
+      <div class="field">
+        <div class="field-label">Mesure de luminosité dans le ROI</div>
+        <div class="toggle-row">
+          <label class="toggle"><input type="checkbox" id="night_roi_metering"><span class="slider"></span></label>
+          <span class="toggle-label">Décide jour/crépuscule/nuit sur la luminosité de la route (ROI) plutôt que de l'image entière — robuste au ciel surexposé au coucher du soleil (recommandé)</span>
+        </div>
+      </div>
+      <div class="s-divider"></div>
+      <div class="field">
+        <label for="glare_twilight_fraction">Bascule crépuscule si contre-jour (% de l'image surexposé)</label>
+        <div class="range-row">
+          <input type="range" id="glare_twilight_fraction_range" min="0.02" max="0.40" step="0.01" oninput="sync('glare_twilight_fraction', this.value)">
+          <input type="number" id="glare_twilight_fraction" min="0.02" max="0.40" step="0.01" oninput="sync('glare_twilight_fraction_range', this.value)">
+        </div>
+        <div class="hint">Au-delà de cette fraction de pixels brûlés, le fichier passe en mode crépuscule (YOLO + phares + confiance au son), même si la route paraît éclairée. <strong>0.10 recommandé.</strong></div>
+      </div>
+      <div class="s-divider"></div>
+      <div class="field">
         <div class="field-label">Localisation (lever/coucher du soleil automatiques)</div>
         <div class="fields-row" style="margin-top:.4rem">
           <div class="field">
@@ -387,6 +421,14 @@
           <label for="audio_calibration_files">Fichiers de calibration du bruit de fond</label>
           <input type="number" id="audio_calibration_files" min="1" max="50">
           <div class="hint"><strong>10 recommandé.</strong></div>
+        </div>
+      </div>
+      <div class="s-divider"></div>
+      <div class="field">
+        <div class="field-label">🔊 Confiance au son en faible visibilité</div>
+        <div class="toggle-row">
+          <label class="toggle"><input type="checkbox" id="audio_trust_low_visibility"><span class="slider"></span></label>
+          <span class="toggle-label">En contre-jour / crépuscule / nuit, un segment audio actif sans aucune détection visuelle est compté comme 1 véhicule. Le bruit du moteur est une donnée fiable que l'image trompeuse ne doit pas écraser (recommandé).</span>
         </div>
       </div>
     </div>
@@ -581,6 +623,13 @@ async function loadConfig() {
   setVal('night_confidence_threshold',      data.detector?.night_confidence_threshold);
   setVal('night_confidence_threshold_range',data.detector?.night_confidence_threshold);
   document.getElementById('night_enhance').checked = !!data.detector?.night_enhance;
+  document.getElementById('glare_suppression').checked = data.detector?.glare_suppression !== false;
+  setVal('glare_threshold',       data.detector?.glare_threshold);
+  setVal('glare_threshold_range', data.detector?.glare_threshold);
+  document.getElementById('night_roi_metering').checked = data.night_detection?.roi_metering !== false;
+  setVal('glare_twilight_fraction',       data.night_detection?.glare_twilight_fraction);
+  setVal('glare_twilight_fraction_range', data.night_detection?.glare_twilight_fraction);
+  document.getElementById('audio_trust_low_visibility').checked = data.audio_filter?.trust_on_low_visibility !== false;
   setVal('latitude',        data.location?.latitude);
   setVal('longitude',       data.location?.longitude);
   setVal('timezone_offset', data.location?.timezone_offset);
@@ -646,6 +695,11 @@ async function saveConfig() {
     roi_crop:                      document.getElementById('roi_crop').checked,
     night_confidence_threshold:    document.getElementById('night_confidence_threshold').value,
     night_enhance:                 document.getElementById('night_enhance').checked,
+    glare_suppression:             document.getElementById('glare_suppression').checked,
+    glare_threshold:               parseInt(document.getElementById('glare_threshold').value),
+    night_roi_metering:            document.getElementById('night_roi_metering').checked,
+    glare_twilight_fraction:       parseFloat(document.getElementById('glare_twilight_fraction').value),
+    audio_trust_low_visibility:    document.getElementById('audio_trust_low_visibility').checked,
     latitude:                      parseFloat(document.getElementById('latitude').value),
     longitude:                     parseFloat(document.getElementById('longitude').value),
     timezone_offset:               parseInt(document.getElementById('timezone_offset').value),

@@ -14,7 +14,7 @@ from .dashboard import run_dashboard
 from .database import Database
 from .detector import CrossingEvent, VehicleDetector
 from .ingestion import FileWatcher
-from .night_detector import NightDetector, measure_scene_brightness
+from .night_detector import NightDetector, measure_scene_lighting
 from .progress import tracker as progress_tracker
 
 
@@ -149,6 +149,54 @@ def _merge_crossing_events(
         merged.append(best)
 
     return merged
+
+
+def _synthesize_audio_crossings(
+    segments: list,
+    existing: list[dict],
+    video_start_dt,
+    source_name: str,
+) -> list[dict]:
+    """Crée 1 véhicule par segment audio actif resté SANS détection visuelle.
+
+    Utilisé en faible visibilité (contre-jour, crépuscule, nuit) où le son du moteur
+    est fiable mais l'image trompe les détecteurs. On mappe chaque crossing visuel
+    existant sur sa seconde dans la vidéo et on ne synthétise que pour les segments
+    réellement vides. Le véhicule synthétisé est placé au milieu du segment, type
+    « car » par défaut, confiance basse (0.2) pour rester identifiable.
+    """
+    from datetime import datetime, timedelta
+
+    existing_secs: "list[float] | None" = None
+    if video_start_dt is not None:
+        existing_secs = []
+        for c in existing:
+            try:
+                t = datetime.fromisoformat(c["timestamp"])
+                existing_secs.append((t - video_start_dt).total_seconds())
+            except Exception:
+                pass
+
+    out: list[dict] = []
+    for seg in segments:
+        if existing_secs is not None:
+            covered = any(seg.start_sec <= s <= seg.end_sec for s in existing_secs)
+        else:
+            # Sans horodatage vidéo fiable, on ne peut pas mapper → ne synthétise que
+            # si rien n'a été détecté du tout.
+            covered = len(existing) > 0
+        if covered:
+            continue
+        mid = (seg.start_sec + seg.end_sec) / 2.0
+        ts = (video_start_dt + timedelta(seconds=mid)) if video_start_dt else datetime.utcnow()
+        out.append({
+            "timestamp": ts.isoformat(),
+            "vehicle_type": "car",
+            "direction": None,
+            "confidence": 0.2,
+            "source_file": source_name,
+        })
+    return out
 
 
 def _track_detection_fingerprint(config, db: Database):
@@ -317,12 +365,22 @@ def _process_file(
         global _flash_dead_streak, _yolo_dead_streak
         mode = "day"
         brightness = 128.0
+        glare_frac = 0.0
         if night.config.night_detection_enabled:
-            brightness = measure_scene_brightness(video_path)
+            brightness, glare_frac = measure_scene_lighting(video_path, night.config)
             if brightness < night.config.night_brightness_threshold:
                 mode = "night"
             elif brightness < night.config.night_twilight_threshold:
                 mode = "twilight"
+            # Contre-jour : soleil directement dans le viseur. Même si la luminosité
+            # (ROI route) reste correcte, un fort glare rend YOLO peu fiable → on
+            # bascule au moins en crépuscule pour activer les phares + le filet audio.
+            if mode == "day" and glare_frac >= night.config.glare_twilight_fraction:
+                mode = "twilight"
+                logger.info(
+                    "%s — contre-jour détecté (%.0f%% surexposé) → CRÉPUSCULE forcé",
+                    filename, glare_frac * 100,
+                )
 
         # ── Adaptation dynamique de la session crépuscule ────────────
         # Hors crépuscule : on sort de la session → reset des compteurs
@@ -351,8 +409,8 @@ def _process_file(
             "night": "NUIT (phares)",
         }
         logger.info(
-            "%s — luminosité médiane=%.1f → mode %s",
-            filename, brightness, MODE_LABELS[mode],
+            "%s — luminosité ROI=%.1f surexposé=%.0f%% → mode %s",
+            filename, brightness, glare_frac * 100, MODE_LABELS[mode],
         )
 
         if mode == "twilight":
@@ -429,15 +487,35 @@ def _process_file(
             }
             for e in new_events
         ]
+
+        # ── Confiance au son par segment (conditions de faible visibilité) ──────────
+        # Le bruit du moteur est une donnée très fiable. En contre-jour / crépuscule /
+        # nuit, un segment audio actif SANS aucune détection visuelle est presque
+        # certainement un véhicule que la caméra n'a pas su voir. On l'insiste : on
+        # compte ce segment comme 1 véhicule (plutôt que de le traiter en faux positif).
+        # En plein jour clair, on garde la prudence : un segment muet visuellement
+        # reste un possible faux positif audio (porte, vent, voix) et n'est pas compté.
+        visual_unreliable = (mode != "day") or (glare_frac >= night.config.glare_twilight_fraction)
+        audio_trusted = 0
+        if config.audio_trust_low_visibility and visual_unreliable and segments:
+            synth = _synthesize_audio_crossings(segments, all_crossings, video_start_dt, filename)
+            if synth:
+                all_crossings.extend(synth)
+                audio_trusted = len(synth)
+                logger.info(
+                    "%s — confiance au son : %d segment(s) actif(s) sans détection visuelle "
+                    "→ +%d véhicule(s) (visibilité faible, mode=%s)",
+                    filename, audio_trusted, audio_trusted, mode,
+                )
+
         if all_crossings:
             db.insert_crossings_batch(all_crossings)
 
         total_count = len(all_crossings)
 
-        # ── Fallback audio : si le détecteur visuel n'a rien trouvé mais que
-        # l'audio a détecté N segments actifs, chaque segment = au minimum 1 véhicule.
-        # Couvre les cas où la vidéo est inexploitable (contre-jour, ombre, nuit noire)
-        # mais le son du moteur est clairement présent.
+        # ── Fallback audio global : dernier recours si TOUT est resté à 0 (vidéo
+        # inexploitable + visuel et son par segment n'ont rien donné). Chaque segment
+        # actif compte alors pour 1 véhicule.
         audio_fallback = False
         if total_count == 0 and segments:
             total_count = len(segments)
