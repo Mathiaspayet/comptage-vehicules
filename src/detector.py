@@ -247,6 +247,9 @@ class VehicleDetector:
         track_first_cx: dict[int, float] = {}
         track_last_cx: dict[int, float] = {}
         track_event: dict[int, CrossingEvent] = {}
+        # Line-crossing direction state
+        track_prev_side: dict[int, int] = {}
+        track_crossing_dir: dict[int, str] = {}
 
         # Precompute ROI crop bbox
         crop_bbox = self._roi_crop_bbox()
@@ -257,6 +260,16 @@ class VehicleDetector:
                          x0, y0, x1, y1, x1 - x0, y1 - y0)
         else:
             frame_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 1280)
+
+        # Ligne de direction (coordonnées ajustées au crop si actif)
+        raw_line = self.config.direction_line
+        dir_line: "tuple[float,float,float,float] | None" = None
+        if raw_line and self.config.count_direction:
+            lx1, ly1, lx2, ly2 = raw_line
+            if crop_bbox:
+                ox, oy = crop_bbox[0], crop_bbox[1]
+                lx1, ly1, lx2, ly2 = lx1 - ox, ly1 - oy, lx2 - ox, ly2 - oy
+            dir_line = (lx1, ly1, lx2, ly2)
 
         # New crossings found in this run (not including initial_crossings)
         crossings: list[CrossingEvent] = []
@@ -337,6 +350,9 @@ class VehicleDetector:
                     track_first_cx,
                     track_last_cx,
                     track_event,
+                    track_prev_side,
+                    track_crossing_dir,
+                    dir_line,
                 )
                 crossings.extend(events)
                 new_crossings_dicts.extend([
@@ -363,19 +379,26 @@ class VehicleDetector:
                 seg_idx += 1
                 inside_segment = False
 
-        # Direction = sens du déplacement net du centroïde entre 1re et dernière frame.
-        # Pas de ligne nécessaire : le suivi ByteTrack suffit. Un déplacement trop
-        # faible (véhicule à l'arrêt, bruit de tracking) reste sans direction.
+        # Direction : ligne virtuelle (si configurée) ou déplacement centroïde (fallback).
         if self.config.count_direction:
-            min_disp = max(20.0, 0.04 * frame_w)
-            for tid, ev in track_event.items():
-                first = track_first_cx.get(tid)
-                last = track_last_cx.get(tid)
-                if first is None or last is None:
-                    continue
-                delta = last - first
-                if abs(delta) >= min_disp:
-                    ev.direction = "left_to_right" if delta > 0 else "right_to_left"
+            if dir_line is not None:
+                # Franchissement de ligne : chaque crossing hérite de la direction
+                # détectée pendant le tracking.
+                for tid, ev in track_event.items():
+                    d = track_crossing_dir.get(tid)
+                    if d:
+                        ev.direction = d
+            else:
+                # Fallback : déplacement net du centroïde horizontal.
+                min_disp = max(20.0, 0.04 * frame_w)
+                for tid, ev in track_event.items():
+                    first = track_first_cx.get(tid)
+                    last = track_last_cx.get(tid)
+                    if first is None or last is None:
+                        continue
+                    delta = last - first
+                    if abs(delta) >= min_disp:
+                        ev.direction = "left_to_right" if delta > 0 else "right_to_left"
 
         logger.info(
             "%s → %d véhicule(s) | %d frames analysées | %d/%d segments",
@@ -418,6 +441,9 @@ class VehicleDetector:
         track_first_cx: dict,
         track_last_cx: dict,
         track_event: dict,
+        track_prev_side: "dict | None" = None,
+        track_crossing_dir: "dict | None" = None,
+        dir_line: "tuple | None" = None,
     ) -> list[CrossingEvent]:
         night = self._is_night(video_start_dt)
         conf = self.config.night_confidence_threshold if night else self.config.confidence_threshold
@@ -459,13 +485,24 @@ class VehicleDetector:
 
         for tid, cid, conf_val, box in zip(track_ids, class_ids, confs, xyxy):
             cx = (box[0] + box[2]) / 2
+            cy = (box[1] + box[3]) / 2
             track_confs[tid] = max(track_confs.get(tid, 0.0), conf_val)
             track_types[tid] = _coco_id_to_name(cid)
 
-            # Record horizontal trajectory for direction (finalized at end of _process).
+            # Record horizontal trajectory for direction (fallback centroid method).
             if tid not in track_first_cx:
                 track_first_cx[tid] = cx
             track_last_cx[tid] = cx
+
+            # Line-crossing direction: produit vectoriel pour déterminer le côté de la ligne.
+            if dir_line is not None and track_prev_side is not None and track_crossing_dir is not None:
+                lx1, ly1, lx2, ly2 = dir_line
+                side = (lx2 - lx1) * (cy - ly1) - (ly2 - ly1) * (cx - lx1)
+                side_sign = 1 if side >= 0 else -1
+                prev = track_prev_side.get(tid)
+                if prev is not None and prev != side_sign:
+                    track_crossing_dir[tid] = "left_to_right" if side_sign > 0 else "right_to_left"
+                track_prev_side[tid] = side_sign
 
             # Count each unique track visible for ≥ min_frames as one vehicle.
             # Works regardless of direction of travel — no line orientation needed.

@@ -33,6 +33,7 @@ DEFAULTS = {
         "roi_crop": True,
         "min_presence_frames": 2,           # nombre de frames minimum pour confirmer un véhicule
         "count_direction": False,           # déduit le sens du déplacement net du centroïde (sans ligne)
+        "direction_line": None,             # [x1,y1,x2,y2] ligne de comptage directionnelle (plein cadre)
     },
     "location": {
         "latitude": 43.67,
@@ -212,6 +213,13 @@ class Config:
     @property
     def count_direction(self) -> bool:
         return bool(self.get("detector", "count_direction", default=False))
+
+    @property
+    def direction_line(self) -> "list[int] | None":
+        val = self.get("detector", "direction_line", default=None)
+        if val and len(val) == 4:
+            return [int(v) for v in val]
+        return None
 
     @property
     def model_name(self) -> str:
