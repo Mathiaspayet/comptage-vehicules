@@ -109,9 +109,26 @@ class AudioFilter:
         # Seuil adaptatif par fichier : évite que le bruit ambiant diurne
         # (médiane souvent au-dessus du seuil global calibré sur le silence nocturne)
         # fasse passer l'intégralité du fichier en "véhicule actif".
-        # On prend le plus strict (max dB) entre le seuil global et p10+sigma×std du fichier.
-        file_adaptive = stats["p10_db"] + self.config.audio_sigma_factor * stats["std_db"]
-        threshold = max(threshold, file_adaptive)
+        # On adapte le plancher sur le p10 du fichier, mais on utilise le std de
+        # calibration (2h-5h) et NON le std du fichier courant : sinon un véhicule
+        # gonflait lui-même le std, élevant son propre seuil et disparaissant.
+        cs = self.config.audio_calibration_hour_start
+        ce = self.config.audio_calibration_hour_end
+        n_calib = self.db.get_audio_stats_count(night_only=True, night_start=cs, night_end=ce)
+        using_calib = n_calib >= self.config.audio_calibration_files
+        calib_agg = self.db.get_audio_calibration_aggregate(
+            night_only=using_calib, night_start=cs, night_end=ce
+        )
+        if calib_agg and calib_agg.get("avg_std_db") is not None:
+            file_adaptive = stats["p10_db"] + self.config.audio_sigma_factor * calib_agg["avg_std_db"]
+            if file_adaptive > threshold:
+                logger.debug(
+                    "%s — seuil adaptatif : global=%.1f dB → adaptatif=%.1f dB "
+                    "(p10_fichier=%.1f, std_calib=%.1f)",
+                    video_path.name, threshold, file_adaptive,
+                    stats["p10_db"], calib_agg["avg_std_db"],
+                )
+            threshold = max(threshold, file_adaptive)
 
         segments = self._detect_segments(energy_db, threshold, duration_sec)
         total = sum(s.end_sec - s.start_sec for s in segments)
