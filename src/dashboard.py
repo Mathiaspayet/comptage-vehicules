@@ -300,9 +300,31 @@ def create_app(config: Config, db: Database, audio=None) -> Flask:
         sort_dir = request.args.get("sort_dir", "desc")
         try:
             files = db.get_processed_files(limit, offset, status_filter, max_age_days, sort_by, sort_dir)
+            for f in files:
+                f["has_frames"] = db.has_debug_frames(f["filename"])
         except Exception as e:
             return jsonify({"error": str(e)}), 500
         return jsonify({"files": files, "count": len(files)})
+
+    @app.route("/api/files/<path:filename>/frames")
+    def api_file_frames(filename):
+        """Retourne les frames de debug associées à un fichier traité."""
+        frames = db.get_debug_frames(filename)
+        return jsonify({"filename": filename, "frames": frames})
+
+    @app.route("/api/debug_frames/<int:frame_id>")
+    def serve_debug_frame(frame_id):
+        """Sert l'image JPEG d'une frame de debug identifiée par son id DB."""
+        with db._connect() as conn:
+            row = conn.execute(
+                "SELECT file_path FROM debug_frames WHERE id = ?", (frame_id,)
+            ).fetchone()
+        if not row:
+            return jsonify({"error": "Frame introuvable"}), 404
+        p = Path(row["file_path"])
+        if not p.exists():
+            return jsonify({"error": "Fichier image manquant sur le disque"}), 404
+        return send_file(str(p), mimetype="image/jpeg")
 
     @app.route("/api/files/pending")
     def api_files_pending():

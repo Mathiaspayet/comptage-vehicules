@@ -444,6 +444,7 @@
               </th>
               <th>Mode</th>
               <th>Statut</th>
+              <th style="text-align:center">Frames</th>
             </tr>
           </thead>
           <tbody id="files-tbody"></tbody>
@@ -1159,6 +1160,10 @@ function renderFiles(files) {
       countCell = countCell.replace('</span>', '') + audioHint + '</span>';
     }
 
+    const framesBtn = f.has_frames
+      ? `<button onclick="showFrames('${escHtml(f.filename)}')" style="font-size:.72rem;padding:.1rem .4rem;border:1px solid #3b82f6;border-radius:6px;color:#3b82f6;background:transparent;cursor:pointer" title="Voir frames debug">📷</button>`
+      : `<span style="color:#d1d5db;font-size:.72rem">—</span>`;
+
     return `<tr style="${rowOpacity}">
       <td><input type="checkbox" class="file-cb" value="${escHtml(f.filename)}"></td>
       <td style="font-family:monospace;font-size:.75rem;word-break:break-all;max-width:240px">${escHtml(f.filename)}</td>
@@ -1167,8 +1172,55 @@ function renderFiles(files) {
       <td style="text-align:center">${countCell}</td>
       <td style="white-space:nowrap">${modeCell}</td>
       <td>${statusBadge}</td>
+      <td style="text-align:center">${framesBtn}</td>
     </tr>`;
   }).join('');
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Debug frames — modale raw / proc
+───────────────────────────────────────────────────────────── */
+async function showFrames(filename) {
+  let data;
+  try { data = await (await fetch(`/api/files/${encodeURIComponent(filename)}/frames`)).json(); }
+  catch(e) { alert('Erreur de chargement des frames.'); return; }
+
+  const frames = data.frames || [];
+  if (!frames.length) { alert('Aucune frame disponible pour ce fichier.'); return; }
+
+  // Grouper par seg_idx → { raw_id, proc_id }
+  const segs = {};
+  for (const f of frames) {
+    if (!segs[f.seg_idx]) segs[f.seg_idx] = {};
+    segs[f.seg_idx][f.frame_type] = f.id;
+  }
+
+  const html = Object.entries(segs).map(([seg, ids]) => `
+    <div style="margin-bottom:1.25rem">
+      <div style="font-size:.8rem;color:#6b7280;margin-bottom:.4rem;font-weight:600">Segment ${parseInt(seg)+1}</div>
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap">
+        ${ids.raw  ? `<div style="flex:1;min-width:200px"><div style="font-size:.72rem;color:#9ca3af;margin-bottom:.25rem">RAW (original)</div><img src="/api/debug_frames/${ids.raw}"  style="width:100%;border-radius:6px;border:1px solid #e5e7eb" loading="lazy"></div>` : ''}
+        ${ids.proc ? `<div style="flex:1;min-width:200px"><div style="font-size:.72rem;color:#9ca3af;margin-bottom:.25rem">PROC (après traitement + YOLO)</div><img src="/api/debug_frames/${ids.proc}" style="width:100%;border-radius:6px;border:1px solid #e5e7eb" loading="lazy"></div>` : ''}
+      </div>
+    </div>
+  `).join('');
+
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem';
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:10px;padding:1.25rem 1.5rem;max-width:900px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.35)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.9rem">
+        <div>
+          <div style="font-weight:700;font-size:.95rem">Frames de debug</div>
+          <div style="font-family:monospace;font-size:.72rem;color:#6b7280;margin-top:.15rem">${escHtml(filename)}</div>
+        </div>
+        <button onclick="this.closest('[style*=fixed]').remove()" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:#6b7280;line-height:1">×</button>
+      </div>
+      ${html}
+      <div style="font-size:.7rem;color:#9ca3af;margin-top:.5rem">Les frames sont conservées 48h puis purgées automatiquement.</div>
+    </div>`;
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
 }
 
 function toggleSelectAll(cb) {
