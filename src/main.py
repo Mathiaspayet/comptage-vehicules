@@ -446,6 +446,7 @@ def _process_file(
                 start_seg_idx=start_seg_idx,
                 on_segment_done=on_segment_done,
                 shutdown_event=_shutdown,
+                frame_sampler=frame_sampler,
             )
             det_night = len(saved_crossings) + len(new_events)
         elif mode == "day":

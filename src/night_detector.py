@@ -137,6 +137,7 @@ class NightDetector:
         start_seg_idx: int = 0,
         on_segment_done: Optional[Callable[[int, list], None]] = None,
         shutdown_event=None,
+        frame_sampler=None,
     ) -> list[CrossingEvent]:
         """Compte les véhicules de nuit par détection de pics de phares.
 
@@ -173,6 +174,10 @@ class NightDetector:
                 if shutdown_event is not None and shutdown_event.is_set():
                     logger.info("Arrêt demandé — interruption nuit après segment %d/%d.", seg_idx, total_segments)
                     break
+
+                # Debug frame nuit : raw + frame avec pixels brillants surlignés
+                if frame_sampler is not None and frame_sampler.should_sample(seg_idx):
+                    self._save_night_debug_frame(cap, seg, fps, crop, seg_idx, frame_sampler, source_name)
 
                 times, brightness, centroids_x, red_scores = self._segment_profile(cap, seg, fps, step, crop)
                 flashes = self._detect_flashes(times, brightness, centroids_x, red_scores, baseline, threshold)
@@ -278,6 +283,26 @@ class NightDetector:
             cx = float("nan")
             red_score = float("nan")
         return p90, cx, red_score
+
+    def _save_night_debug_frame(self, cap, seg, fps, crop, seg_idx, frame_sampler, source_name):
+        """Capture la première frame du segment : raw + pixels brillants surlignés (phares)."""
+        try:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, int(seg.start_sec * fps))
+            ret, frame = cap.read()
+            if not ret:
+                return
+            raw = frame.copy()
+            # Frame "proc" : pixels top 1% de luminosité surlignés en jaune (phares)
+            region = frame[crop[1]:crop[3], crop[0]:crop[2]] if crop else frame
+            gray = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY)
+            bright_thresh = float(np.percentile(gray, 99))
+            proc = frame.copy()
+            proc_region = proc[crop[1]:crop[3], crop[0]:crop[2]] if crop else proc
+            mask = gray >= bright_thresh
+            proc_region[mask] = (0, 220, 220)  # jaune vif = phares détectés
+            frame_sampler.save(seg_idx, raw, proc)
+        except Exception as e:
+            logger.debug("Erreur debug frame nuit seg%d : %s", seg_idx, e)
 
     def _detect_flashes(self, times, brightness, centroids_x, red_scores, baseline, threshold):
         """Détecte les régions au-dessus du seuil. Chaque région = 1 véhicule.
