@@ -179,6 +179,7 @@ class VehicleDetector:
         initial_crossings: list | None = None,
         on_segment_done: Optional[Callable[[int, list], None]] = None,
         shutdown_event=None,
+        frame_sampler=None,
     ) -> list[CrossingEvent]:
         """Runs AI detection only on the active segments of a video.
 
@@ -199,6 +200,7 @@ class VehicleDetector:
                 start_seg_idx=start_seg_idx,
                 on_segment_done=on_segment_done,
                 shutdown_event=shutdown_event,
+                frame_sampler=frame_sampler,
             )
         finally:
             cap.release()
@@ -227,6 +229,7 @@ class VehicleDetector:
         start_seg_idx: int = 0,
         on_segment_done: Optional[Callable[[int, list], None]] = None,
         shutdown_event=None,
+        frame_sampler=None,
     ) -> list[CrossingEvent]:
         fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
         sample_fps = self.config.effective_detector_fps
@@ -339,6 +342,13 @@ class VehicleDetector:
                 # Crop to ROI bounding box before inference
                 inference_frame = frame[y0:y1, x0:x1] if crop_bbox else frame
 
+                # Prépare la capture debug pour le premier frame de ce segment
+                capture_this = frame_sampler is not None and frame_sampler.should_sample(seg_idx)
+                raw_frame_copy = inference_frame.copy() if capture_this else None
+
+                def _on_proc(proc_frame, _seg=seg_idx, _raw=raw_frame_copy):
+                    frame_sampler.save(_seg, _raw, proc_frame)
+
                 events = self._analyze_frame(
                     inference_frame,
                     frame_idx,
@@ -357,6 +367,7 @@ class VehicleDetector:
                     track_prev_side,
                     track_crossing_dir,
                     dir_line,
+                    on_proc_frame=_on_proc if capture_this else None,
                 )
                 crossings.extend(events)
                 new_crossings_dicts.extend([
@@ -462,6 +473,7 @@ class VehicleDetector:
         track_prev_side: "dict | None" = None,
         track_crossing_dir: "dict | None" = None,
         dir_line: "tuple | None" = None,
+        on_proc_frame=None,
     ) -> list[CrossingEvent]:
         night = self._is_night(video_start_dt)
         conf = self.config.night_confidence_threshold if night else self.config.confidence_threshold
@@ -482,6 +494,18 @@ class VehicleDetector:
             imgsz=self.config.imgsz,
             verbose=False,
         )
+
+        # Callback debug frame : frame processée + bounding boxes YOLO dessinées.
+        if on_proc_frame is not None:
+            annotated = frame.copy()
+            if results and results[0].boxes is not None:
+                for box in (results[0].boxes.xyxy.tolist() or []):
+                    x1, y1, x2, y2 = int(box[0]), int(box[1]), int(box[2]), int(box[3])
+                    cv2.rectangle(annotated, (x1, y1), (x2, y2), (0, 220, 0), 2)
+            try:
+                on_proc_frame(annotated)
+            except Exception as _e:
+                logger.debug("Erreur sauvegarde debug frame : %s", _e)
 
         crossings: list[CrossingEvent] = []
         if not results or results[0].boxes is None:

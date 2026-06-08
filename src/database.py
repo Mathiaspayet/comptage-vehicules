@@ -56,10 +56,21 @@ CREATE TABLE IF NOT EXISTS audio_stats (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_crossings_timestamp ON crossings(timestamp);
-CREATE INDEX IF NOT EXISTS idx_crossings_type      ON crossings(vehicle_type);
-CREATE INDEX IF NOT EXISTS idx_crossings_source    ON crossings(source_file);
-CREATE INDEX IF NOT EXISTS idx_processed_filename  ON processed_files(filename);
+CREATE TABLE IF NOT EXISTS debug_frames (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_file TEXT    NOT NULL,
+    seg_idx     INTEGER NOT NULL,
+    frame_type  TEXT    NOT NULL,   -- 'raw' ou 'proc'
+    file_path   TEXT    NOT NULL,
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_crossings_timestamp  ON crossings(timestamp);
+CREATE INDEX IF NOT EXISTS idx_crossings_type       ON crossings(vehicle_type);
+CREATE INDEX IF NOT EXISTS idx_crossings_source     ON crossings(source_file);
+CREATE INDEX IF NOT EXISTS idx_processed_filename   ON processed_files(filename);
+CREATE INDEX IF NOT EXISTS idx_debug_frames_source  ON debug_frames(source_file);
+CREATE INDEX IF NOT EXISTS idx_debug_frames_created ON debug_frames(created_at);
 """
 
 
@@ -886,6 +897,62 @@ class Database:
         if row and row["count"]:
             return dict(row)
         return None
+
+    # ------------------------------------------------------------------ #
+    # Debug frames                                                         #
+    # ------------------------------------------------------------------ #
+
+    def add_debug_frames(self, source_file: str, frames: list[dict]) -> None:
+        """Enregistre les paires raw/proc sauvegardées par FrameSampler.
+        frames : liste de {seg_idx, raw_path, proc_path}."""
+        if not frames:
+            return
+        rows = []
+        now = datetime.utcnow().isoformat()
+        for f in frames:
+            rows.append((source_file, f["seg_idx"], "raw",  f["raw_path"],  now))
+            rows.append((source_file, f["seg_idx"], "proc", f["proc_path"], now))
+        with self._connect() as conn:
+            conn.executemany(
+                "INSERT INTO debug_frames (source_file, seg_idx, frame_type, file_path, created_at)"
+                " VALUES (?, ?, ?, ?, ?)",
+                rows,
+            )
+
+    def get_debug_frames(self, source_file: str) -> list[dict]:
+        """Retourne les frames debug d'un fichier source, triées par seg_idx puis type."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, seg_idx, frame_type, file_path FROM debug_frames"
+                " WHERE source_file = ? ORDER BY seg_idx, frame_type DESC",
+                (source_file,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def delete_old_debug_frames(self, max_age_hours: int = 48) -> list[str]:
+        """Supprime les entrées DB de frames de plus de max_age_hours heures.
+        Retourne la liste des file_path à effacer sur disque."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT file_path FROM debug_frames"
+                " WHERE created_at < datetime('now', ?)",
+                (f"-{max_age_hours} hours",),
+            ).fetchall()
+            paths = [r["file_path"] for r in rows]
+            if paths:
+                conn.execute(
+                    "DELETE FROM debug_frames WHERE created_at < datetime('now', ?)",
+                    (f"-{max_age_hours} hours",),
+                )
+        return paths
+
+    def has_debug_frames(self, source_file: str) -> bool:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM debug_frames WHERE source_file = ? LIMIT 1",
+                (source_file,),
+            ).fetchone()
+        return row is not None
 
     def get_audio_stats_history(self, limit: int = 30) -> list[dict]:
         """Historique des niveaux audio par fichier (pour le dashboard).

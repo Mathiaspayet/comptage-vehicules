@@ -13,9 +13,13 @@ from .config import load_config
 from .dashboard import run_dashboard
 from .database import Database
 from .detector import CrossingEvent, VehicleDetector
+from .frame_sampler import FrameSampler, purge_old_frames
 from .ingestion import FileWatcher
 from .night_detector import NightDetector, measure_scene_lighting
 from .progress import tracker as progress_tracker
+
+_DEBUG_FRAMES_DIR = Path("/app/data/debug_frames")
+_DEBUG_FRAMES_MAX_AGE_H = 48
 
 
 def _check_video(path: Path) -> str | None:
@@ -96,13 +100,23 @@ def _watchdog_loop():
 
 
 def _auto_purge(config, db: Database):
-    """Delete crossings older than data_retention_days if configured (> 0)."""
+    """Delete crossings older than data_retention_days and debug frames older than 48h."""
     days = config.data_retention_days
-    if days <= 0:
-        return
-    count = db.delete_old_crossings(days)
-    if count:
-        logger.info("Rétention des données : %d franchissement(s) de plus de %d jours supprimé(s).", count, days)
+    if days > 0:
+        count = db.delete_old_crossings(days)
+        if count:
+            logger.info("Rétention des données : %d franchissement(s) de plus de %d jours supprimé(s).", count, days)
+
+    # Purge des frames de debug (DB + disque)
+    old_paths = db.delete_old_debug_frames(_DEBUG_FRAMES_MAX_AGE_H)
+    if old_paths:
+        import os
+        for p in old_paths:
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+    purge_old_frames(_DEBUG_FRAMES_DIR, _DEBUG_FRAMES_MAX_AGE_H)
 
 
 def _merge_crossing_events(
@@ -422,6 +436,9 @@ def _process_file(
         det_yolo: int | None = None   # nb véhicules détectés par YOLO
         det_night: int | None = None  # nb véhicules détectés par phares
 
+        # ── Debug frames : une paire raw/proc par segment actif (max 3) ──
+        frame_sampler = FrameSampler(_DEBUG_FRAMES_DIR, filename)
+
         if mode == "night":
             new_events = night.process_video(
                 video_path, segments, video_start_dt,
@@ -438,6 +455,7 @@ def _process_file(
                 start_seg_idx=start_seg_idx,
                 on_segment_done=on_segment_done,
                 shutdown_event=_shutdown,
+                frame_sampler=frame_sampler,
             )
             det_yolo = len(saved_crossings) + len(new_events)
         else:
@@ -447,6 +465,7 @@ def _process_file(
                 video_path, segments, video_start_dt,
                 on_progress=detection_progress,
                 shutdown_event=_shutdown,
+                frame_sampler=frame_sampler,
             )
             if _shutdown.is_set():
                 logger.info("%s — traitement interrompu (YOLO crépuscule).", filename)
@@ -524,6 +543,10 @@ def _process_file(
                 "%s — détecteur visuel : 0 véhicule(s) — fallback audio : %d segment(s) → %d véhicule(s)",
                 filename, len(segments), total_count,
             )
+
+        # Enregistrer les debug frames en DB
+        if frame_sampler.saved_frames:
+            db.add_debug_frames(filename, frame_sampler.saved_frames)
 
         db.mark_file_done(
             filename,
