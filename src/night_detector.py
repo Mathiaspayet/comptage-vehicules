@@ -335,7 +335,7 @@ class NightDetector:
             if len(xs) < 2:
                 return None
             delta = xs[-1] - xs[0]
-            if abs(delta) < 5:
+            if abs(delta) < 3:
                 return None
             return "left_to_right" if delta > 0 else "right_to_left"
 
