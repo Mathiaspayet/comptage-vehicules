@@ -302,7 +302,7 @@ class NightDetector:
             proc_region[mask] = (0, 220, 220)  # jaune vif = phares détectés
             frame_sampler.save(seg_idx, raw, proc)
         except Exception as e:
-            logger.debug("Erreur debug frame nuit seg%d : %s", seg_idx, e)
+            logger.warning("Erreur debug frame nuit seg%d : %s", seg_idx, e)
 
     def _detect_flashes(self, times, brightness, centroids_x, red_scores, baseline, threshold):
         """Détecte les régions au-dessus du seuil. Chaque région = 1 véhicule.
