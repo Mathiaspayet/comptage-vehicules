@@ -394,7 +394,7 @@ class VehicleDetector:
                 seg_idx += 1
                 inside_segment = False
 
-        # Direction : 4 niveaux de détection, du plus précis au plus tolérant.
+        # Direction : 3 niveaux de détection, du plus précis au plus tolérant.
         if self.config.count_direction:
             min_disp = max(10.0, 0.015 * frame_w)
             for tid, ev in track_event.items():
@@ -403,7 +403,7 @@ class VehicleDetector:
                     ev.direction = track_crossing_dir[tid]
                     continue
 
-                # 2+4. Côté de la ligne (premier vs dernier, puis côté constant)
+                # 2. Premier vs dernier côté de la ligne (robuste au grand pas d'analyse)
                 if dir_line is not None:
                     fcx, fcy = track_first_cx.get(tid), track_first_cy.get(tid)
                     lcx, lcy = track_last_cx.get(tid), track_last_cy.get(tid)
@@ -412,20 +412,10 @@ class VehicleDetector:
                         sf = (lx2 - lx1) * (fcy - ly1) - (ly2 - ly1) * (fcx - lx1)
                         sl = (lx2 - lx1) * (lcy - ly1) - (ly2 - ly1) * (lcx - lx1)
                         if sf > 0 and sl < 0:
-                            # 2a. Traversée gauche→droite
                             ev.direction = "left_to_right"
                             continue
                         elif sf < 0 and sl > 0:
-                            # 2b. Traversée droite→gauche
                             ev.direction = "right_to_left"
-                            continue
-                        elif sf < 0 and sl < 0:
-                            # 4a. Toujours à droite → venait de la droite → heading gauche
-                            ev.direction = "right_to_left"
-                            continue
-                        elif sf > 0 and sl > 0:
-                            # 4b. Toujours à gauche → venait de la gauche → heading droite
-                            ev.direction = "left_to_right"
                             continue
 
                 # 3. Fallback : déplacement net du centroïde horizontal
