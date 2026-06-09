@@ -505,7 +505,7 @@ class VehicleDetector:
             try:
                 on_proc_frame(annotated)
             except Exception as _e:
-                logger.debug("Erreur sauvegarde debug frame : %s", _e)
+                logger.warning("Erreur sauvegarde debug frame : %s", _e, exc_info=True)
 
         crossings: list[CrossingEvent] = []
         if not results or results[0].boxes is None:
