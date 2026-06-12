@@ -354,7 +354,7 @@ def _process_file(
                 return
 
             if not segments:
-                if config.audio_enabled and audio.is_calibrated():
+                if watcher.config.audio_enabled and audio.is_calibrated():
                     # Audio calibré → silence = pas de véhicule → terminé
                     logger.info("%s — aucun segment actif (audio calibré).", filename)
                     db.mark_file_done(filename, vehicle_count=0,
@@ -365,7 +365,7 @@ def _process_file(
                     return
                 else:
                     # Audio désactivé ou calibration incomplète → YOLO sur vidéo complète
-                    reason = "désactivé" if not config.audio_enabled else "calibration en cours"
+                    reason = "désactivé" if not watcher.config.audio_enabled else "calibration en cours"
                     logger.info("%s — audio %s — YOLO sur vidéo complète.", filename, reason)
                     from .motion_filter import Segment as _FullSeg
                     segments = [_FullSeg(0.0, 9999.0)]
