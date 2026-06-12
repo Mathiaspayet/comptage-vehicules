@@ -248,6 +248,19 @@ def create_app(config: Config, db: Database, audio=None) -> Flask:
         _cache_set(ck, payload)
         return jsonify(payload)
 
+    @app.route("/api/stats/direction_summary")
+    def api_direction_summary():
+        days = max(1, min(int(request.args.get("days", 7)), 365))
+        ck = f"dir_summary:{days}"
+        if cached := _cache_get(ck, 120):
+            return jsonify(cached)
+        try:
+            data = db.get_direction_summary(days)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        _cache_set(ck, data)
+        return jsonify(data)
+
     @app.route("/api/dates")
     def api_dates():
         try:
@@ -300,8 +313,13 @@ def create_app(config: Config, db: Database, audio=None) -> Flask:
         sort_dir = request.args.get("sort_dir", "desc")
         try:
             files = db.get_processed_files(limit, offset, status_filter, max_age_days, sort_by, sort_dir)
+            filenames = [f["filename"] for f in files]
+            dir_counts = db.get_direction_counts_for_files(filenames)
             for f in files:
                 f["has_frames"] = db.has_debug_frames(f["filename"])
+                dc = dir_counts.get(f["filename"], {})
+                f["dir_total"] = dc.get("total", 0)
+                f["dir_with"] = dc.get("with_direction", 0)
         except Exception as e:
             return jsonify({"error": str(e)}), 500
         return jsonify({"files": files, "count": len(files)})
