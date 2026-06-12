@@ -1,4 +1,10 @@
-"""Module Détection IA & Comptage — YOLO + ByteTrack, mode présence."""
+"""Module Détection IA & Comptage — YOLO + ByteTrack, prétraitement adaptatif.
+
+Pipeline unifié : plus de modes nuit/crépuscule/jour séparés.
+Le prétraitement adaptatif (AdaptivePreprocessor) gère toutes les conditions
+lumineuses à partir de la luminance et de la fraction de glare mesurées une
+fois par vidéo dans main.py.
+"""
 import json
 import logging
 import math
@@ -7,13 +13,16 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 import cv2
 import numpy as np
 
 from .config import Config
 from .motion_filter import Segment
+
+if TYPE_CHECKING:
+    from .preprocessor import AdaptivePreprocessor
 
 _TRACKER_CFG = Path(__file__).parent / "bytetrack_custom.yaml"
 
@@ -192,12 +201,18 @@ class VehicleDetector:
         on_segment_done: Optional[Callable[[int, list], None]] = None,
         shutdown_event=None,
         frame_sampler=None,
+        preprocessor: "AdaptivePreprocessor | None" = None,
+        scene_luminance: float = 128.0,
+        scene_glare_frac: float = 0.0,
     ) -> list[CrossingEvent]:
         """Runs AI detection only on the active segments of a video.
 
         When resuming from a checkpoint, pass start_seg_idx to skip already-processed
         segments. Returns only the NEW CrossingEvent objects found from start_seg_idx
         onward (the caller is responsible for combining with previously saved crossings).
+
+        Pass preprocessor + scene_luminance + scene_glare_frac for adaptive preprocessing
+        (refonte pipeline). Without preprocessor the legacy night-mode logic is used.
         """
         if self._model is None:
             self._load_model()
@@ -213,6 +228,9 @@ class VehicleDetector:
                 on_segment_done=on_segment_done,
                 shutdown_event=shutdown_event,
                 frame_sampler=frame_sampler,
+                preprocessor=preprocessor,
+                scene_luminance=scene_luminance,
+                scene_glare_frac=scene_glare_frac,
             )
         finally:
             cap.release()
@@ -242,6 +260,9 @@ class VehicleDetector:
         on_segment_done: Optional[Callable[[int, list], None]] = None,
         shutdown_event=None,
         frame_sampler=None,
+        preprocessor: "AdaptivePreprocessor | None" = None,
+        scene_luminance: float = 128.0,
+        scene_glare_frac: float = 0.0,
     ) -> list[CrossingEvent]:
         fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
         sample_fps = self.config.effective_detector_fps
@@ -400,6 +421,9 @@ class VehicleDetector:
                     track_first_box=track_first_box,
                     track_last_box=track_last_box,
                     on_proc_frame=_on_proc if capture_this else None,
+                    preprocessor=preprocessor,
+                    scene_luminance=scene_luminance,
+                    scene_glare_frac=scene_glare_frac,
                 )
                 crossings.extend(events)
                 new_crossings_dicts.extend([
@@ -525,16 +549,22 @@ class VehicleDetector:
         track_first_box: "dict | None" = None,
         track_last_box: "dict | None" = None,
         on_proc_frame=None,
+        preprocessor: "AdaptivePreprocessor | None" = None,
+        scene_luminance: float = 128.0,
+        scene_glare_frac: float = 0.0,
     ) -> list[CrossingEvent]:
-        night = self._is_night(video_start_dt)
-        conf = self.config.night_confidence_threshold if night else self.config.confidence_threshold
-        # Suppression du glare AVANT CLAHE — sinon CLAHE amplifierait le halo solaire.
-        if self.config.glare_suppression:
-            frame = self._suppress_glare(frame)
-        # CLAHE appliqué sur toutes les frames (contre-jour, nuit, luminosité inégale).
-        # La correction gamma supplémentaire est réservée à la nuit (night_enhance).
-        if self.config.night_enhance:
-            frame = self._enhance_frame(frame, night=night)
+        if preprocessor is not None:
+            # Nouveau pipeline adaptatif : seuil et prétraitement basés sur la luminance
+            conf = preprocessor.adaptive_confidence(scene_luminance)
+            frame = preprocessor.preprocess(frame, scene_luminance, scene_glare_frac)
+        else:
+            # Pipeline hérité (mode nuit/jour basé sur l'heure astronomique)
+            night = self._is_night(video_start_dt)
+            conf = self.config.night_confidence_threshold if night else self.config.confidence_threshold
+            if self.config.glare_suppression:
+                frame = self._suppress_glare(frame)
+            if self.config.night_enhance:
+                frame = self._enhance_frame(frame, night=night)
 
         results = self._model.track(
             frame,
