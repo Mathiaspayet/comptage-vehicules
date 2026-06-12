@@ -161,6 +161,10 @@ class AudioDetector:
             "duration_sec": round(duration_sec, 1),
         }
 
+    def is_calibrated(self) -> bool:
+        """True si suffisamment de données pour calculer un seuil de détection."""
+        return self._get_threshold(is_night=False) is not None
+
     def calibration_info(self) -> dict:
         """Informations de calibration pour le dashboard."""
         cs = self.config.audio_calibration_hour_start

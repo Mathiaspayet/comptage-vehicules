@@ -299,15 +299,23 @@ def _process_file(
                 return
 
             if not segments:
-                logger.info("%s — aucun segment actif.", filename)
-                db.mark_file_done(
-                    filename, vehicle_count=0,
-                    duration_seconds=time.monotonic() - start_time,
-                    detection_mode="audio_only",
-                )
-                db.clear_checkpoint(filename)
-                progress_tracker.finish_file()
-                return
+                if config.audio_enabled and audio.is_calibrated():
+                    # Audio calibré → silence = pas de véhicule → terminé
+                    logger.info("%s — aucun segment actif (audio calibré).", filename)
+                    db.mark_file_done(
+                        filename, vehicle_count=0,
+                        duration_seconds=time.monotonic() - start_time,
+                        detection_mode="audio_only",
+                    )
+                    db.clear_checkpoint(filename)
+                    progress_tracker.finish_file()
+                    return
+                else:
+                    # Audio désactivé ou calibration incomplète → YOLO sur vidéo complète
+                    reason = "désactivé" if not config.audio_enabled else "calibration en cours"
+                    logger.info("%s — audio %s — YOLO sur vidéo complète.", filename, reason)
+                    from .motion_filter import Segment as _FullSeg
+                    segments = [_FullSeg(0.0, 9999.0)]
 
             db.save_checkpoint(filename, segments, 0, [])
             start_seg_idx  = 0
