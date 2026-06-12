@@ -824,6 +824,45 @@ class Database:
         result["total"] = result["left_to_right"] + result["right_to_left"]
         return result
 
+    def get_direction_summary(self, days: int) -> dict:
+        """Returns global direction stats (total, with_direction, L→R, R→L) over N days."""
+        with self._connect() as conn:
+            row = conn.execute(
+                """SELECT
+                    COUNT(*) as total,
+                    SUM(CASE WHEN direction IS NOT NULL THEN 1 ELSE 0 END) as with_direction,
+                    SUM(CASE WHEN direction = 'left_to_right' THEN 1 ELSE 0 END) as ltr,
+                    SUM(CASE WHEN direction = 'right_to_left' THEN 1 ELSE 0 END) as rtl
+                FROM crossings
+                WHERE timestamp >= datetime('now', ?)""",
+                (f"-{days} days",),
+            ).fetchone()
+        total = (row["total"] or 0) if row else 0
+        with_dir = (row["with_direction"] or 0) if row else 0
+        return {
+            "total": total,
+            "with_direction": with_dir,
+            "left_to_right": (row["ltr"] or 0) if row else 0,
+            "right_to_left": (row["rtl"] or 0) if row else 0,
+            "direction_rate": round(with_dir / total * 100) if total > 0 else 0,
+        }
+
+    def get_direction_counts_for_files(self, filenames: list[str]) -> dict:
+        """Returns {filename: {total, with_direction}} for a list of files (one query)."""
+        if not filenames:
+            return {}
+        placeholders = ",".join("?" * len(filenames))
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""SELECT source_file,
+                    COUNT(*) as total,
+                    SUM(CASE WHEN direction IS NOT NULL THEN 1 ELSE 0 END) as with_direction
+                FROM crossings WHERE source_file IN ({placeholders})
+                GROUP BY source_file""",
+                filenames,
+            ).fetchall()
+        return {r["source_file"]: {"total": r["total"], "with_direction": r["with_direction"]} for r in rows}
+
     def get_processing_status(self) -> dict:
         with self._connect() as conn:
             counts = conn.execute(

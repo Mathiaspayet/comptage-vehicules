@@ -122,7 +122,15 @@
   #log-box{background:#0f172a;color:#e2e8f0;font-family:monospace;font-size:.75rem;padding:.75rem;border-radius:8px;height:500px;overflow-y:auto;white-space:pre-wrap;word-break:break-all}
   /* ── Modal ── */
   #crossing-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(2px)}
-  .modal-box{background:var(--surface);border-radius:var(--r);padding:1.5rem;max-width:560px;width:90%;max-height:80vh;display:flex;flex-direction:column;gap:.75rem;box-shadow:var(--sh-lg)}
+  #action-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1001;align-items:center;justify-content:center;backdrop-filter:blur(2px)}
+  .modal-box{background:var(--surface);border-radius:var(--r);padding:1.5rem;max-width:560px;width:90%;max-height:85vh;display:flex;flex-direction:column;gap:.75rem;box-shadow:var(--sh-lg)}
+  /* ── Toast ── */
+  #toast-container{position:fixed;bottom:1.25rem;right:1.25rem;z-index:9999;display:flex;flex-direction:column;gap:.5rem;align-items:flex-end;pointer-events:none}
+  .toast{background:#1e293b;color:#fff;border-radius:8px;padding:.65rem 1rem;font-size:.84rem;box-shadow:0 4px 16px rgba(0,0,0,.28);display:flex;align-items:center;gap:.6rem;min-width:220px;max-width:380px;pointer-events:auto;transition:opacity .3s,transform .3s;animation:toast-in .2s ease}
+  .toast.t-ok{border-left:3px solid #22c55e}.toast.t-err{border-left:3px solid #ef4444}.toast.t-info{border-left:3px solid #3b82f6}
+  @keyframes toast-in{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:none}}
+  details.chart-box>summary{list-style:none;-webkit-appearance:none;cursor:pointer}
+  details.chart-box>summary::-webkit-details-marker{display:none}
   </style>
 </head>
 <body>
@@ -151,7 +159,7 @@
 <main>
   <div class="tab-nav">
     <button class="tab-btn active" onclick="showTab('analyse', this)">📊 Analyse</button>
-    <button class="tab-btn" onclick="showTab('hourly', this)">Horaire</button>
+    <button class="tab-btn" data-tab="hourly" onclick="showTab('hourly', this)">Horaire</button>
     <button class="tab-btn" onclick="showTab('daily', this)">Quotidien</button>
     <button class="tab-btn" onclick="showTab('calendar', this)">📅 Calendrier</button>
     <button class="tab-btn" onclick="showTab('files', this)">📁 Fichiers</button>
@@ -231,6 +239,18 @@
             <span style="display:inline-block;width:12px;height:3px;background:var(--text-3);vertical-align:middle;border-radius:2px"></span> Précédente
           </div>
         </div>
+      </div>
+      <!-- Direction summary (A2) -->
+      <div class="a-tile" id="dir-summary-tile" style="display:none">
+        <div class="a-tile-header">
+          <h2>Sens de passage</h2>
+          <div class="a-controls">
+            <button class="tpbtn dir-sum-btn active" onclick="setDirSumDays(7,this)">7j</button>
+            <button class="tpbtn dir-sum-btn" onclick="setDirSumDays(14,this)">14j</button>
+            <button class="tpbtn dir-sum-btn" onclick="setDirSumDays(30,this)">30j</button>
+          </div>
+        </div>
+        <div id="dir-summary-body"></div>
       </div>
     </div>
   </div>
@@ -476,16 +496,16 @@
       </div>
     </div>
 
-    <!-- Maintenance -->
-    <div class="chart-box" style="margin-top:.75rem">
-      <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem">
+    <!-- Maintenance (collapsible) -->
+    <details class="chart-box" id="maintenance-details" style="margin-top:.75rem" ontoggle="if(this.open) loadMaintenance()">
+      <summary style="display:flex;align-items:center;gap:.75rem">
         <h2 style="margin:0;flex:1">🧹 Maintenance</h2>
-        <button onclick="loadMaintenance()" style="font-size:.8rem;padding:.25rem .6rem;border:1px solid #ccc;border-radius:4px;cursor:pointer;background:#fff">↺</button>
+        <span style="font-size:.75rem;color:var(--text-3)">▾ ouvrir</span>
+      </summary>
+      <div id="maintenance-section" style="margin-top:.75rem">
+        <div style="font-size:.83rem;color:#888">Cliquez pour charger…</div>
       </div>
-      <div id="maintenance-section">
-        <div style="font-size:.83rem;color:#888">Chargement…</div>
-      </div>
-    </div>
+    </details>
   </div>
 
   <!-- ══════════════ AUDIO ══════════════ -->
@@ -595,15 +615,33 @@
     </div>
   </div>
 
-  <div id="crossing-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(2px)">
-    <div class="modal-box">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <h3 id="modal-title" style="margin:0;font-size:1rem"></h3>
-        <button onclick="closeModal()" style="border:none;background:none;font-size:1.2rem;cursor:pointer">✕</button>
+  <div id="crossing-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(2px);padding:1rem">
+    <div class="modal-box" id="crossing-modal-box">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <h3 id="modal-title" style="margin:0;font-size:1rem"></h3>
+          <div id="modal-subtitle" style="font-family:monospace;font-size:.72rem;color:#6b7280;margin-top:.15rem;display:none"></div>
+        </div>
+        <button onclick="closeModal()" style="border:none;background:none;font-size:1.2rem;cursor:pointer;color:#6b7280;flex-shrink:0;margin-left:.5rem">✕</button>
       </div>
       <div id="modal-body" style="overflow-y:auto;flex:1;font-size:.82rem"></div>
     </div>
   </div>
+
+  <!-- Action modal (confirm / prompt) -->
+  <div id="action-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1001;align-items:center;justify-content:center;backdrop-filter:blur(2px);padding:1rem">
+    <div class="modal-box" style="max-width:440px;gap:1rem">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h3 id="action-modal-title" style="margin:0;font-size:1rem"></h3>
+        <button onclick="closeActionModal()" style="border:none;background:none;font-size:1.2rem;cursor:pointer;color:#6b7280">✕</button>
+      </div>
+      <div id="action-modal-body" style="font-size:.86rem;color:var(--text);line-height:1.5"></div>
+      <div id="action-modal-footer" style="display:flex;gap:.5rem;justify-content:flex-end;padding-top:.5rem;border-top:1px solid var(--border)"></div>
+    </div>
+  </div>
+
+  <!-- Toast container -->
+  <div id="toast-container"></div>
 
 </main>
 
@@ -620,6 +658,8 @@ let hmWeekDate = new Date();
 let allLogLines = [];
 let journalTimer = null, journalTimer2 = null;
 let filesTimer  = null;
+let analyseTimer = null;
+let dirSumDays  = 7;
 let allFiles    = [];
 let filesSortBy  = 'processed_at';
 let filesSortDir = 'desc';
@@ -636,8 +676,12 @@ function showTab(name, btn) {
   clearInterval(journalTimer);
   clearInterval(journalTimer2);
   clearInterval(filesTimer);
+  clearInterval(analyseTimer);
 
-  if (name === 'analyse') { loadHeatmap(); loadTypeEvolution(); loadComparison(); }
+  if (name === 'analyse') {
+    loadHeatmap(); loadTypeEvolution(); loadComparison(); loadDirectionSummary();
+    analyseTimer = setInterval(() => { loadHeatmap(); loadTypeEvolution(); loadComparison(); loadDirectionSummary(); }, 5 * 60 * 1000);
+  }
   if (name === 'hourly')   loadHourly();
   if (name === 'daily')    loadDaily();
   if (name === 'calendar') loadCalendar();
@@ -650,7 +694,6 @@ function showTab(name, btn) {
     loadFiles();
     loadPending();
     loadFilesProgress();
-    loadMaintenance();
     filesTimer = setInterval(() => { loadPending(); loadFilesProgress(); }, 15000);
   }
   if (name === 'audio') loadAudioCalibration();
@@ -990,8 +1033,8 @@ async function prioritizePending() {
     body: JSON.stringify({ filenames: sel }),
   });
   const data = await res.json();
-  if (data.ok) { deselectAllPending(); loadPending(); }
-  else alert('Erreur : ' + data.error);
+  if (data.ok) { deselectAllPending(); loadPending(); showToast(`${sel.length} fichier(s) prioritaires.`, 'ok'); }
+  else showToast('Erreur : ' + data.error, 'err');
 }
 
 async function unprioritizePending() {
@@ -1002,22 +1045,23 @@ async function unprioritizePending() {
     body: JSON.stringify({ filenames: sel.length ? sel : null }),
   });
   const data = await res.json();
-  if (data.ok) { deselectAllPending(); loadPending(); }
-  else alert('Erreur : ' + data.error);
+  if (data.ok) { deselectAllPending(); loadPending(); showToast('Priorité retirée.', 'info'); }
+  else showToast('Erreur : ' + data.error, 'err');
 }
 
 async function skipSelectedPending() {
   const sel = getPendingSelected();
   if (!sel.length) return;
-  if (!confirm(`Ignorer ${sel.length} fichier(s) ? Ils ne seront pas analysés.`)) return;
-  const res = await fetch('/api/files/pending/skip', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-    body: JSON.stringify({ filenames: sel }),
-  });
-  const data = await res.json();
-  if (data.ok) { deselectAllPending(); loadPending(); loadFiles(); }
-  else alert('Erreur : ' + data.error);
+  showConfirm(`Ignorer ${sel.length} fichier(s) ? Ils ne seront pas analysés.`, async () => {
+    const res = await fetch('/api/files/pending/skip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      body: JSON.stringify({ filenames: sel }),
+    });
+    const data = await res.json();
+    if (data.ok) { deselectAllPending(); loadPending(); loadFiles(); showToast(`${data.skipped_count} fichier(s) ignoré(s).`, 'ok'); }
+    else showToast('Erreur : ' + data.error, 'err');
+  }, 'Ignorer des fichiers');
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -1164,12 +1208,22 @@ function renderFiles(files) {
       ? `<button onclick="showFrames('${escHtml(f.filename)}')" style="font-size:.72rem;padding:.1rem .4rem;border:1px solid #3b82f6;border-radius:6px;color:#3b82f6;background:transparent;cursor:pointer" title="Voir frames debug">📷</button>`
       : `<span style="color:#d1d5db;font-size:.72rem">—</span>`;
 
+    // Direction rate badge (A3) — warning when detection rate is low
+    let dirBadge = '';
+    if (f.dir_total > 0 && !isSkipped && f.status === 'done') {
+      const rate = Math.round((f.dir_with || 0) / f.dir_total * 100);
+      if (rate < 80) {
+        const col = rate < 50 ? '#dc2626' : '#d97706';
+        dirBadge = ` <span style="font-size:.65rem;color:${col};font-weight:${rate<50?'700':'400'};cursor:help;white-space:nowrap" title="${f.dir_with||0}/${f.dir_total} avec sens (${rate}%)">↕${rate}%</span>`;
+      }
+    }
+
     return `<tr style="${rowOpacity}">
       <td><input type="checkbox" class="file-cb" value="${escHtml(f.filename)}"></td>
       <td style="font-family:monospace;font-size:.75rem;word-break:break-all;max-width:240px">${escHtml(f.filename)}</td>
       <td style="white-space:nowrap;font-size:.8rem">${fmtDateShort(f.processed_at)}</td>
       <td style="white-space:nowrap;font-size:.8rem;text-align:right;font-family:monospace">${fmtDuration(f.processing_duration_seconds)}</td>
-      <td style="text-align:center">${countCell}</td>
+      <td style="text-align:center">${countCell}${dirBadge}</td>
       <td style="white-space:nowrap">${modeCell}</td>
       <td>${statusBadge}</td>
       <td style="text-align:center">${framesBtn}</td>
@@ -1183,12 +1237,11 @@ function renderFiles(files) {
 async function showFrames(filename) {
   let data;
   try { data = await (await fetch(`/api/files/${encodeURIComponent(filename)}/frames`)).json(); }
-  catch(e) { alert('Erreur de chargement des frames.'); return; }
+  catch(e) { showToast('Erreur de chargement des frames.', 'err'); return; }
 
   const frames = data.frames || [];
-  if (!frames.length) { alert('Aucune frame disponible pour ce fichier.'); return; }
+  if (!frames.length) { showToast('Aucune frame disponible pour ce fichier.', 'info'); return; }
 
-  // Grouper par seg_idx → { raw_id, proc_id }
   const segs = {};
   for (const f of frames) {
     if (!segs[f.seg_idx]) segs[f.seg_idx] = {};
@@ -1200,27 +1253,12 @@ async function showFrames(filename) {
       <div style="font-size:.8rem;color:#6b7280;margin-bottom:.4rem;font-weight:600">Segment ${parseInt(seg)+1}</div>
       <div style="display:flex;gap:.75rem;flex-wrap:wrap">
         ${ids.raw  ? `<div style="flex:1;min-width:200px"><div style="font-size:.72rem;color:#9ca3af;margin-bottom:.25rem">RAW (original)</div><img src="/api/debug_frames/${ids.raw}"  style="width:100%;border-radius:6px;border:1px solid #e5e7eb" loading="lazy"></div>` : ''}
-        ${ids.proc ? `<div style="flex:1;min-width:200px"><div style="font-size:.72rem;color:#9ca3af;margin-bottom:.25rem">PROC (après traitement + YOLO)</div><img src="/api/debug_frames/${ids.proc}" style="width:100%;border-radius:6px;border:1px solid #e5e7eb" loading="lazy"></div>` : ''}
+        ${ids.proc ? `<div style="flex:1;min-width:200px"><div style="font-size:.72rem;color:#9ca3af;margin-bottom:.25rem">PROC (traitement + YOLO)</div><img src="/api/debug_frames/${ids.proc}" style="width:100%;border-radius:6px;border:1px solid #e5e7eb" loading="lazy"></div>` : ''}
       </div>
     </div>
-  `).join('');
+  `).join('') + `<div style="font-size:.7rem;color:#9ca3af;margin-top:.5rem">Frames conservées 48h puis purgées automatiquement.</div>`;
 
-  const modal = document.createElement('div');
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem';
-  modal.innerHTML = `
-    <div style="background:#fff;border-radius:10px;padding:1.25rem 1.5rem;max-width:900px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.35)">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.9rem">
-        <div>
-          <div style="font-weight:700;font-size:.95rem">Frames de debug</div>
-          <div style="font-family:monospace;font-size:.72rem;color:#6b7280;margin-top:.15rem">${escHtml(filename)}</div>
-        </div>
-        <button onclick="this.closest('[style*=fixed]').remove()" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:#6b7280;line-height:1">×</button>
-      </div>
-      ${html}
-      <div style="font-size:.7rem;color:#9ca3af;margin-top:.5rem">Les frames sont conservées 48h puis purgées automatiquement.</div>
-    </div>`;
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-  document.body.appendChild(modal);
+  openModal('Frames de debug', filename, html, true);
 }
 
 function toggleSelectAll(cb) {
@@ -1233,31 +1271,34 @@ function getSelected() {
 
 async function resetSelected() {
   const sel = getSelected();
-  if (!sel.length) { alert('Cochez au moins un fichier.'); return; }
-  if (!confirm(`Remettre ${sel.length} fichier(s) en attente de traitement ?`)) return;
-  const res  = await fetch('/api/files/reset', { method:'POST', headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'}, body: JSON.stringify({filenames: sel}) });
-  const data = await res.json();
-  if (data.ok) { loadFiles(); loadPending(); alert(`${data.reset_count} fichier(s) remis en attente.`); }
-  else alert('Erreur : ' + data.error);
+  if (!sel.length) { showToast('Cochez au moins un fichier.', 'info'); return; }
+  showConfirm(`Remettre ${sel.length} fichier(s) en attente de traitement ?`, async () => {
+    const res  = await fetch('/api/files/reset', { method:'POST', headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'}, body: JSON.stringify({filenames: sel}) });
+    const data = await res.json();
+    if (data.ok) { loadFiles(); loadPending(); showToast(`${data.reset_count} fichier(s) remis en attente.`, 'ok'); }
+    else showToast('Erreur : ' + data.error, 'err');
+  });
 }
 
 async function resetAll() {
-  if (!confirm('Remettre TOUS les fichiers en attente ? Toutes les analyses seront refaites.')) return;
-  const res  = await fetch('/api/files/reset', { method:'POST', headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'}, body: JSON.stringify({}) });
-  const data = await res.json();
-  if (data.ok) { loadFiles(); loadPending(); alert(`${data.reset_count} fichier(s) réinitialisés.`); }
-  else alert('Erreur : ' + data.error);
+  showConfirm('Remettre TOUS les fichiers en attente ? Toutes les analyses seront refaites.', async () => {
+    const res  = await fetch('/api/files/reset', { method:'POST', headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'}, body: JSON.stringify({}) });
+    const data = await res.json();
+    if (data.ok) { loadFiles(); loadPending(); showToast(`${data.reset_count} fichier(s) réinitialisés.`, 'ok'); }
+    else showToast('Erreur : ' + data.error, 'err');
+  }, 'Tout réinitialiser');
 }
 
 /* ─────────────────────────────────────────────────────────────
    Utils
 ───────────────────────────────────────────────────────────── */
 async function skipAllPending() {
-  if (!confirm('Ignorer tous les fichiers en attente ? Ils seront marqués comme traités sans analyse. Seuls les nouveaux fichiers seront analysés à partir de maintenant.')) return;
-  const res  = await fetch('/api/files/skip-all', { method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'} });
-  const data = await res.json();
-  if (data.ok) { loadFiles(); loadPending(); alert(`${data.skipped_count} fichier(s) ignoré(s). L'analyse reprendra sur les prochains fichiers.`); }
-  else alert('Erreur : ' + data.error);
+  showConfirm('Ignorer tous les fichiers en attente ? Ils seront marqués sans analyse. Seuls les nouveaux fichiers seront analysés à partir de maintenant.', async () => {
+    const res  = await fetch('/api/files/skip-all', { method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'} });
+    const data = await res.json();
+    if (data.ok) { loadFiles(); loadPending(); showToast(`${data.skipped_count} fichier(s) ignoré(s).`, 'ok'); }
+    else showToast('Erreur : ' + data.error, 'err');
+  }, 'Ignorer le backlog');
 }
 
 async function loadMaintenance() {
@@ -1297,40 +1338,44 @@ async function loadMaintenance() {
 }
 
 async function cleanLogs() {
-  if (!confirm('Supprimer les fichiers journaux archivés (*.log.1, *.log.2, *.log.3) ?')) return;
-  const res  = await fetch('/api/maintenance/clean-logs', { method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'} });
-  const data = await res.json();
-  if (data.ok) {
-    const freed = data.freed_bytes < 1024*1024 ? `${(data.freed_bytes/1024).toFixed(1)} Ko` : `${(data.freed_bytes/1024/1024).toFixed(1)} Mo`;
-    alert(`${data.deleted} fichier(s) supprimé(s), ${freed} libérés.`);
-    loadMaintenance();
-  } else alert('Erreur : ' + data.error);
+  showConfirm('Supprimer les fichiers journaux archivés (*.log.1, *.log.2, *.log.3) ?', async () => {
+    const res  = await fetch('/api/maintenance/clean-logs', { method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'} });
+    const data = await res.json();
+    if (data.ok) {
+      const freed = data.freed_bytes < 1024*1024 ? `${(data.freed_bytes/1024).toFixed(1)} Ko` : `${(data.freed_bytes/1024/1024).toFixed(1)} Mo`;
+      showToast(`${data.deleted} fichier(s) supprimé(s), ${freed} libérés.`, 'ok');
+      loadMaintenance();
+    } else showToast('Erreur : ' + data.error, 'err');
+  });
 }
 
 async function clearMotionCache() {
-  if (!confirm('Vider le cache de mouvement ? Les segments seront recalculés lors du prochain traitement.')) return;
-  const res  = await fetch('/api/maintenance/clear-motion-cache', { method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'} });
-  const data = await res.json();
-  if (data.ok) {
-    alert(`Cache vidé — ${data.deleted} entrée(s) supprimée(s).`);
-    loadMaintenance();
-  } else alert('Erreur : ' + data.error);
+  showConfirm('Vider le cache de mouvement ? Les segments seront recalculés lors du prochain traitement.', async () => {
+    const res  = await fetch('/api/maintenance/clear-motion-cache', { method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'} });
+    const data = await res.json();
+    if (data.ok) { showToast(`Cache vidé — ${data.deleted} entrée(s) supprimée(s).`, 'ok'); loadMaintenance(); }
+    else showToast('Erreur : ' + data.error, 'err');
+  });
 }
 
 async function purgeOldData() {
-  const days = prompt('Supprimer les franchissements de plus de combien de jours ?', '90');
-  if (!days) return;
-  const n = parseInt(days, 10);
-  if (isNaN(n) || n <= 0) { alert('Valeur invalide.'); return; }
-  if (!confirm(`Supprimer définitivement tous les franchissements de plus de ${n} jours ?`)) return;
-  const res  = await fetch('/api/maintenance/purge-data', {
-    method: 'POST', headers: {'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'}, body: JSON.stringify({days: n})
-  });
-  const data = await res.json();
-  if (data.ok) {
-    alert(`${data.deleted} franchissement(s) supprimé(s).`);
-    loadMaintenance();
-  } else alert('Erreur : ' + data.error);
+  showPromptModal(
+    'Purge des données',
+    'Supprimer les franchissements de plus de combien de jours ?',
+    90,
+    async (days) => {
+      const n = parseInt(days, 10);
+      if (isNaN(n) || n <= 0) { showToast('Valeur invalide.', 'err'); return; }
+      showConfirm(`Supprimer définitivement tous les franchissements de plus de ${n} jours ?`, async () => {
+        const res  = await fetch('/api/maintenance/purge-data', {
+          method: 'POST', headers: {'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'}, body: JSON.stringify({days: n})
+        });
+        const data = await res.json();
+        if (data.ok) { showToast(`${data.deleted} franchissement(s) supprimé(s).`, 'ok'); loadMaintenance(); }
+        else showToast('Erreur : ' + data.error, 'err');
+      }, 'Confirmer la purge');
+    }
+  );
 }
 
 function exportCrossings() {
@@ -1353,7 +1398,64 @@ function escHtml(s) {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Modal — détail des franchissements par créneau horaire
+   Toast notifications (A1)
+───────────────────────────────────────────────────────────── */
+function showToast(msg, type = 'info', duration = 3500) {
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = `toast t-${type}`;
+  const icons = { ok: '✓', err: '✗', info: 'ℹ' };
+  t.innerHTML = `<span style="font-weight:700;flex-shrink:0">${icons[type] || 'ℹ'}</span><span>${escHtml(msg)}</span>`;
+  c.appendChild(t);
+  setTimeout(() => {
+    t.style.opacity = '0';
+    t.style.transform = 'translateX(20px)';
+    setTimeout(() => t.remove(), 300);
+  }, duration);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Action modal — confirm / prompt (A1)
+───────────────────────────────────────────────────────────── */
+function closeActionModal() {
+  document.getElementById('action-modal').style.display = 'none';
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeActionModal(); closeModal(); }
+});
+
+function _amBtn(label, primary = false) {
+  return `<button style="padding:.4rem .9rem;border:${primary?'none':'1px solid #cbd5e1'};border-radius:6px;background:${primary?'#1a3a5c':'#fff'};color:${primary?'#fff':'#374151'};cursor:pointer;font-size:.84rem">${label}</button>`;
+}
+
+function showConfirm(msg, onConfirm, title = 'Confirmation') {
+  document.getElementById('action-modal-title').textContent = title;
+  document.getElementById('action-modal-body').innerHTML = `<p style="margin:.25rem 0">${escHtml(msg)}</p>`;
+  document.getElementById('action-modal-footer').innerHTML = _amBtn('Annuler') + _amBtn('Confirmer', true);
+  const btns = document.getElementById('action-modal-footer').querySelectorAll('button');
+  btns[0].onclick = closeActionModal;
+  btns[1].onclick = () => { closeActionModal(); onConfirm(); };
+  document.getElementById('action-modal').style.display = 'flex';
+}
+
+function showPromptModal(title, label, defaultVal, onConfirm) {
+  document.getElementById('action-modal-title').textContent = title;
+  document.getElementById('action-modal-body').innerHTML = `
+    <p style="margin:.25rem 0 .75rem">${escHtml(label)}</p>
+    <input id="am-input" type="number" value="${escHtml(String(defaultVal))}" min="1"
+      style="width:100%;padding:.4rem .65rem;border:1px solid #cbd5e1;border-radius:6px;font-size:.9rem">
+  `;
+  document.getElementById('action-modal-footer').innerHTML = _amBtn('Annuler') + _amBtn('Confirmer', true);
+  const btns = document.getElementById('action-modal-footer').querySelectorAll('button');
+  btns[0].onclick = closeActionModal;
+  btns[1].onclick = () => { const v = document.getElementById('am-input').value; closeActionModal(); onConfirm(v); };
+  document.getElementById('action-modal').style.display = 'flex';
+  setTimeout(() => document.getElementById('am-input')?.focus(), 60);
+}
+document.getElementById('action-modal').addEventListener('click', e => { if (e.target.id === 'action-modal') closeActionModal(); });
+
+/* ─────────────────────────────────────────────────────────────
+   Modal générique — franchissements + frames (C3)
 ───────────────────────────────────────────────────────────── */
 function closeModal() {
   document.getElementById('crossing-modal').style.display = 'none';
@@ -1362,43 +1464,84 @@ document.getElementById('crossing-modal').addEventListener('click', function(e) 
   if (e.target === this) closeModal();
 });
 
+function openModal(title, subtitle, bodyHtml, wide = false) {
+  document.getElementById('modal-title').textContent = title;
+  const sub = document.getElementById('modal-subtitle');
+  sub.textContent = subtitle || '';
+  sub.style.display = subtitle ? '' : 'none';
+  document.getElementById('modal-body').innerHTML = bodyHtml;
+  document.getElementById('crossing-modal-box').style.maxWidth = wide ? '920px' : '560px';
+  document.getElementById('crossing-modal').style.display = 'flex';
+}
+
 async function showCrossingsDetail(day, hour) {
   const url = hour !== undefined ? `/api/crossings?day=${day}&hour=${hour}` : `/api/crossings?day=${day}`;
   const data = await (await fetch(url)).json();
   const crossings = data.crossings || [];
-
-  const title = hour !== undefined
-    ? `Véhicules — ${day} ${String(hour).padStart(2,'0')}h`
-    : `Véhicules — ${day}`;
-  document.getElementById('modal-title').textContent = title;
-
+  const title = hour !== undefined ? `Véhicules — ${day} ${String(hour).padStart(2,'0')}h` : `Véhicules — ${day}`;
   const typeIcon = { car: '🚗', truck: '🚛', bus: '🚌', motorcycle: '🏍️' };
   const dirLabel = { left_to_right: '→', right_to_left: '←' };
-
-  if (!crossings.length) {
-    document.getElementById('modal-body').innerHTML = '<p style="color:#888;text-align:center">Aucun véhicule enregistré.</p>';
-  } else {
-    document.getElementById('modal-body').innerHTML = `
-      <table style="width:100%;border-collapse:collapse">
+  const bodyHtml = !crossings.length
+    ? '<p style="color:#888;text-align:center;padding:.5rem 0">Aucun véhicule enregistré.</p>'
+    : `<table style="width:100%;border-collapse:collapse">
         <thead><tr style="border-bottom:2px solid #e5e7eb;text-align:left">
-          <th style="padding:.3rem .5rem">Heure</th>
-          <th style="padding:.3rem .5rem">Type</th>
-          <th style="padding:.3rem .5rem">Dir.</th>
-          <th style="padding:.3rem .5rem">Confiance</th>
+          <th style="padding:.3rem .5rem">Heure</th><th style="padding:.3rem .5rem">Type</th>
+          <th style="padding:.3rem .5rem">Dir.</th><th style="padding:.3rem .5rem">Confiance</th>
         </tr></thead>
-        <tbody>${crossings.map(c => `
-          <tr style="border-bottom:1px solid #f3f4f6">
-            <td style="padding:.3rem .5rem;font-family:monospace">${c.timestamp.slice(11,19)}</td>
-            <td style="padding:.3rem .5rem">${typeIcon[c.vehicle_type] || ''} ${c.vehicle_type}</td>
-            <td style="padding:.3rem .5rem">${dirLabel[c.direction] || c.direction || '—'}</td>
-            <td style="padding:.3rem .5rem">${(c.confidence*100).toFixed(0)}%</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-      <p style="color:#888;font-size:.75rem;margin-top:.5rem;text-align:right">${crossings.length} véhicule(s)</p>
-    `;
-  }
-  document.getElementById('crossing-modal').style.display = 'flex';
+        <tbody>${crossings.map(c => `<tr style="border-bottom:1px solid #f3f4f6">
+          <td style="padding:.3rem .5rem;font-family:monospace">${c.timestamp.slice(11,19)}</td>
+          <td style="padding:.3rem .5rem">${typeIcon[c.vehicle_type] || ''} ${c.vehicle_type}</td>
+          <td style="padding:.3rem .5rem">${dirLabel[c.direction] || c.direction || '—'}</td>
+          <td style="padding:.3rem .5rem">${(c.confidence*100).toFixed(0)}%</td>
+        </tr>`).join('')}</tbody></table>
+      <p style="color:#888;font-size:.75rem;margin-top:.5rem;text-align:right">${crossings.length} véhicule(s)</p>`;
+  openModal(title, '', bodyHtml);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Analyse — direction summary (A2)
+───────────────────────────────────────────────────────────── */
+function setDirSumDays(days, btn) {
+  dirSumDays = days;
+  document.querySelectorAll('.dir-sum-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  loadDirectionSummary();
+}
+
+async function loadDirectionSummary() {
+  let data;
+  try { data = await (await fetch(`/api/stats/direction_summary?days=${dirSumDays}`)).json(); }
+  catch(e) { return; }
+  const tile = document.getElementById('dir-summary-tile');
+  if (data.error || !data.total) { tile.style.display = 'none'; return; }
+  tile.style.display = '';
+  const { total, with_direction: withDir, left_to_right: ltr, right_to_left: rtl, direction_rate: rate } = data;
+  const ltrPct = ltr + rtl > 0 ? Math.round(ltr / (ltr + rtl) * 100) : 50;
+  const rtlPct = 100 - ltrPct;
+  const rateColor = rate >= 70 ? '#059669' : rate >= 50 ? '#d97706' : '#dc2626';
+  document.getElementById('dir-summary-body').innerHTML = `
+    <div style="display:flex;gap:1.5rem;align-items:center;flex-wrap:wrap">
+      <div style="text-align:center;min-width:64px">
+        <div style="font-size:2rem;font-weight:800;color:${rateColor};line-height:1.1">${rate}%</div>
+        <div style="font-size:.72rem;color:#888;margin-top:.2rem">Avec sens</div>
+      </div>
+      <div style="flex:1;min-width:180px">
+        <div style="display:flex;height:12px;border-radius:6px;overflow:hidden;margin-bottom:.35rem">
+          <div style="width:${ltrPct}%;background:#3b82f6;transition:width .4s"></div>
+          <div style="width:${rtlPct}%;background:#10b981;transition:width .4s"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:.8rem">
+          <span style="color:#3b82f6">← ${ltr} (${ltrPct}%)</span>
+          <span style="color:#10b981">${rtl} (${rtlPct}%) →</span>
+        </div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:1.3rem;font-weight:700;color:#1a3a5c;line-height:1.1">${total.toLocaleString('fr-FR')}</div>
+        <div style="font-size:.72rem;color:#888;margin-top:.2rem">passages totaux</div>
+      </div>
+    </div>
+    <div style="font-size:.73rem;color:#94a3b8;margin-top:.6rem">${withDir} sur ${total} avec direction — ${dirSumDays} derniers jours</div>
+  `;
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -1501,11 +1644,9 @@ function renderCalendar({ year, month, first_weekday, last_day, days }) {
 }
 
 function calClickDay(dateStr) {
-  // Switch to hourly tab and load the selected day
   document.getElementById('date-picker').value = dateStr;
-  const btn = document.querySelector('.tab-nav .tab-btn:nth-child(2)');  // second button = hourly
+  const btn = document.querySelector('.tab-btn[data-tab="hourly"]');
   showTab('hourly', btn);
-  loadHourly();
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -1514,6 +1655,7 @@ function calClickDay(dateStr) {
 loadHeatmap();
 loadTypeEvolution();
 loadComparison();
+loadDirectionSummary();
 loadVersion();
 checkStatus();
 setInterval(checkStatus, 60000);
@@ -1699,15 +1841,16 @@ async function applyThreshold() {
 }
 
 async function resetThreshold() {
-  if (!confirm('Revenir au seuil calculé automatiquement ?')) return;
-  const res = await fetch('/api/audio/threshold', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-    body: JSON.stringify({ threshold: null }),
+  showConfirm('Revenir au seuil calculé automatiquement ?', async () => {
+    const res = await fetch('/api/audio/threshold', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      body: JSON.stringify({ threshold: null }),
+    });
+    const data = await res.json();
+    if (data.ok) { loadAudioCalibration(); showToast('Seuil automatique restauré.', 'ok'); }
+    else showToast('Erreur : ' + data.error, 'err');
   });
-  const data = await res.json();
-  if (data.ok) { loadAudioCalibration(); }
-  else alert('Erreur : ' + data.error);
 }
 
 /* ─────────────────────────────────────────────────────────────
