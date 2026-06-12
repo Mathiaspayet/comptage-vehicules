@@ -88,6 +88,18 @@ def is_night(config, dt: "datetime | None") -> bool:
     return h < sunrise or h >= sunset
 
 
+def _box_iou(a: "tuple | list", b: "tuple | list") -> float:
+    """IoU de deux boîtes (x1, y1, x2, y2)."""
+    ix1, iy1 = max(a[0], b[0]), max(a[1], b[1])
+    ix2, iy2 = min(a[2], b[2]), min(a[3], b[3])
+    inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+    if inter <= 0:
+        return 0.0
+    area_a = (a[2] - a[0]) * (a[3] - a[1])
+    area_b = (b[2] - b[0]) * (b[3] - b[1])
+    return inter / max(area_a + area_b - inter, 1e-6)
+
+
 @dataclass
 class CrossingEvent:
     timestamp: datetime
@@ -251,18 +263,36 @@ class VehicleDetector:
         track_last_cx: dict[int, float] = {}
         track_first_cy: dict[int, float] = {}
         track_last_cy: dict[int, float] = {}
+        # First/last bbox per track (stationary-vehicle suppression)
+        track_first_box: dict[int, tuple] = {}
+        track_last_box: dict[int, tuple] = {}
         track_event: dict[int, CrossingEvent] = {}
         # Line-crossing direction state
         track_prev_side: dict[int, int] = {}
         track_crossing_dir: dict[int, str] = {}
 
-        # Precompute ROI crop bbox
+        # Precompute ROI crop bbox — borné aux dimensions réelles de la vidéo
+        # (le ROI a pu être calibré sur une autre résolution).
         crop_bbox = self._roi_crop_bbox()
         if crop_bbox:
+            vid_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+            vid_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
             x0, y0, x1, y1 = crop_bbox
-            frame_w = x1 - x0
-            logger.debug("ROI crop activé : (%d,%d)→(%d,%d) — %dx%d px au lieu de la frame entière",
-                         x0, y0, x1, y1, x1 - x0, y1 - y0)
+            if vid_w and vid_h:
+                x0, x1 = max(0, min(x0, vid_w - 1)), max(1, min(x1, vid_w))
+                y0, y1 = max(0, min(y0, vid_h - 1)), max(1, min(y1, vid_h))
+            if x1 - x0 < 8 or y1 - y0 < 8:
+                logger.warning(
+                    "ROI crop dégénéré après bornage (%d,%d)→(%d,%d) sur vidéo %dx%d — crop désactivé",
+                    x0, y0, x1, y1, vid_w, vid_h,
+                )
+                crop_bbox = None
+                frame_w = vid_w or 1280
+            else:
+                crop_bbox = (x0, y0, x1, y1)
+                frame_w = x1 - x0
+                logger.debug("ROI crop activé : (%d,%d)→(%d,%d) — %dx%d px au lieu de la frame entière",
+                             x0, y0, x1, y1, x1 - x0, y1 - y0)
         else:
             frame_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 1280)
 
@@ -367,6 +397,8 @@ class VehicleDetector:
                     track_prev_side,
                     track_crossing_dir,
                     dir_line,
+                    track_first_box=track_first_box,
+                    track_last_box=track_last_box,
                     on_proc_frame=_on_proc if capture_this else None,
                 )
                 crossings.extend(events)
@@ -427,6 +459,23 @@ class VehicleDetector:
                 if abs(delta) >= min_disp:
                     ev.direction = "left_to_right" if delta > 0 else "right_to_left"
 
+        # ── Filtre stationnaire ──────────────────────────────────────
+        # Un véhicule garé dans le champ génère des tracks à répétition (l'ID
+        # change à chaque segment ou scintillement de détection) mais sa boîte
+        # ne bouge pas. Un vrai passage déplace sa boîte : le recouvrement
+        # première/dernière boîte d'un track qui circule est quasi nul.
+        stationary_ids = set()
+        for tid, ev in track_event.items():
+            fb, lb = track_first_box.get(tid), track_last_box.get(tid)
+            if fb is not None and lb is not None and _box_iou(fb, lb) >= 0.15:
+                stationary_ids.add(id(ev))
+        if stationary_ids:
+            crossings = [e for e in crossings if id(e) not in stationary_ids]
+            logger.info(
+                "%s — %d track(s) stationnaire(s) ignoré(s) (véhicule garé/immobile)",
+                source_name, len(stationary_ids),
+            )
+
         logger.info(
             "%s → %d véhicule(s) | %d frames analysées | %d/%d segments",
             video_path.name, len(crossings), analysed_frames,
@@ -473,6 +522,8 @@ class VehicleDetector:
         track_prev_side: "dict | None" = None,
         track_crossing_dir: "dict | None" = None,
         dir_line: "tuple | None" = None,
+        track_first_box: "dict | None" = None,
+        track_last_box: "dict | None" = None,
         on_proc_frame=None,
     ) -> list[CrossingEvent]:
         night = self._is_night(video_start_dt)
@@ -537,6 +588,12 @@ class VehicleDetector:
                 track_first_cy[tid] = cy
             track_last_cx[tid] = cx
             track_last_cy[tid] = cy
+
+            # Record first/last bbox (stationary-vehicle suppression).
+            if track_first_box is not None and track_last_box is not None:
+                if tid not in track_first_box:
+                    track_first_box[tid] = tuple(box)
+                track_last_box[tid] = tuple(box)
 
             # Line-crossing direction: produit vectoriel pour déterminer le côté de la ligne.
             if dir_line is not None and track_prev_side is not None and track_crossing_dir is not None:

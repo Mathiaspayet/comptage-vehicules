@@ -321,7 +321,12 @@ def create_app(config: Config, db: Database, audio=None) -> Flask:
             ).fetchone()
         if not row:
             return jsonify({"error": "Frame introuvable"}), 404
-        p = Path(row["file_path"])
+        p = Path(row["file_path"]).resolve()
+        # Défense en profondeur : ne sert jamais un fichier hors du répertoire
+        # des debug frames, même si la DB venait à être altérée.
+        frames_root = Path("/app/data/debug_frames").resolve()
+        if not p.is_relative_to(frames_root):
+            return jsonify({"error": "Chemin non autorisé"}), 403
         if not p.exists():
             return jsonify({"error": "Fichier image manquant sur le disque"}), 404
         return send_file(str(p), mimetype="image/jpeg")
