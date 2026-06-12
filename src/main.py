@@ -413,7 +413,7 @@ def _process_file(
             # (YOLO + phares + confiance audio) arbitre les cas ambigus.
             if video_start_dt is not None:
                 sunrise_h, sunset_h = sunrise_sunset_local(
-                    config.latitude, config.longitude, config.timezone_offset, video_start_dt,
+                    watcher.config.latitude, watcher.config.longitude, watcher.config.timezone_offset, video_start_dt,
                 )
                 h_local = video_start_dt.hour + video_start_dt.minute / 60.0
                 if mode == "night" and (sunrise_h + 0.5) <= h_local <= (sunset_h - 0.5):
