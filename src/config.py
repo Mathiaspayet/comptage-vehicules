@@ -279,7 +279,7 @@ class Config:
 
     @property
     def audio_calibration_files(self) -> int:
-        return int(self.get("audio_filter", "calibration_files", default=20))
+        return int(self.get("audio_filter", "calibration_files", default=10))
 
     @property
     def audio_sigma_factor(self) -> float:
@@ -366,6 +366,24 @@ class Config:
                 k for k in set(self._data) | set(new_data)
                 if self._data.get(k) != new_data.get(k)
             }
+            # Sonde de types avant application : une typo dans le YAML
+            # (ex. imgsz: "abc") ne doit pas remplacer une config valide.
+            probe = Config(new_data)
+            try:
+                _ = (
+                    probe.imgsz,
+                    probe.night_brightness_threshold,
+                    probe.night_twilight_threshold,
+                    probe.latitude,
+                    probe.longitude,
+                    probe.audio_sigma_factor,
+                )
+            except Exception as probe_err:
+                logger.error(
+                    "Nouvelle config invalide (%s) — l'ancienne configuration reste active.",
+                    probe_err,
+                )
+                return set()
             self._data = new_data
             if changed:
                 logger.info("Configuration rechargée — sections modifiées : %s", changed)

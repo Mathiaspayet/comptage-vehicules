@@ -205,11 +205,19 @@ class AudioFilter:
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
             )
-            raw = proc.stdout.read()
-            proc.wait()
         except FileNotFoundError:
             logger.debug("ffmpeg absent — filtre audio désactivé.")
             return None
+        try:
+            raw = proc.stdout.read()
+            proc.wait()
+        except Exception:
+            # Sans kill explicite le process ffmpeg resterait zombie
+            proc.kill()
+            proc.wait()
+            raise
+        finally:
+            proc.stdout.close()
 
         if not raw:
             return None

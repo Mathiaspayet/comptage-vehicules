@@ -92,8 +92,13 @@ class Database:
 
     @contextmanager
     def _connect(self) -> Generator[sqlite3.Connection, None, None]:
-        conn = sqlite3.connect(self.db_path, timeout=30)
+        conn = sqlite3.connect(self.db_path, timeout=60)
         conn.row_factory = sqlite3.Row
+        # WAL : lectures (dashboard) et écritures (traitement) ne se bloquent
+        # plus mutuellement — indispensable sur NAS lent. synchronous=NORMAL
+        # est le réglage recommandé avec WAL (moins de fsync, sûr hors coupure).
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA synchronous = NORMAL")
         # Cache SQLite en mémoire (32 MB) + stockage des tables temp en RAM
         conn.execute("PRAGMA cache_size = -32000")
         conn.execute("PRAGMA temp_store = MEMORY")
@@ -250,6 +255,22 @@ class Database:
                 """,
                 crossings,
             )
+
+    def replace_crossings_for_file(self, filename: str, crossings: list[dict]):
+        """Supprime puis réinsère les passages d'un fichier dans UNE transaction.
+
+        Un crash entre le DELETE et l'INSERT ne peut pas perdre les données :
+        soit tout est appliqué, soit rien (rollback du context manager)."""
+        with self._connect() as conn:
+            conn.execute("DELETE FROM crossings WHERE source_file = ?", (filename,))
+            if crossings:
+                conn.executemany(
+                    """
+                    INSERT INTO crossings (timestamp, vehicle_type, direction, confidence, source_file)
+                    VALUES (:timestamp, :vehicle_type, :direction, :confidence, :source_file)
+                    """,
+                    crossings,
+                )
 
     def get_crossings_for_file(self, filename: str) -> list[dict]:
         """Return all crossings for a given source file, ordered by timestamp."""

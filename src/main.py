@@ -12,7 +12,7 @@ from .audio_filter import AudioFilter, bootstrap_calibration
 from .config import load_config
 from .dashboard import run_dashboard
 from .database import Database
-from .detector import CrossingEvent, VehicleDetector
+from .detector import CrossingEvent, VehicleDetector, sunrise_sunset_local
 from .frame_sampler import FrameSampler, purge_old_frames
 from .ingestion import FileWatcher
 from .night_detector import NightDetector, measure_scene_lighting
@@ -396,6 +396,32 @@ def _process_file(
                     filename, glare_frac * 100,
                 )
 
+            # ── Garde astronomique ───────────────────────────────────
+            # La luminosité mesurée peut se tromper : route à l'ombre au lever
+            # du soleil → "nuit" en plein jour (phares inutiles, YOLO jamais
+            # lancé) ; lampadaire dans le ROI → "jour" en pleine nuit (filet
+            # audio désactivé). L'heure solaire borne le mode : le crépuscule
+            # (YOLO + phares + confiance audio) arbitre les cas ambigus.
+            if video_start_dt is not None:
+                sunrise_h, sunset_h = sunrise_sunset_local(
+                    config.latitude, config.longitude, config.timezone_offset, video_start_dt,
+                )
+                h_local = video_start_dt.hour + video_start_dt.minute / 60.0
+                if mode == "night" and (sunrise_h + 0.5) <= h_local <= (sunset_h - 0.5):
+                    mode = "twilight"
+                    logger.info(
+                        "%s — garde astro : %.1fh est en plein jour (lever %.1fh / coucher %.1fh) "
+                        "→ NUIT corrigé en CRÉPUSCULE",
+                        filename, h_local, sunrise_h, sunset_h,
+                    )
+                elif mode == "day" and (h_local >= sunset_h + 0.75 or h_local <= sunrise_h - 0.75):
+                    mode = "twilight"
+                    logger.info(
+                        "%s — garde astro : %.1fh est en pleine nuit (lever %.1fh / coucher %.1fh) "
+                        "→ JOUR corrigé en CRÉPUSCULE",
+                        filename, h_local, sunrise_h, sunset_h,
+                    )
+
         # ── Adaptation dynamique de la session crépuscule ────────────
         # Hors crépuscule : on sort de la session → reset des compteurs
         brightness_mode = mode
@@ -495,8 +521,6 @@ def _process_file(
             progress_tracker.finish_file()
             return
 
-        # Remplacer les crossings existants pour ce fichier, puis insérer les nouveaux
-        db.delete_crossings_for_files([filename])
         all_crossings = saved_crossings + [
             {
                 "timestamp": e.timestamp.isoformat(),
@@ -528,8 +552,8 @@ def _process_file(
                     filename, audio_trusted, audio_trusted, mode,
                 )
 
-        if all_crossings:
-            db.insert_crossings_batch(all_crossings)
+        # Remplace les crossings existants du fichier (DELETE + INSERT atomiques)
+        db.replace_crossings_for_file(filename, all_crossings)
 
         total_count = len(all_crossings)
 
